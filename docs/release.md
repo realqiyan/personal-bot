@@ -27,7 +27,7 @@ provenance 所用 repository 元数据须与实际公开仓库匹配。若改为
 npm version <新版本> --no-git-tag-version --ignore-scripts
 ```
 
-同步 README 的版本说明，执行：
+同步 `README.md`（默认英文）和 `README.zh-CN.md` 的版本与使用说明，执行：
 
 ```bash
 npm ci --ignore-scripts

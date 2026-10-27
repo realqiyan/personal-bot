@@ -1,6 +1,6 @@
 {
   "name": "personal-bot",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/realqiyan/personal-bot.git"
@@ -31,6 +31,7 @@
     "python/requirements.lock",
     "python/README.md",
     "README.md",
+    "README.zh-CN.md",
     "CONTEXT.md",
     "docs"
   ],

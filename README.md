@@ -1,107 +1,119 @@
 # Personal Bot
 
-**个人助手，连接知识、研究与行动。**
+English | [简体中文](README.zh-CN.md)
 
-当前基于 Pi 实现，提供按工作区加载的扩展，用于学习、项目推进、研究与决策支持，也支持投资分析与已授权业务。
+**A personal assistant connecting knowledge, research, and action.**
 
-定位为可信模型驱动的个人助手。模型负责分析、协调与原生工具使用；pbot 提供资料入口、专家协作和 Python 环境准备。不另建主 Agent，不自动开展任务或交易。
+Personal Bot is currently a workspace-scoped [Pi](https://pi.dev) extension for learning, project work, research, and decision support, including investment analysis and explicitly authorized operations.
 
-## 安装
+The model handles analysis, coordination, and native tools. Personal Bot adds workspace materials, specialist collaboration, and Python environment preparation. It does not create a second main agent or start tasks or trades automatically.
 
-需要 Linux、Node.js 22.19+，以及已配置模型和认证的 Pi。Python 计算需要 Python 3.11+。当前开发与测试使用 Pi 1.1.0，其他宿主版本需另行验证。
+## Install
 
-先在源码目录安装依赖：
+Requirements: Linux, Node.js 22.19+, and Pi with a configured model and authentication. Python computation requires Python 3.11+. Development and local tests currently use Pi 1.1.0; other host versions need separate validation. Native MCP and the optional Task Conductor integration require Pi 1.4.0+.
 
-```bash
-cd ~/gitsrc/personal-bot
-npm ci --ignore-scripts
-```
-
-再从目标工作区根目录安装并启动：
+From your workspace root:
 
 ```bash
-pi install --local ~/gitsrc/personal-bot
+pi install --local npm:personal-bot
 pi
 ```
 
-`--local` 将包声明保存在项目 `.pi/settings.json`。按 Pi 提示确认项目信任，每次从工作区根目录启动。Pi 加载 Personal Bot 就会启用角色、技能、工具及共享 Python 环境准备；没有第二个启用开关。不要全局安装，除非希望所有 Pi 会话都启用 Personal Bot。已有全局安装请用 Pi 原生包管理或 `pi config` 调整加载范围。npm 发布完成后也可从工作区根目录执行 `pi install --local npm:personal-bot`；发布状态须以 npmjs 为准，不要同时加载源码与 npm 两个来源。
+`--local` saves the package declaration in the project's `.pi/settings.json`. Review and grant project trust when Pi prompts you, and start Pi from the workspace root. Loading Personal Bot enables its roles, skills, tools, and shared Python environment preparation. There is no separate activation switch.
 
-源码位于其他目录时，将安装命令中的路径换成实际绝对路径。本地安装直接加载来源目录，请保留源码和依赖。
+Avoid a global installation unless you want Personal Bot in every Pi session. Use Pi package management or `pi config` to adjust an existing installation's scope. Do not load both the npm and source installations.
 
-### 可选安装 Task Conductor
+### Install from source
 
-需要周期任务、重复流程或 DAG 时，安装接入包 `task-conductor-plugin`。它不是服务包 `task-conductor`，也不是启用 pbot 的前提。该接入方式需要 Pi 1.4.0+ 的原生 MCP 和 npm。
+For development:
 
-先用 `pi list` 检查是否已经安装；已安装但技能不可见时，检查资源是否启用并重载，不要重复安装。新安装请审阅[官方接入说明](https://github.com/realqiyan/task-conductor/blob/master/docs/host-integrations.md)，从工作区根目录执行：
+```bash
+git clone https://github.com/realqiyan/personal-bot.git
+cd personal-bot
+npm ci --ignore-scripts
+cd /path/to/workspace
+pi install --local /absolute/path/to/personal-bot
+pi
+```
+
+Replace the example paths with your actual paths. A local installation loads the source directory directly, so keep that directory and its dependencies available.
+
+### Optional: Task Conductor
+
+For scheduled tasks, recurring workflows, or DAGs, install `task-conductor-plugin`. This integration package is distinct from the `task-conductor` service and is not required for Personal Bot. It requires Pi 1.4.0+ with native MCP support and npm.
+
+Check `pi list` first. If the package is already installed but its skill is missing, check resource configuration and reload rather than installing it again. Review the [upstream integration guide](https://github.com/realqiyan/task-conductor/blob/master/docs/host-integrations.md), then run from the workspace root:
 
 ```bash
 pi install --local npm:task-conductor-plugin
 ```
 
-然后在 Pi 中执行 `/reload`，再调用 `/skill:using-task-conductor`。插件自带技能会在你确认后引导服务安装、`task-conductor setup` 和原生 MCP 接入；插件安装本身不安装服务。凭据留在自己的终端或私有文件中，不发到聊天里。
+In Pi, run `/reload`, then `/skill:using-task-conductor`. With your confirmation, the skill guides service installation, `task-conductor setup`, and native MCP configuration. Installing the plugin alone does not install the service. Keep credentials in your terminal or private files, not in chat.
 
-已有旧版接入包时，先用 `pi list` 核对来源和作用域，审阅官方升级说明后显式移除旧包声明，再安装新包，不同时加载两份。接入包与服务分别更新；服务升级前核对活动任务、停服并备份，按上游说明处理原生 MCP 连接，不自动迁移配置或删除历史数据。
+For an older integration package, check its source and scope with `pi list`, review upstream upgrade instructions, and explicitly remove the old declaration before installing its replacement. Update the plugin and service separately. Before a service upgrade, check active tasks, stop the service, and back up its data. Follow upstream MCP instructions; do not automatically migrate configuration or delete history.
 
-`--local` 只限定插件的加载范围，不隔离服务数据；MCP 注册范围另行选择，保留已有连接，不重复注册。连接完成后用 `/mcp` 或 `pi mcp list` 检查实际工具，并按技能执行只读验证，不为安装验收创建模型任务。连接成功不证明模型认证或业务交付成功。
+`--local` limits plugin loading, not service data access. Choose MCP configuration scope separately, and keep existing connections without duplicate registration. Use `/mcp` or `pi mcp list` to check actual tools, then follow the skill's read-only validation steps. Do not create model tasks just to test installation. A working connection does not prove model authentication or task delivery.
 
-## 可选资料准备
+## Optional workspace preparation
 
-加载 Personal Bot 后可直接使用，无需初始化。需要标准资料布局时执行 `/pbot init`：只创建缺失的资料目录和根 `AGENTS.md`，不覆盖已有文件，不触发模型任务，也不要求完成确认或重载才能启用。
+Personal Bot works without initialization. Run `/pbot init` only if you want the standard material layout. It creates missing material directories and a missing root `AGENTS.md`; it does not overwrite files or start model tasks. Activation does not depend on confirmation or reload after initialization.
 
-目标、市场、偏好和工作约定保存在普通资料中，可直接请助手整理。需要接入外部工具时提供 CLI/MCP 名称、用途、官方文档或配置位置，不提供凭据值。
+Keep goals, markets, preferences, and working agreements in ordinary documents. Ask the assistant to organize them as needed. For external tools, provide the CLI/MCP name, purpose, official documentation, or configuration location—not credential values.
 
-## 日常使用
+## Daily use
 
-直接向助手说明任务，例如整理项目资料、比较研究结论、委派独立复核或运行计算。无需手动编排固定流程。
+Describe the task directly: organize project materials, compare research findings, delegate an independent review, or run calculations. No fixed workflow is required.
 
-| 命令 | 用途 |
+| Command | Purpose |
 | --- | --- |
-| `/pbot init` | 可选地补建资料目录和缺失的根 `AGENTS.md` |
-| `/pbot status` | 查看工作区路径、Personal Bot 版本和 Python 环境状态 |
-| `/pbot agents` | 查看专家执行；TUI 中可阅读报告、会话及停止任务 |
-| `/pbot python setup` | 手工重试共享 venv 的准备并激活，无需指定路径 |
-| `/reload` | Pi 原生命令，重载插件与资源 |
+| `/pbot init` | Create missing material directories and root `AGENTS.md` |
+| `/pbot status` | Show workspace path, Personal Bot version, and Python environment status |
+| `/pbot agents` | Inspect specialist runs; read reports and sessions or stop tasks in the TUI |
+| `/pbot python setup` | Retry shared venv preparation and activation; no path argument needed |
+| `/reload` | Pi's native command to reload extensions and resources |
 
-- **原生工具**：CLI 通过 Bash 使用原生命令与当前 help，手册只保留当前使用所需的信息和证据引用；MCP 默认只接入当前项目，从工作区根目录执行 `pi mcp add --local <server> ...`，保存到 `.pi/mcp.json`，通过 `/mcp` 核对配置来源。只有明确要求跨项目使用时才修改用户级配置。不需要 Personal Bot 注册、参数绑定或权限表。方法见[接入技能](resources/skills/provider-connections/SKILL.md)。
-- **研究与分析**：可要求“综合这些资料并说明证据冲突”“核验这份分析的口径与计算”或“找出先要验证的关键假设”。助手按需使用[研究证据技能](resources/skills/research-evidence/SKILL.md)和[分析核验技能](resources/skills/analysis-validation/SKILL.md)，依据本次用途判断结论与限制。
-- **独立子会话**：包内提供 tmux 与独立 Pi 会话，需系统安装 tmux。`pbot_agent start` 立即返回；完成后自动通知。支持模型/目录/文件/工具与资源选项、send、follow-up、rename、status、read、stop 和显式 resume，没有前后台参数或 wait。`/pbot agents` 展示正在工作的 agent，可进入子 TUI。主 reload 保持运行，退出或切换会话停止并保留历史。子会话也使用原生 CLI/MCP，按委派范围工作。详见[专家协作](docs/agent-collaboration.md)。
-- **周期与持久任务**：主会话通过原生 MCP 直接使用可选的 Task Conductor，处理周期、重复流程和 DAG；使用其 `using-task-conductor` 技能与实际工具契约。安装与接入见[可选安装引导](#可选安装-task-conductor)。缺失不影响普通 pbot 功能，但不能执行调度。pbot 不新增调度或转发层。外部任务与子会话分别查询和停止，取消本轮不等于停止未来周期，关闭 Pi 也不代表外部任务已停止。
-- **Python 环境**：所有工作区共用当前用户的独立 venv。Personal Bot 加载后自动创建环境或安装锁定依赖，成功后在当前 Pi 进程激活；主会话与专家通过 Bash 使用 `python` 或 `python3`。环境异常时提醒，修复后用 `/pbot python setup` 重试。系统 Python、外部终端、已有脚本和历史结果不变。共享依赖更新会影响其他工作区；更换插件版本或手工重试前应停止相关脚本。详见 [Python 说明](python/README.md)与[计算参考](resources/references/compute.md)。
-- **资料维护**：可要求“整理当前项目资料”“按上次口径重做报告”或“检查交付并结项”。助手按[项目整理与维护技能](resources/skills/project-maintenance/SKILL.md)更新当前任务及实际受影响的资料；整体整理按用户指定范围进行。当前说明按主题合并更新，保留结论、条件和任务定义；历史证据与重要决策保持可追溯。整理或结项时归集成果并清理范围内无用的临时产物，保留正式资料、历史记录与备份。
+- **Native tools:** Use CLI commands through Bash with their current help. Keep concise provider guides and evidence references. Configure MCP for the current project by default: run `pi mcp add --local <server> ...` from the workspace root to write `.pi/mcp.json`, then inspect the configuration source with `/mcp`. Change user-level configuration only when cross-project use is explicitly requested. No Personal Bot registration, parameter binding, or permission table is needed. See the [connection skill](resources/skills/provider-connections/SKILL.md).
+- **Research and analysis:** Ask the assistant to synthesize evidence, explain conflicts, check calculations and definitions, or identify assumptions to validate first. It uses the [research evidence](resources/skills/research-evidence/SKILL.md) and [analysis validation](resources/skills/analysis-validation/SKILL.md) skills as needed, with conclusions and limitations tied to the task.
+- **Independent sub-sessions:** Personal Bot supports tmux and independent Pi sessions; install tmux on the system to use them. `pbot_agent start` returns immediately and completion produces a notification. Options cover models, directories, files, tools, and resources. Operations include send, follow-up, rename, status, read, stop, and explicit resume; there is no foreground/background flag or wait operation. `/pbot agents` shows active agents and can open their TUI. Main-session reload preserves running agents; exit or session switching stops them and retains history. Sub-sessions use native CLI/MCP within their delegated scope. See [specialist collaboration](docs/agent-collaboration.md).
+- **Scheduled and durable tasks:** The main session uses optional Task Conductor directly through native MCP, its `using-task-conductor` skill, and actual tool contracts. Without it, ordinary Personal Bot features still work, but scheduling is unavailable. Personal Bot adds no scheduler or forwarding layer. Query and stop external tasks separately from sub-sessions. Cancelling the current run does not stop future recurrences, and closing Pi does not imply that external tasks stopped.
+- **Python:** All workspaces share one dedicated venv for the current user. Loading Personal Bot creates or updates it with locked dependencies and activates it in the current Pi process. Main and specialist sessions use `python` or `python3` through Bash. Failures are reported; fix the cause and retry with `/pbot python setup`. System Python, external terminals, existing scripts, and historical results are not changed. Shared dependency updates affect other workspaces, so stop relevant scripts before changing plugin versions or retrying setup. See the [Python guide](python/README.md) and [computation reference](resources/references/compute.md).
+- **Material maintenance:** Ask to organize project materials, reproduce a report using its previous definitions, or review delivery and close a task. The [project maintenance skill](resources/skills/project-maintenance/SKILL.md) updates the current task and affected materials within your requested scope. Current guidance is consolidated by topic; conclusions, conditions, task definitions, historical evidence, and important decisions remain traceable. Cleanup removes unnecessary temporary outputs within scope, not formal materials, history, or backups.
 
-聊天恢复使用 Pi 原生 `pi --continue` 或 `pi --resume`；不要因恢复会话而重发可能已产生副作用的操作。
+Resume chats with Pi's native `pi --continue` or `pi --resume`. Do not resend a potentially side-effecting operation merely because a session resumed.
 
-不维护独立 provider 调用账本或结果包装。工具结果及大结果处理由原生工具负责，正式证据按任务保存。结果不明时先查询原生状态；进程崩溃后不保证保存完整结果。
+Personal Bot maintains no separate provider-call ledger or result wrapper. Native tools own their results and large-output handling; save formal evidence with the task. If an outcome is unclear, query native status first. Complete result retention is not guaranteed after a process crash.
 
-## 工作区资料
+## Workspace materials
 
-| 位置 | 用途 |
+| Location | Purpose |
 | --- | --- |
-| `AGENTS.md` | 资料导航与工作约定 |
-| `areas/`、`projects/` | 长期目标、任务定义、结论与证据 |
-| `knowledge/` | 可复用知识 |
-| `providers/` | 提供方手册、覆盖缺口与验证依据 |
-| `scratch/` | 临时计算与可重建产物 |
-| `agents/`、`.agents/skills/` | coordinator/general-purpose 职责补充与工作区技能 |
+| `AGENTS.md` | Material navigation and working agreements |
+| `areas/`, `projects/` | Long-term goals, task definitions, conclusions, and evidence |
+| `knowledge/` | Reusable knowledge |
+| `providers/` | Provider guides, coverage gaps, and validation evidence |
+| `scratch/` | Temporary calculations and reproducible outputs |
+| `agents/`, `.agents/skills/` | Workspace additions to coordinator/general-purpose roles and workspace skills |
 
-Personal Bot 不在工作区内保存私有启用状态。Pi 配置仍由 Pi 管理，配置变更后按原生要求执行 `/reload`。复制工作区前停止旧实例；不支持多机同时写入同步目录。存储布局与复制边界见[文件存储](docs/file-storage.md)。
+Personal Bot stores no private activation state in the workspace. Pi owns its configuration; reload when required by Pi. Stop the old instance before copying a workspace. Concurrent writes from multiple machines to a synchronized directory are not supported. See [file storage](docs/file-storage.md) for storage and copying boundaries.
 
-## 更新与历史数据
+## Updates and historical data
 
-当前版本为 **0.1.1**。不维护工作区格式、初始化状态或升级机制。插件更新使用 Pi 原生包管理；本地安装则更新来源源码，依赖变化后执行 `npm ci --ignore-scripts`，再重载或重启 Pi。更换版本前先停止活动子会话；不同兼容线的子会话不能直接恢复。
+Current release: **0.1.2**. Personal Bot maintains no workspace format, initialization state, or workspace upgrade mechanism. Update the plugin through Pi package management. For a local installation, update the source, run `npm ci --ignore-scripts` if dependencies changed, then reload or restart Pi.
 
-子会话数据保存在当前 Pi agent dir 的 `pbot/subagents/`；共享 Python 环境使用用户级 `pbot/python/.venv`，具体系统路径见 [Python 说明](python/README.md)。不自动导入其他应用的会话、配置或环境，也不修改其数据。MCP 连接与 CLI 环境按原生方式显式配置；用户资料、历史证据和备份原样保留。
+Stop active sub-sessions before changing versions. Sub-session compatibility follows the minor version before 1.0 and the major version from 1.0 onward. Sessions from another compatibility line cannot be resumed directly.
 
-## 信任与风险
+Sub-session data lives under `pbot/subagents/` in the current Pi agent directory. The shared Python environment uses the user-level `pbot/python/.venv`; see the [Python guide](python/README.md) for exact system paths. Personal Bot does not import other applications' sessions, configuration, or environments, or modify their data. Configure MCP and CLI environments explicitly through native mechanisms. Preserve user materials, historical evidence, and backups.
 
-- Personal Bot 不提供逐工具权限或统一审批。CLI、MCP、Bash、Python 和扩展拥有其实际账户与凭据权限，不是沙箱。需要硬限制时使用只读凭据、服务端控制或受限环境。
-- 工具可用不等于用户授权。研究、接入与验证不授权交易、转账或账本修改。
-- 协议成功不证明业务完成。取消、超时和会话恢复不撤销外部副作用；可能已发送的操作先核对原生状态，不自动重发。
-- Task Conductor 节点不自动继承主会话的工具、环境和技能。用户未授权或原生服务要求人工确认的业务，不安排无人值守执行。
+## Trust and risks
 
-完整边界见[原生工具与执行边界](docs/capability-design.md)。真实模型、外部服务和完整 TUI/RPC 交互仍需获准环境验收，本地测试不证明实盘可用。
+- Personal Bot provides no per-tool permission system or unified approval gate. CLI, MCP, Bash, Python, and extensions have the permissions of their actual accounts and credentials. They are not sandboxed. Use read-only credentials, service-side controls, or a restricted environment for hard limits.
+- Tool availability is not user authorization. Research, connection setup, and validation do not authorize trades, transfers, or ledger changes.
+- Protocol success does not prove business completion. Cancellation, timeout, and session recovery do not undo external side effects. Check native status before retrying an operation that may have been sent.
+- Task Conductor nodes do not automatically inherit the main session's tools, environment, or skills. Do not schedule unattended operations without user authorization or when the native service requires human confirmation.
 
-## 开发与文档
+See [native tools and execution boundaries](docs/capability-design.md). Real models, external services, and full TUI/RPC interactions still require an approved acceptance environment. Local tests do not prove readiness for live trading.
+
+## Development and documentation
 
 ```bash
 npm run check
@@ -109,8 +121,10 @@ npm test
 git diff --check
 ```
 
-`npm test` 包含冒烟和 E2E 测试，并生成测试用 `dist/`；运行时直接加载源码。包内容可用 `npm pack --dry-run` 检查。测试分组与限制见[验证](docs/validation.md)。
+`npm test` includes smoke and E2E tests and generates `dist/` for test imports. Runtime loading uses source files directly. Inspect package contents with `npm pack --dry-run`. See [validation](docs/validation.md) for test groups and limits.
 
-- [开发文档索引](docs/README.md)：架构、工具、专家协作、存储与验证。
-- [npm 发布](docs/release.md)：配置、授权、发布与安装验收。
-- [领域术语](CONTEXT.md) · [Python 环境、原生库与许可](python/README.md)。
+The README is available in English and Simplified Chinese. Detailed design documents and bundled guides are currently primarily in Chinese.
+
+- [Development documentation](docs/README.md): architecture, tools, collaboration, storage, and validation.
+- [npm releases](docs/release.md): configuration, authorization, publishing, and installation acceptance.
+- [Domain terminology](CONTEXT.md) · [Python environment, native libraries, and licenses](python/README.md).
