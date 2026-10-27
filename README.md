@@ -60,12 +60,12 @@ pi install --local npm:@realqiyan/agent-task-plugin
 | `/pbot python setup` | 手工重试共享 venv 的准备并激活，无需指定路径 |
 | `/reload` | Pi 原生命令，重载插件与资源 |
 
-- **原生工具**：CLI 通过 Bash 使用原生命令、当前 help 和精简手册；MCP 默认只接入当前项目，从工作区根目录执行 `pi mcp add --local <server> ...`，保存到 `.pi/mcp.json`，通过 `/mcp` 核对配置来源。只有明确要求跨项目使用时才修改用户级配置。不需要 Personal Bot 注册、参数绑定或权限表。方法见[接入技能](resources/skills/provider-connections/SKILL.md)。
+- **原生工具**：CLI 通过 Bash 使用原生命令与当前 help，手册只保留当前使用所需的信息和证据引用；MCP 默认只接入当前项目，从工作区根目录执行 `pi mcp add --local <server> ...`，保存到 `.pi/mcp.json`，通过 `/mcp` 核对配置来源。只有明确要求跨项目使用时才修改用户级配置。不需要 Personal Bot 注册、参数绑定或权限表。方法见[接入技能](resources/skills/provider-connections/SKILL.md)。
 - **研究与分析**：可要求“综合这些资料并说明证据冲突”“核验这份分析的口径与计算”或“找出先要验证的关键假设”。助手按需使用[研究证据技能](resources/skills/research-evidence/SKILL.md)和[分析核验技能](resources/skills/analysis-validation/SKILL.md)，依据本次用途判断结论与限制。
 - **独立子会话**：包内提供 tmux 与独立 Pi 会话，需系统安装 tmux。`pbot_agent start` 立即返回；完成后自动通知。支持模型/目录/文件/工具与资源选项、send、follow-up、rename、status、read、stop 和显式 resume，没有前后台参数或 wait。`/pbot agents` 展示正在工作的 agent，可进入子 TUI。主 reload 保持运行，退出或切换会话停止并保留历史。子会话也使用原生 CLI/MCP，按委派范围工作。详见[专家协作](docs/agent-collaboration.md)。
 - **周期与持久任务**：主会话通过原生 MCP 直接使用可选的 Agent Task，处理周期、重复流程和 DAG；使用其 `using-agent-task` 技能与实际工具契约。安装与接入见[可选安装引导](#可选安装-agent-task)。缺失不影响普通 pbot 功能，但不能执行调度。pbot 不新增调度或转发层。外部任务与子会话分别查询和停止，取消本轮不等于停止未来周期，关闭 Pi 也不代表外部任务已停止。
 - **Python 环境**：所有工作区共用当前用户的独立 venv。Personal Bot 加载后自动创建环境或安装锁定依赖，成功后在当前 Pi 进程激活；主会话与专家通过 Bash 使用 `python` 或 `python3`。环境异常时提醒，修复后用 `/pbot python setup` 重试。系统 Python、外部终端、已有脚本和历史结果不变。共享依赖更新会影响其他工作区；更换插件版本或手工重试前应停止相关脚本。详见 [Python 说明](python/README.md)与[计算参考](resources/references/compute.md)。
-- **资料维护**：可要求“整理当前项目资料”“按上次口径重做报告”或“检查交付并结项”。助手按[项目整理与维护技能](resources/skills/project-maintenance/SKILL.md)维护结论、适用条件和可复用任务定义；整理时归集有用成果、保留必要证据并清理范围内不再需要的临时产物，不清理历史记录或备份。任务定义保存在所属资料中，记录周期不代表设置了定时执行。
+- **资料维护**：可要求“整理当前项目资料”“按上次口径重做报告”或“检查交付并结项”。助手按[项目整理与维护技能](resources/skills/project-maintenance/SKILL.md)更新当前任务及实际受影响的资料；整体整理按用户指定范围进行。当前说明按主题合并更新，保留结论、条件和任务定义；历史证据与重要决策保持可追溯。整理或结项时归集成果并清理范围内无用的临时产物，保留正式资料、历史记录与备份。
 
 聊天恢复使用 Pi 原生 `pi --continue` 或 `pi --resume`；不要因恢复会话而重发可能已产生副作用的操作。
 
@@ -76,7 +76,7 @@ pi install --local npm:@realqiyan/agent-task-plugin
 | 位置 | 用途 |
 | --- | --- |
 | `AGENTS.md` | 资料导航与工作约定 |
-| `areas/`、`projects/` | 长期事务、任务过程、证据和结论 |
+| `areas/`、`projects/` | 长期目标、任务定义、结论与证据 |
 | `knowledge/` | 可复用知识 |
 | `providers/` | 提供方手册、覆盖缺口与验证依据 |
 | `scratch/` | 临时计算与可重建产物 |

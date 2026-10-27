@@ -1,6 +1,10 @@
 {
   "name": "personal-bot",
   "version": "0.1.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/realqiyan/personal-bot.git"
+  },
   "publishConfig": {
     "access": "public",
     "registry": "https://registry.npmjs.org/",
