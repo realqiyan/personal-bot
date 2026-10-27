@@ -28,17 +28,19 @@ pi
 
 源码位于其他目录时，将安装命令中的路径换成实际绝对路径。本地安装直接加载来源目录，请保留源码和依赖。
 
-### 可选安装 Agent Task
+### 可选安装 Task Conductor
 
-需要周期任务、重复流程或 DAG 时，安装接入包 `@realqiyan/agent-task-plugin`。它不是服务包 `@realqiyan/agent-task`，也不是启用 pbot 的前提。该接入方式需要 Pi 1.4.0+ 的原生 MCP 和 npm。
+需要周期任务、重复流程或 DAG 时，安装接入包 `task-conductor-plugin`。它不是服务包 `task-conductor`，也不是启用 pbot 的前提。该接入方式需要 Pi 1.4.0+ 的原生 MCP 和 npm。
 
-先用 `pi list` 检查是否已经安装；已安装但技能不可见时，检查资源是否启用并重载，不要重复安装。新安装请审阅[官方接入说明](https://github.com/realqiyan/agent-task/blob/master/docs/host-integrations.md)，从工作区根目录执行：
+先用 `pi list` 检查是否已经安装；已安装但技能不可见时，检查资源是否启用并重载，不要重复安装。新安装请审阅[官方接入说明](https://github.com/realqiyan/task-conductor/blob/master/docs/host-integrations.md)，从工作区根目录执行：
 
 ```bash
-pi install --local npm:@realqiyan/agent-task-plugin
+pi install --local npm:task-conductor-plugin
 ```
 
-然后在 Pi 中执行 `/reload`，再调用 `/skill:using-agent-task`。插件自带技能会在你确认后引导服务安装、`agent-task setup` 和原生 MCP 接入；插件安装本身不安装服务。凭据留在自己的终端或私有文件中，不发到聊天里。
+然后在 Pi 中执行 `/reload`，再调用 `/skill:using-task-conductor`。插件自带技能会在你确认后引导服务安装、`task-conductor setup` 和原生 MCP 接入；插件安装本身不安装服务。凭据留在自己的终端或私有文件中，不发到聊天里。
+
+已有旧版接入包时，先用 `pi list` 核对来源和作用域，审阅官方升级说明后显式移除旧包声明，再安装新包，不同时加载两份。接入包与服务分别更新；服务升级前核对活动任务、停服并备份，按上游说明处理原生 MCP 连接，不自动迁移配置或删除历史数据。
 
 `--local` 只限定插件的加载范围，不隔离服务数据；MCP 注册范围另行选择，保留已有连接，不重复注册。连接完成后用 `/mcp` 或 `pi mcp list` 检查实际工具，并按技能执行只读验证，不为安装验收创建模型任务。连接成功不证明模型认证或业务交付成功。
 
@@ -63,7 +65,7 @@ pi install --local npm:@realqiyan/agent-task-plugin
 - **原生工具**：CLI 通过 Bash 使用原生命令与当前 help，手册只保留当前使用所需的信息和证据引用；MCP 默认只接入当前项目，从工作区根目录执行 `pi mcp add --local <server> ...`，保存到 `.pi/mcp.json`，通过 `/mcp` 核对配置来源。只有明确要求跨项目使用时才修改用户级配置。不需要 Personal Bot 注册、参数绑定或权限表。方法见[接入技能](resources/skills/provider-connections/SKILL.md)。
 - **研究与分析**：可要求“综合这些资料并说明证据冲突”“核验这份分析的口径与计算”或“找出先要验证的关键假设”。助手按需使用[研究证据技能](resources/skills/research-evidence/SKILL.md)和[分析核验技能](resources/skills/analysis-validation/SKILL.md)，依据本次用途判断结论与限制。
 - **独立子会话**：包内提供 tmux 与独立 Pi 会话，需系统安装 tmux。`pbot_agent start` 立即返回；完成后自动通知。支持模型/目录/文件/工具与资源选项、send、follow-up、rename、status、read、stop 和显式 resume，没有前后台参数或 wait。`/pbot agents` 展示正在工作的 agent，可进入子 TUI。主 reload 保持运行，退出或切换会话停止并保留历史。子会话也使用原生 CLI/MCP，按委派范围工作。详见[专家协作](docs/agent-collaboration.md)。
-- **周期与持久任务**：主会话通过原生 MCP 直接使用可选的 Agent Task，处理周期、重复流程和 DAG；使用其 `using-agent-task` 技能与实际工具契约。安装与接入见[可选安装引导](#可选安装-agent-task)。缺失不影响普通 pbot 功能，但不能执行调度。pbot 不新增调度或转发层。外部任务与子会话分别查询和停止，取消本轮不等于停止未来周期，关闭 Pi 也不代表外部任务已停止。
+- **周期与持久任务**：主会话通过原生 MCP 直接使用可选的 Task Conductor，处理周期、重复流程和 DAG；使用其 `using-task-conductor` 技能与实际工具契约。安装与接入见[可选安装引导](#可选安装-task-conductor)。缺失不影响普通 pbot 功能，但不能执行调度。pbot 不新增调度或转发层。外部任务与子会话分别查询和停止，取消本轮不等于停止未来周期，关闭 Pi 也不代表外部任务已停止。
 - **Python 环境**：所有工作区共用当前用户的独立 venv。Personal Bot 加载后自动创建环境或安装锁定依赖，成功后在当前 Pi 进程激活；主会话与专家通过 Bash 使用 `python` 或 `python3`。环境异常时提醒，修复后用 `/pbot python setup` 重试。系统 Python、外部终端、已有脚本和历史结果不变。共享依赖更新会影响其他工作区；更换插件版本或手工重试前应停止相关脚本。详见 [Python 说明](python/README.md)与[计算参考](resources/references/compute.md)。
 - **资料维护**：可要求“整理当前项目资料”“按上次口径重做报告”或“检查交付并结项”。助手按[项目整理与维护技能](resources/skills/project-maintenance/SKILL.md)更新当前任务及实际受影响的资料；整体整理按用户指定范围进行。当前说明按主题合并更新，保留结论、条件和任务定义；历史证据与重要决策保持可追溯。整理或结项时归集成果并清理范围内无用的临时产物，保留正式资料、历史记录与备份。
 
@@ -86,7 +88,7 @@ Personal Bot 不在工作区内保存私有启用状态。Pi 配置仍由 Pi 管
 
 ## 更新与历史数据
 
-当前版本为 **0.1.0**。不维护工作区格式、初始化状态或升级机制。插件更新使用 Pi 原生包管理；本地安装则更新来源源码，依赖变化后执行 `npm ci --ignore-scripts`，再重载或重启 Pi。更换版本前先停止活动子会话；不同兼容线的子会话不能直接恢复。
+当前版本为 **0.1.1**。不维护工作区格式、初始化状态或升级机制。插件更新使用 Pi 原生包管理；本地安装则更新来源源码，依赖变化后执行 `npm ci --ignore-scripts`，再重载或重启 Pi。更换版本前先停止活动子会话；不同兼容线的子会话不能直接恢复。
 
 子会话数据保存在当前 Pi agent dir 的 `pbot/subagents/`；共享 Python 环境使用用户级 `pbot/python/.venv`，具体系统路径见 [Python 说明](python/README.md)。不自动导入其他应用的会话、配置或环境，也不修改其数据。MCP 连接与 CLI 环境按原生方式显式配置；用户资料、历史证据和备份原样保留。
 
@@ -95,7 +97,7 @@ Personal Bot 不在工作区内保存私有启用状态。Pi 配置仍由 Pi 管
 - Personal Bot 不提供逐工具权限或统一审批。CLI、MCP、Bash、Python 和扩展拥有其实际账户与凭据权限，不是沙箱。需要硬限制时使用只读凭据、服务端控制或受限环境。
 - 工具可用不等于用户授权。研究、接入与验证不授权交易、转账或账本修改。
 - 协议成功不证明业务完成。取消、超时和会话恢复不撤销外部副作用；可能已发送的操作先核对原生状态，不自动重发。
-- Agent Task 节点不自动继承主会话的工具、环境和技能。用户未授权或原生服务要求人工确认的业务，不安排无人值守执行。
+- Task Conductor 节点不自动继承主会话的工具、环境和技能。用户未授权或原生服务要求人工确认的业务，不安排无人值守执行。
 
 完整边界见[原生工具与执行边界](docs/capability-design.md)。真实模型、外部服务和完整 TUI/RPC 交互仍需获准环境验收，本地测试不证明实盘可用。
 

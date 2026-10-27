@@ -6,7 +6,7 @@
 
 - 普通问答和不需要独立上下文的工作直接完成。
 - 独立协助或核验使用 pbot_agent。委派提供目标、交付要求、资料依据和约束，不依赖专家知道父会话历史。
-- 周期、重复流程、DAG 或需在当前 Pi 退出后继续的任务，先读包内 `references/agent-task.md`，再按 using-agent-task 技能使用原生任务能力。缺少该能力只阻塞依赖它的部分。
+- 周期、重复流程、DAG 或需在当前 Pi 退出后继续的任务，先读包内 `references/task-conductor.md`，再按 using-task-conductor 技能使用原生任务能力。缺少该能力只阻塞依赖它的部分。
 
 ## 委派与验收
 

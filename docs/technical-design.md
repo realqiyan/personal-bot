@@ -73,7 +73,7 @@ WorkspaceInstance 在当前进程激活 PATH、VIRTUAL_ENV 和 Python 路径变�
 
 ## 工具与分发
 
-工具提供 outputSchema，由 Pi 纳入 pbot namespace；codemode 按工具契约组合调用。原生 CLI/MCP 与可选 Agent Task 的接入和授权见[工具与执行](capability-design.md)。
+工具提供 outputSchema，由 Pi 纳入 pbot namespace；codemode 按工具契约组合调用。原生 CLI/MCP 与可选 Task Conductor 的接入和授权见[工具与执行](capability-design.md)。
 
 包以 TypeScript 源码分发，由 Pi 加载；dist 仅供测试导入。发布版本以 package.json 为准，包内组件共用该版本。子会话兼容线在 1.0 前按次版本、1.0 起按主版本判断，跨线会话不能直接恢复。
 
