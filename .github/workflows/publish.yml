@@ -1,0 +1,113 @@
+name: Publish npm
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      verify_only:
+        description: "Only verify registry state; select the original version tag"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: npm-publish
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.release.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.x"
+      - name: Require a stable version tag on the default branch
+        id: release
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          node --input-type=module <<'JS'
+          import assert from "node:assert/strict";
+          import { readFileSync, appendFileSync } from "node:fs";
+          import { execFileSync } from "node:child_process";
+          const pkg = JSON.parse(readFileSync("package.json", "utf8"));
+          const lock = JSON.parse(readFileSync("npm-shrinkwrap.json", "utf8"));
+          assert.match(pkg.version, /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/);
+          assert.equal(process.env.GITHUB_REF, `refs/tags/v${pkg.version}`);
+          assert.equal(pkg.name, "personal-bot");
+          assert.notEqual(pkg.private, true);
+          assert.equal(lock.name, pkg.name);
+          assert.equal(lock.version, pkg.version);
+          assert.equal(lock.packages[""].name, pkg.name);
+          assert.equal(lock.packages[""].version, pkg.version);
+          execFileSync("git", ["merge-base", "--is-ancestor", "HEAD",
+            `refs/remotes/origin/${process.env.DEFAULT_BRANCH}`]);
+          appendFileSync(process.env.GITHUB_OUTPUT, `version=${pkg.version}\n`);
+          JS
+
+  validate:
+    needs: preflight
+    uses: ./.github/workflows/ci.yml
+
+  publish:
+    needs: [preflight, validate]
+    runs-on: ubuntu-latest
+    environment: npm
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: npm-candidate
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.x"
+          registry-url: https://registry.npmjs.org
+      - name: Check artifact and unused registry version
+        env:
+          EXPECTED_VERSION: ${{ needs.preflight.outputs.version }}
+          VERIFY_ONLY: ${{ github.event_name == 'workflow_dispatch' && inputs.verify_only }}
+        run: |
+          node --input-type=module <<'JS'
+          import assert from "node:assert/strict";
+          import { readdirSync } from "node:fs";
+          import { execFileSync } from "node:child_process";
+          const files = readdirSync(".").filter(file => file.endsWith(".tgz"));
+          assert.deepEqual(files, [`personal-bot-${process.env.EXPECTED_VERSION}.tgz`]);
+          const pkg = JSON.parse(execFileSync("tar", ["-xOf", files[0], "package/package.json"], { encoding: "utf8" }));
+          assert.equal(pkg.name, "personal-bot");
+          assert.equal(pkg.version, process.env.EXPECTED_VERSION);
+          if (process.env.VERIFY_ONLY !== "true") {
+            const response = await fetch(`https://registry.npmjs.org/personal-bot/${pkg.version}`, {
+              signal: AbortSignal.timeout(15000),
+            });
+            assert.equal(response.status, 404, "Version exists or registry is unavailable; stop");
+          }
+          JS
+      - name: Publish reviewed tarball with OIDC
+        if: github.event_name == 'push' || !inputs.verify_only
+        run: npm publish personal-bot-*.tgz --ignore-scripts --access public --tag latest --provenance --registry=https://registry.npmjs.org
+      - name: Verify public version and latest
+        env:
+          EXPECTED_VERSION: ${{ needs.preflight.outputs.version }}
+        run: |
+          node --input-type=module <<'JS'
+          import assert from "node:assert/strict";
+          const response = await fetch("https://registry.npmjs.org/personal-bot", {
+            signal: AbortSignal.timeout(15000),
+          });
+          assert.equal(response.status, 200);
+          const pkg = await response.json();
+          assert.equal(pkg.versions?.[process.env.EXPECTED_VERSION]?.version, process.env.EXPECTED_VERSION);
+          assert.equal(pkg["dist-tags"]?.latest, process.env.EXPECTED_VERSION);
+          JS

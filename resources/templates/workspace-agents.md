@@ -1,0 +1,13 @@
+# 工作区资料入口
+
+## 目录树
+
+```text
+./
+├── areas/          # 长期目标、约束、建议、决策与复盘
+├── projects/       # 任务结论、必要数据与复现代码
+├── knowledge/      # 可复用知识、方法与参考资料
+├── providers/      # 能力提供方导航与手册
+├── scratch/        # 临时文件、运行环境与计算产物
+└── agents/         # coordinator.md 与 general-purpose.md 的职责补充
+```

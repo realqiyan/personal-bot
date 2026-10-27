@@ -1,0 +1,64 @@
+{
+  "name": "personal-bot",
+  "version": "0.1.0",
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/",
+    "tag": "latest"
+  },
+  "description": "A personal assistant connecting knowledge, research, and action. Currently implemented as a Pi extension.",
+  "type": "module",
+  "keywords": [
+    "pi-package"
+  ],
+  "pi": {
+    "extensions": [
+      "./src/pbot.ts"
+    ],
+    "skills": [],
+    "prompts": [],
+    "themes": []
+  },
+  "files": [
+    "src",
+    "resources",
+    "scripts/setup-python.py",
+    "scripts/README.md",
+    "python/requirements.lock",
+    "python/README.md",
+    "README.md",
+    "CONTEXT.md",
+    "docs"
+  ],
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "scripts": {
+    "check": "tsc --noEmit && npm run check:dependencies",
+    "check:dependencies": "depcruise --config .dependency-cruiser.cjs src",
+    "build": "node scripts/clean-dist.mjs && tsc",
+    "test": "npm run build && node --test --test-concurrency=1 tests/*/*.test.mjs",
+    "test:smoke": "npm run build && node --test --test-concurrency=1 tests/smoke/*.test.mjs",
+    "test:e2e": "npm run build && node --test --test-concurrency=1 tests/e2e/*.test.mjs",
+    "prepack": "npm run check"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-tui": "*",
+    "typebox": "*"
+  },
+  "dependencies": {
+    "ajv": "8.17.1",
+    "ajv-formats": "3.0.1"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-ai": "1.1.0",
+    "@earendil-works/pi-coding-agent": "1.1.0",
+    "@earendil-works/pi-tui": "1.1.0",
+    "@types/node": "24.10.1",
+    "dependency-cruiser": "18.5.0",
+    "typebox": "1.3.27",
+    "typescript": "5.9.3"
+  }
+}
