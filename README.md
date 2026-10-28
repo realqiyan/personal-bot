@@ -68,7 +68,7 @@ Describe the task directly: organize project materials, compare research finding
 | --- | --- |
 | `/pbot init` | Create missing material directories and root `AGENTS.md` |
 | `/pbot status` | Show workspace path, Personal Bot version, and Python environment status |
-| `/pbot agents` | Inspect specialist runs; read reports and sessions or stop tasks in the TUI |
+| `/pbot agents` | Inspect specialists; enter sessions, send instructions, rename, or stop tasks |
 | `/pbot teams` | Inspect teams and public messages; start rounds, pause, close, or open members |
 | `/pbot python setup` | Retry shared venv preparation and activation; no path argument needed |
 | `/reload` | Pi's native command to reload extensions and resources |
@@ -81,7 +81,7 @@ Describe the task directly: organize project materials, compare research finding
 - **Python:** All workspaces share one dedicated venv for the current user. Loading Personal Bot creates or updates it with locked dependencies and activates it in the current Pi process. Main and specialist sessions use `python` or `python3` through Bash. Failures are reported; fix the cause and retry with `/pbot python setup`. System Python, external terminals, existing scripts, and historical results are not changed. Shared dependency updates affect other workspaces, so stop relevant scripts before changing plugin versions or retrying setup. See the [Python guide](python/README.md) and [computation reference](resources/references/compute.md).
 - **Material maintenance:** Ask to organize project materials, reproduce a report using its previous definitions, or review delivery and close a task. The [project maintenance skill](resources/skills/project-maintenance/SKILL.md) updates the current task and affected materials within your requested scope. Current guidance is consolidated by topic; conclusions, conditions, task definitions, historical evidence, and important decisions remain traceable. Cleanup removes unnecessary temporary outputs within scope, not formal materials, history, or backups.
 
-Main and child transcripts use Pi's native session storage. Use `pi --resume` to select a chat explicitly; `pi --continue` may select the most recently active child. Resume managed children through `pbot_agent resume`, and never open a second writer for a running child's session file. Do not resend a potentially side-effecting operation merely because a session resumed.
+Main and child transcripts use Pi's native session storage. Use `pi --resume` to select a chat explicitly; `pi --continue` may select the most recently active child. Enter managed children through `/pbot agents`; stopped children reopen their saved session idle, without calling a model. Use `pbot_agent resume` to restart with a new instruction. Never open a second writer for a running child's session file. Do not resend a potentially side-effecting operation merely because a session resumed.
 
 Personal Bot maintains no separate provider-call ledger or result wrapper. Native tools own their results and large-output handling; save formal evidence with the task. If an outcome is unclear, query native status first. Complete result retention is not guaranteed after a process crash.
 

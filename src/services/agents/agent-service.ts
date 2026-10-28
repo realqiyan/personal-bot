@@ -119,7 +119,18 @@ export class AgentService {
   private requestStop(id: string) {
     this.files.control(() => { const run = this.files.read(id, "launch.json", launch); run.stop = true; this.files.write(id, "launch.json", run, launch); });
   }
+  enter(id: string, owner: AgentOwner) {
+    const d = this.get(id, owner);
+    if (this.host.alive(id)) {
+      requireThat(!this.files.read(id, "launch.json", launch).stop, "子会话正在停止，请稍后进入。");
+      return this.view(d, owner);
+    }
+    return this.restart(id, owner);
+  }
   resume(id: string, text: string, owner: AgentOwner) {
+    return this.restart(id, owner, text);
+  }
+  private restart(id: string, owner: AgentOwner, text?: string) {
     const d = this.get(id, owner); this.host.available();
     return this.files.control(() => {
       requireThat(!this.host.alive(id), "子会话仍在运行。");
@@ -137,9 +148,9 @@ export class AgentService {
       this.#stopping.delete(id);
       const run = { ...previous, generation: randomUUID(), sequence: 0, stop: false, startedAt: Date.now() };
       this.files.write(id, "launch.json", run, launch);
-      const request = this.files.enqueue(id, text, "steer");
+      const request = text === undefined ? undefined : this.files.enqueue(id, text, "steer");
       this.host.launch(d, this.files.directory(id), run.generation, sessionFile);
-      return { ...this.view(d, owner), requestId: request.requestId, messageStatus: "queued" as const };
+      return { ...this.view(d, owner), ...(request ? { requestId: request.requestId, messageStatus: "queued" as const } : {}) };
     });
   }
   cycles(id: string, owner: AgentOwner): AgentCycle[] {

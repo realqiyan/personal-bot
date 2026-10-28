@@ -26,7 +26,7 @@ start 支持 noExtensions、noSkills、noPromptTemplates 和 noContextFiles。no
 
 有对话后，成员会出现在相应项目的 `pi --resume` / `/resume` 列表，并支持 Pi 原生导出。`pi --continue` 可能选中最近活跃的子会话，不保证选中主会话；需要主会话时从列表中明确选择。
 
-运行中的成员使用 `/pbot agents` 进入现有 TUI，不另开进程同时写同一 JSONL。停止后从原生列表打开属于普通 Pi 对话，不恢复 pbot 成员身份或团队资格；受管恢复仍使用 `pbot_agent resume`。
+`/pbot agents` 的“进入 TUI”连接运行中的成员；成员已停止时，加载原会话并启动待命进程，不入队新要求、不调用模型、不重放旧工作。尚无对话文件的空会话仍以原 agentId 待命。运行中不另开进程同时写同一 JSONL。停止后从原生列表打开属于普通 Pi 对话，不恢复 pbot 成员身份或团队资格；模型工具 `pbot_agent resume` 仍用于携新要求继续工作。
 
 ## 团队与两种策略
 
@@ -118,7 +118,7 @@ pause 返回时可能仍有在途请求。unresolved 区分排队、已接收、
 
 ## UI 与验证边界
 
-/pbot agents 保留活动与报告查看、子 TUI、重命名和 stop/resume。/pbot teams 提供团队状态、公共记录分页、post、新批次、pause、close，以及成员 TUI/报告入口。无 TUI 时通过同样的结构化工具使用，不支持 attach。
+/pbot agents 提供状态列表、进入子 TUI、补充要求、重命名和停止，不再提供单独的报告查看或恢复并继续菜单。报告仍可通过 pbot_agent read 获取。/pbot teams 提供团队状态、公共记录分页、post、新批次、pause、close，以及相同的成员菜单。无 TUI 时通过同样的结构化工具使用，不支持 attach。
 
 后台扫描遇到短暂的 `.control` 锁竞争时，在下一次扫描重试，不立即显示错误；连续至少 5 秒仍无法取得锁时显示错误。扫描成功后清除旧错误提示。此等待不自动删除锁，也不重跑旧任务；命令和工具的锁冲突仍直接报告。
 

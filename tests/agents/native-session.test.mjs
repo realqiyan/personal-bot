@@ -134,6 +134,40 @@ test("real managed resume opens the bound native file and leaves saved model sel
   assert.equal(await readFile(other.getSessionFile(), "utf8"), otherBefore);
 });
 
+test("enter reopens empty and saved sessions idle without enqueuing or replaying work", { timeout: 60000 }, async t => {
+  const { root, agents, agentDir } = await isolated(t);
+  await probeExtension(agentDir);
+  const child = agents.start({ ...options, noExtensions: false }, owner);
+  const first = await probe(agents, child);
+  await until(() => agents.list(owner).find(v => v.agentId === child.agentId)?.state === "idle");
+  assert.equal(agents.enter(child.agentId, owner).generation, child.generation);
+  await stop(agents, child.agentId);
+  const empty = agents.enter(child.agentId, owner);
+  await probe(agents, empty);
+  await until(() => agents.list(owner).find(v => v.agentId === child.agentId)?.state === "idle");
+  assert.notEqual(empty.generation, child.generation);
+  assert.equal(empty.requestId, undefined);
+  assert.deepEqual(agents.files.messages(child.agentId), []);
+  assert.equal(agents.files.session(child.agentId), null);
+  await stop(agents, child.agentId);
+
+  const manager = SessionManager.create(root, dirname(first.file), { id: child.agentId });
+  manager.appendMessage({ role: "user", content: "Preserved local history", timestamp: 1 });
+  agents.files.bindSession(child.agentId, manager.getSessionFile());
+  agents.files.enqueue(child.agentId, "Old work must not run", "steer");
+  const messages = agents.files.messages(child.agentId);
+  const reopened = agents.enter(child.agentId, owner), native = await probe(agents, reopened);
+  await until(() => agents.list(owner).find(v => v.agentId === child.agentId)?.state === "idle");
+  await new Promise(resolve => setTimeout(resolve, 750));
+  assert.equal(agents.host.alive(child.agentId), true);
+  assert.equal(native.file, manager.getSessionFile());
+  assert.deepEqual(native.users, ["Preserved local history"]);
+  assert.deepEqual(agents.files.messages(child.agentId), messages);
+  assert.equal(agents.files.read(child.agentId, "launch.json", launch).sequence, 0);
+  assert.equal(agents.files.read(child.agentId, "status.json", status).cycle, undefined);
+  assert.equal(SessionManager.open(native.file).getEntries().some(e => e.type === "message" && e.message.role === "assistant"), false);
+});
+
 test("missing, invalid or foreign native files reject resume before generation or inbox changes", async t => {
   const { root, agents } = await isolated(t);
   const otherCwd = join(root, "other"); await mkdir(otherCwd);
@@ -156,6 +190,7 @@ test("missing, invalid or foreign native files reject resume before generation o
     agents.files.bindSession(d.agentId, path);
     const before = ["empty", "invalid", "malformed-tail", "legacy-version", "foreign-id", "foreign-cwd", "symlink"].includes(kind) ? await readFile(path, "utf8") : null;
     assert.throws(() => agents.resume(d.agentId, "Must not enqueue", owner));
+    assert.throws(() => agents.enter(d.agentId, owner));
     assert.equal(agents.files.read(d.agentId, "launch.json", launch).generation, d.generation);
     assert.deepEqual(agents.files.messages(d.agentId), []); assert.equal(agents.host.alive(d.agentId), false);
     if (before !== null) assert.equal(await readFile(path, "utf8"), before);

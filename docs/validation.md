@@ -17,7 +17,7 @@ npm test 先构建 dist，再串行执行 Node 测试。测试使用真实本地
 | tests/smoke/ | 实际 tarball 加载、资料准备、独立 Python setup 脚本 |
 | tests/e2e/ | Pi SDK/RPC 命令与工具、确认、持久化、重启和 Bash 环境继承 |
 | 专家协作 | 真实 tmux/Pi 进程、无任务待命、原 inbox、消息顺序、分支归属、通知领取和异常退出 |
-| 原生会话存储 | 真实 CLI 的默认 cwd 目录、settings/环境变量优先级、tmux 旧环境覆盖、空待命恢复、绝对路径绑定、身份检查、固定叶节点只读报告与旧布局保留 |
+| 原生会话存储 | 真实 CLI 的默认 cwd 目录、settings/环境变量优先级、tmux 旧环境覆盖、空待命恢复、进入已停止会话不入队或重放旧任务、绝对路径绑定、身份检查、固定叶节点只读报告与旧布局保留 |
 | 团队协作 | 轮流顺序、并行上限与轮间汇合、暂停/领取、原文分页、并发保存、mixed 隐私边界与未知结果 |
 | 团队宿主接入 | Pi 1.4.0 的用户/custom 消息 before_agent_start、turn_end、原生 context 去重、子 reload 不重跑、窄通信工具与实例关闭 |
 

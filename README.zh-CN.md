@@ -66,7 +66,7 @@ pi install --local npm:task-conductor-plugin
 | --- | --- |
 | `/pbot init` | 可选地补建资料目录和缺失的根 `AGENTS.md` |
 | `/pbot status` | 查看工作区路径、Personal Bot 版本和 Python 环境状态 |
-| `/pbot agents` | 查看专家执行；TUI 中可阅读报告、会话及停止任务 |
+| `/pbot agents` | 查看专家状态；进入会话、补充要求、重命名或停止任务 |
 | `/pbot teams` | 查看团队与公共消息，开展轮次、暂停、关闭或进入成员 |
 | `/pbot python setup` | 手工重试共享 venv 的准备并激活，无需指定路径 |
 | `/reload` | Pi 原生命令，重载插件与资源 |
@@ -79,7 +79,7 @@ pi install --local npm:task-conductor-plugin
 - **Python 环境**：所有工作区共用当前用户的独立 venv。Personal Bot 加载后自动创建环境或安装锁定依赖，成功后在当前 Pi 进程激活；主会话与专家通过 Bash 使用 `python` 或 `python3`。环境异常时提醒，修复后用 `/pbot python setup` 重试。系统 Python、外部终端、已有脚本和历史结果不变。共享依赖更新会影响其他工作区；更换插件版本或手工重试前应停止相关脚本。详见 [Python 说明](python/README.md)与[计算参考](resources/references/compute.md)。
 - **资料维护**：可要求“整理当前项目资料”“按上次口径重做报告”或“检查交付并结项”。助手按[项目整理与维护技能](resources/skills/project-maintenance/SKILL.md)更新当前任务及实际受影响的资料；整体整理按用户指定范围进行。当前说明按主题合并更新，保留结论、条件和任务定义；历史证据与重要决策保持可追溯。整理或结项时归集成果并清理范围内无用的临时产物，保留正式资料、历史记录与备份。
 
-主会话和子会话对话都使用 Pi 原生存储。聊天恢复可用 `pi --resume` 明确选择；`pi --continue` 可能选中最近活跃的子会话。受管子会话仍用 `pbot_agent resume`，运行中不要另开进程写同一会话文件；不要因恢复而重发可能已产生副作用的操作。
+主会话和子会话对话都使用 Pi 原生存储。聊天恢复可用 `pi --resume` 明确选择；`pi --continue` 可能选中最近活跃的子会话。受管子会话可从 `/pbot agents` 进入，已停止时加载原会话并待命，不调用模型；`pbot_agent resume` 用于携新要求继续工作。运行中不要另开进程写同一会话文件；不要因恢复而重发可能已产生副作用的操作。
 
 不维护独立 provider 调用账本或结果包装。工具结果及大结果处理由原生工具负责，正式证据按任务保存。结果不明时先查询原生状态；进程崩溃后不保证保存完整结果。
 

@@ -19,30 +19,22 @@ export async function showAgents(_pi: ExtensionAPI, instance: WorkspaceInstance,
   if (!value.owned) { ctx.ui.notify("请返回所属分支操作。", "info"); return; }
   const inTmux = Boolean(process.env.TMUX);
   const enterTui = "进入 TUI（返回：Ctrl+B → " + (inTmux ? "l" : "d") + "）";
-  const action = await ctx.ui.select(value.name, [enterTui, "阅读报告", "补充要求", "重命名", "停止", "恢复并继续"]);
+  const action = await ctx.ui.select(value.name, [enterTui, "补充要求", "重命名", "停止"]);
   instance.check();
   if (action === "停止") { instance.agents.stop(value.agentId, owner()); return; }
   if (action === "重命名") { const name = await ctx.ui.input("名称"); instance.check(); if (name?.trim()) instance.agents.rename(value.agentId, name.trim(), owner()); return; }
-  if (action === "补充要求" || action === "恢复并继续") {
+  if (action === "补充要求") {
     const message = await ctx.ui.editor("任务或补充要求");
     instance.check();
-    if (message?.trim()) {
-      if (action === "补充要求") instance.agents.send(value.agentId, message, "steer", owner());
-      else instance.agents.resume(value.agentId, message, owner());
-    }
+    if (message?.trim()) instance.agents.send(value.agentId, message, "steer", owner());
     return;
   }
-  if (action === "阅读报告") {
-    const page = instance.agents.read(value.agentId, owner());
-    await ctx.ui.editor("子会话报告（查看不领取通知）", page.report || page.error || page.state); return;
-  }
   if (action !== enterTui) return;
-  if (!instance.agents.host.alive(value.agentId)) { ctx.ui.notify("子会话已停止，请携新要求恢复。", "info"); return; }
   let tui: TUI | undefined;
   await ctx.ui.custom<void>((terminal, _theme, _keys, done) => { tui = terminal; queueMicrotask(() => done()); return new Text("", 0, 0); });
   if (!tui) return;
   instance.check();
-  instance.agents.read(value.agentId, owner(), undefined, 0, 1);
+  instance.agents.enter(value.agentId, owner());
   const terminal = tui;
   terminal.stop();
   try {
