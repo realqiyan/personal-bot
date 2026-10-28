@@ -59,7 +59,7 @@ git tag "v$VERSION"
 git push origin "v$VERSION"
 ```
 
-发布作业下载本次 CI 的同一 tarball，使用 OIDC 和 provenance 上传，跳过包脚本，然后查询公开版本与 latest。普通分支推送只运行 CI；已推送的发布 tag 保持不变。预发布版本不适用此流程。
+发布作业下载本次 CI 的同一 tarball，使用 OIDC 和 provenance 上传，跳过包脚本，然后查询公开版本与 latest。npm 可能在上传成功后继续处理包，查询最多执行 20 次，失败后间隔 15 秒；只重试只读查询，不重试上传。普通分支推送只运行 CI；已推送的发布 tag 保持不变。预发布版本不适用此流程。
 
 ## 本机发布
 
@@ -91,6 +91,6 @@ npm view personal-bot dist-tags --json --registry=https://registry.npmjs.org
 
 在独立 Pi 配置和临时工作区执行 `pi install --local npm:personal-bot`，核对安装版本、扩展加载、技能发现和 /pbot status。
 
-上传结果不明时先查询 registry。若上传完成但后续查询失败，手动运行 Publish npm，选择原版本 tag 并保持 verify_only=true。该模式重新执行检查与 registry 查询，不上传；目标版本已不是 latest 时会失败。
+上传结果不明时先查询 registry。若上传完成但后续查询失败，手动运行 Publish npm，选择原版本 tag 并保持 verify_only=true。该模式重新执行检查与 registry 查询，不上传；目标版本已不是 latest 时会失败。不要直接重跑原上传作业，也不要移动已发布 tag。
 
 已发布版本不可覆盖。问题修复由维护者选择新版本、弃用说明或 dist-tag 调整。当前远端发布和全新安装仍待验收，范围见[验证](validation.md)。
