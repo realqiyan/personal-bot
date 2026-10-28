@@ -15,14 +15,14 @@ after(async () => {
   await rm(pythonDataHome, { recursive: true, force: true });
 });
 
-export async function host(t, { prepare, enabled = true } = {}) {
+export async function host(t, { prepare, enabled = true, extensions = [] } = {}) {
   const temp = await mkdtemp(join(tmpdir(), "pbot-pi-")), root = join(temp, "workspace"), agentDir = join(temp, "agent");
   await mkdir(root); await mkdir(agentDir);
   await prepare?.(root);
   const settingsManager = SettingsManager.inMemory({ packages: enabled ? [resolve(".")] : [], defaultTools: ["+codemode"] });
   let api;
   const loader = new DefaultResourceLoader({ cwd: root, agentDir, settingsManager, noContextFiles: true,
-    extensionFactories: [createCodemodeExtension({ models: false }), pi => { api = pi; }] });
+    extensionFactories: [createCodemodeExtension({ models: false }), pi => { api = pi; }, ...extensions] });
   await loader.reload();
   assert.equal(loader.getExtensions().errors.length, 0);
   const runtime = await ModelRuntime.create({ authPath: join(agentDir, "auth.json"), modelsPath: join(agentDir, "models.json") });

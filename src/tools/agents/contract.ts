@@ -24,7 +24,7 @@ const page = {
 const delivery = Type.Optional(Type.Union([Type.Literal("steer"), Type.Literal("followUp")], { description: "send 默认 steer 补充当前工作；followUp 排到当前工作之后。" }));
 export const agentParametersSchema = Type.Object({
   action: Type.Union([Type.Literal("start"), Type.Literal("send"), Type.Literal("rename"), Type.Literal("status"), Type.Literal("list"), Type.Literal("read"), Type.Literal("stop"), Type.Literal("resume")], {
-    description: "start 至少提供 message/prompts/files 之一，其余启动选项仅用于 start。list 不带其他字段；其余操作须 agentId。send/resume 须 message，rename 须 name；分页仅用于 read。",
+    description: "start 可省略 message/prompts/files，只创建待命进程；启动选项仅用于 start。list 不带其他字段；其余操作须 agentId。send/resume 须 message，rename 须 name；分页仅用于 read。",
   }),
   agentId: Type.Optional(id), ...options, ...page, delivery,
 }, { additionalProperties: false });

@@ -35,7 +35,7 @@ process.on("message", async ({ id, action, name, input }) => {
         skills: runtime.services.resourceLoader.getSkills().skills.map(skill => skill.name),
       };
     } else if (action === "context") {
-      const started = await session.extensionRunner.emitBeforeAgentStart("", undefined, { cwd: root });
+      const started = await session.extensionRunner.emitBeforeAgentStart({ messageType: "user", prompt: "" }, { cwd: root });
       value = {
         environment: started.systemPromptOptions.sections.pbot_environment ? JSON.parse(started.systemPromptOptions.sections.pbot_environment) : null,
         workspace: Object.hasOwn(started.systemPromptOptions.sections, "pbot_workspace"),

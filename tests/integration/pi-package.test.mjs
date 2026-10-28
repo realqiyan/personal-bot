@@ -17,7 +17,7 @@ test("Pi without Personal Bot configured does not activate from AGENTS.md or leg
   } });
   assert.deepEqual(session.getAllTools().filter(tool => tool.name.startsWith("pbot_")), []);
   assert.equal(loader.getSkills().skills.length, 0);
-  const started = await session.extensionRunner.emitBeforeAgentStart("", undefined, { cwd: root });
+  const started = await session.extensionRunner.emitBeforeAgentStart({ messageType: "user", prompt: "" }, { cwd: root });
   assert.equal(Object.hasOwn(started.systemPromptOptions.sections, "pbot_environment"), false);
   assert.deepEqual(errors, []);
 });
@@ -30,7 +30,7 @@ test("native autocomplete exposes current command contracts", async t => {
   const suggest = text => autocomplete.getSuggestions([text], 0, text.length, { force: false });
   const all = await suggest("/pbot ");
   assert.equal(all.prefix, "");
-  assert.deepEqual(all.items.map(item => item.value), ["init", "status", "agents", "python"]);
+  assert.deepEqual(all.items.map(item => item.value), ["init", "status", "agents", "teams", "python"]);
   const filtered = await suggest("/pbot st");
   assert.deepEqual(filtered.items.map(item => item.value), ["status"]);
   const completed = autocomplete.applyCompletion(["/pbot st"], 0, 8, filtered.items[0], filtered.prefix);
@@ -47,14 +47,14 @@ for (const legacy of [undefined, '{"format":"legacy/1","status":"pending"}', "in
       await mkdir(join(root, ".legacy"));
       await writeFile(join(root, ".legacy/workspace.json"), legacy);
     } });
-    const started = await session.extensionRunner.emitBeforeAgentStart("", undefined, { cwd: root });
+    const started = await session.extensionRunner.emitBeforeAgentStart({ messageType: "user", prompt: "" }, { cwd: root });
     assert.doesNotThrow(() => buildSystemPrompt(started.systemPromptOptions));
     const environment = JSON.parse(started.systemPromptOptions.sections.pbot_environment);
     assert.equal(environment.workspaceRoot, root);
     assert.equal(environment.resourceRoot, resourceRoot);
     assert.equal(environment.python.state, "error");
     assert.deepEqual(errors, []);
-    assert.deepEqual(session.getAllTools().map(t => t.name).filter(n => n.startsWith("pbot_")).sort(), ["pbot_agent"]);
+    assert.deepEqual(session.getAllTools().map(t => t.name).filter(n => n.startsWith("pbot_")).sort(), ["pbot_agent", "pbot_team", "pbot_team_message"]);
     assert.ok(loader.getSkills().skills.length > 0);
     assert.deepEqual(await readdir(root), legacy === undefined ? [] : [".legacy"]);
     if (legacy !== undefined) assert.equal(await readFile(join(root, ".legacy/workspace.json"), "utf8"), legacy);
@@ -63,7 +63,7 @@ for (const legacy of [undefined, '{"format":"legacy/1","status":"pending"}', "in
     await writeFile(join(root, "AGENTS.md"), "User instructions");
     await session.prompt("/pbot init");
     assert.equal(await readFile(join(root, "AGENTS.md"), "utf8"), "User instructions");
-    assert.deepEqual(session.getAllTools().map(t => t.name).filter(n => n.startsWith("pbot_")).sort(), ["pbot_agent"]);
+    assert.deepEqual(session.getAllTools().map(t => t.name).filter(n => n.startsWith("pbot_")).sort(), ["pbot_agent", "pbot_team", "pbot_team_message"]);
   });
 }
 
@@ -94,7 +94,7 @@ test("real codemode discovers Personal Bot and uses native CLI without initializ
     return { names, namespace: namespace.name, agents, output };
   `);
   const data = scriptValue(result);
-  assert.deepEqual(data.names, ["pbot_agent"]);
+  assert.deepEqual(data.names, ["pbot_agent", "pbot_team", "pbot_team_message"]);
   assert.equal(data.namespace, "pbot");
   assert.deepEqual(data.agents, { agents: [] });
   assert.ok(result.details.calls.every(call => call.status === "ok"));

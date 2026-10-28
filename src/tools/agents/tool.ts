@@ -5,7 +5,7 @@ import { agentOwner } from "../../integrations/pi/agent-context.js";
 import type { AgentOptions, AgentView } from "../../model/agent.js";
 import type { CallAccess } from "../access.js";
 import { requireThat, schema } from "../../common/validation.js";
-import { result } from "../result.js";
+import { markdownResult } from "../result.js";
 import { agentActionSchema, agentParametersSchema, agentResultSchema, agentViewSchema } from "./contract.js";
 
 type AgentOutput = Static<typeof agentViewSchema>;
@@ -29,7 +29,7 @@ function agentOutput(view: AgentView & Partial<AgentOutput>): AgentOutput {
 export function agentTool(service: AgentService, access: CallAccess) {
   const valid = schema(agentActionSchema);
   return defineTool({ name: "pbot_agent", label: "子会话",
-    description: "独立 Pi 子会话，不继承父聊天历史。start 立即返回，完成自动通知，无需轮询。send 继续对话，rename 改名，status/list 查看状态，read 非阻塞读取报告。state 是进程状态，cycle.state 是工作结果，queued 仅表示入队。stop 停止并保留历史，resume 携新 message 恢复，不重放旧工作。独立复核须 start 新上下文。子会话使用原生 CLI/MCP，按委派范围工作，不递归委派。每个父会话最多 50 个存活子会话，空闲也计入。",
+    description: "独立 Pi 子会话，不继承父聊天历史。start 立即返回；未提供 message/prompts/files 时只启动待命进程，不调用模型。完成自动通知，无需轮询。团队占用期间不能私人 send。send 继续对话，rename 改名，status/list 查看状态，read 非阻塞读取报告。state 是进程状态，cycle.state 是工作结果，queued 仅表示入队。stop 停止并保留历史，resume 携新 message 恢复，不重放旧工作。独立复核须 start 新上下文。子会话使用原生 CLI/MCP，按委派范围工作，不递归委派。每个父会话最多 50 个存活子会话，空闲也计入。",
     parameters: agentParametersSchema, outputSchema: agentResultSchema,
     async execute(_id, args, signal, _update, ctx) {
       access.check(); signal?.throwIfAborted();
@@ -38,11 +38,10 @@ export function agentTool(service: AgentService, access: CallAccess) {
       let value: AgentView & Partial<AgentOutput>;
       switch (input.action) {
         case "start": {
-          requireThat(input.message || input.prompts?.length || input.files?.length, "start 需要 message、prompts 或 files。");
           const { action: _action, ...supplied } = input;
           value = service.start({ provider: ctx.model?.provider, model: ctx.model?.id, thinking: ctx.thinkingLevel, ...supplied } as AgentOptions, owner); break;
         }
-        case "list": return result({ agents: service.list(owner).map(agentOutput) });
+        case "list": return markdownResult({ agents: service.list(owner).map(agentOutput) }, "子会话列表");
         case "send": value = service.send(input.agentId!, input.message!, input.delivery ?? "steer", owner); break;
         case "rename": value = service.rename(input.agentId!, input.name!, owner); break;
         case "resume": value = service.resume(input.agentId!, input.message!, owner); break;
@@ -50,11 +49,11 @@ export function agentTool(service: AgentService, access: CallAccess) {
         case "status": value = service.read(input.agentId!, owner, undefined, 0, 1); break;
         case "read": {
           const page = service.read(input.agentId!, owner, input.cycleId, input.offset, input.limit);
-          const data = agentOutput(page), output = result(data);
+          const data = agentOutput(page), output = markdownResult(data, "子会话报告");
           return { ...output, details: { ...data, ...(page.cycle && page.cycle.state !== "running" ? { agentReadKeys: [page.agentId + ":" + page.cycle.cycleId] } : {}) } };
         }
       }
-      return result(agentOutput(value));
+      return markdownResult(agentOutput(value), "子会话状态");
     },
   });
 }

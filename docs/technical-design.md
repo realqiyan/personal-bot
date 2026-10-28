@@ -24,7 +24,7 @@ src/pbot.ts 装配依赖并注册入口。
 | src/services/ | 业务规则、状态变更和操作顺序，按 agents、workspace 聚合 |
 | src/model/ | 数据类 |
 | src/integrations/ | Pi 会话、Python 环境激活与进程执行 |
-| src/storage/ | 原子 JSON 与子会话文件 |
+| src/storage/ | 原子 JSON、子会话与团队文件 |
 | src/extension/ | 命令、事件和资源生命周期 |
 | src/ui/ | 确认队列、对话框和专家展示 |
 | src/common/ | JSON、校验、文件、包路径和版本辅助逻辑 |
@@ -36,7 +36,8 @@ src/pbot.ts 装配依赖并注册入口。
 | --- | --- |
 | prepareWorkspace | 补建资料目录与根 AGENTS.md |
 | PythonEnvironmentService | venv 准备、依赖检查、状态与取消等待 |
-| AgentService | 子进程、消息、周期与交付资格 |
+| AgentService | 子进程、inbox、周期与交付资格；拒绝向被团队占用的成员发送私人任务 |
+| TeamService | 固定成员、公共消息、有限轮次、团队占用与暂停规则 |
 | WorkspaceInstance | 工作区资源及环境激活的生命周期 |
 
 ## 加载与关闭
@@ -45,7 +46,7 @@ Pi 原生配置决定扩展加载范围，启动目录作为工作区根目录�
 
 `/pbot init` 可选地补建资料，已有文件保持不变。`/pbot status` 展示路径、版本和 Python 状态；模型通过每轮 pbot_environment 取得工作区、cwd、资源根目录和进程环境信息。
 
-主 reload 保留子进程并重新关联；退出或切换会话时清理子进程、取消环境准备并恢复本实例持有的环境变量。关闭操作幂等。子会话的分支归属、通知和恢复规则见[专家协作](agent-collaboration.md)。
+主 reload 保留子进程并重新关联，但暂停团队，不继续安排旧批次；退出或切换会话时清理子进程、取消环境准备并恢复本实例持有的环境变量。关闭操作幂等。子会话的分支归属、通知和恢复规则见[专家协作](agent-collaboration.md)。
 
 ## 资源加载
 
@@ -60,6 +61,22 @@ Pi 原生配置决定扩展加载范围，启动目录作为工作区根目录�
 主会话通过 before_agent_start 增加提示词 section，同时保留 Pi 原生 AGENTS.md 加载。资源在使用时读取，缺失时报错；提示词更新后通过 /reload 或重启加载。
 
 公共约定负责工作区与执行边界，角色负责职责与验收，技能提供专业方法与必要的本地操作约定，工具定义参数与结果语义。工作区资料保存目标、偏好、任务定义和证据，布局见[文件存储](file-storage.md)。
+
+## 原生子会话存储
+
+PiAgents 使用 `--session-id <agentId>` 启动新的原生会话，让 Pi 按子进程 cwd、环境变量和 settings 决定目录与文件名。AgentFiles 只保存 `session-ref.json`，初始路径为 null。子入口在首次输入前固定实际路径；已落盘会话在载入时绑定。Pi 延迟保存空会话，pbot 不写占位 JSONL 或伪造消息。
+
+恢复使用已绑定的绝对路径，不查找最近会话，也不因配置变化转用其他文件。AgentService 在更换 generation 和入队前要求 Pi 接入层验证文件、session ID 与 cwd。引用绑定后文件不可读取时保守失败，不将未知历史当作空白待命。父侧报告读取使用原生解析器和内存 SessionManager，不改写或迁移原生文件。
+
+会话文件移出控制目录改变恢复契约，因此版本为 0.2.0，旧兼容线不进入当前列表或后台调度；不导入、迁移或删除旧记录。既有控制字段、团队调度及完成叶节点关联保持不变。
+
+## 团队接入
+
+团队采用独立 team.json，不改动旧 AgentMessage、AgentCycle 等持久结构。TeamService 接收普通成员状态与完成记录，安排 roundRobin 或 parallel 轮次；AgentService 再校验并写入原 inbox。父侧原扫描器收集固定叶节点报告并公开原文，不调用主模型转述，不另建执行器或事件总线。
+
+团队关联先保存，再发布输入。跨文件窗口采用保守恢复：不自动重发旧请求，只补交付可核对的完成记录。主/子工具显式注册，子入口只有公共 read/post。Pi 的上下文注入和通知边界分别位于 subagent-entry、agent-events 与 integrations/pi/team-context，服务不持有 Pi ctx。
+
+模型可读的团队任务、背景、公共原文和批次通知使用 Markdown；公共消息 read 复用同一原文渲染。主 agent 收到的独立子会话结果通知，以及 agent/team 工具的列表、状态和报告文本也使用 Markdown。common/markdown 提供字段与原文区块渲染，tools/result 只为这些工具显式选择 Markdown 文本。上下文预算计入实际 Markdown、原文围栏与分页字段。工具 structuredContent、原生 custom message 的去重 details 和控制文件继续使用原有结构化字段，运行时不解析 Markdown 来识别团队或请求。
 
 ## Python 环境
 

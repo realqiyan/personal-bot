@@ -8,6 +8,8 @@ export interface AgentDescriptor {
   agentId: string; release: string; workspace: string; cwd: string; parentSessionId: string;
   parentLeaf: string | null; createdAt: number; options: AgentOptions;
 }
+/** null means no conversation input has been handed to Pi yet. */
+export interface AgentSessionRef { file: string | null }
 export interface AgentLaunch { generation: string; name: string; sequence: number; stop: boolean; startedAt: number }
 export interface AgentMessage { requestId: string; generation: string; sequence: number; message: string; delivery: "steer" | "followUp"; files: string[] }
 export interface AgentCycle {

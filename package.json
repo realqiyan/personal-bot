@@ -1,6 +1,6 @@
 {
   "name": "personal-bot",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/realqiyan/personal-bot.git"
@@ -58,9 +58,9 @@
     "ajv-formats": "3.0.1"
   },
   "devDependencies": {
-    "@earendil-works/pi-ai": "1.1.0",
-    "@earendil-works/pi-coding-agent": "1.1.0",
-    "@earendil-works/pi-tui": "1.1.0",
+    "@earendil-works/pi-ai": "1.4.0",
+    "@earendil-works/pi-coding-agent": "1.4.0",
+    "@earendil-works/pi-tui": "1.4.0",
     "@types/node": "24.10.1",
     "dependency-cruiser": "18.5.0",
     "typebox": "1.3.27",

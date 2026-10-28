@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
@@ -47,11 +47,11 @@ test("message order, generation, immutable completions and control contention us
 test("stopped history remains readable, enforces branch ownership and never resumes work implicitly", async t => {
   const root = await temp(t), service = new AgentService(root, join(root, "agents"), new PiAgents());
   const { agentId, generation } = saved(service.files, root, owner);
-  const manager = SessionManager.create(root, service.files.directory(agentId));
+  const manager = SessionManager.create(root, join(root, "sessions"), { id: agentId });
   manager.appendMessage({ role: "user", content: "Historical request", timestamp: 1 });
   manager.appendMessage({ role: "assistant", content: [{ type: "text", text: "Historical answer" }], api: "openai-responses", provider: "openai", model: "historical",
     stopReason: "stop", timestamp: 2, usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } } });
-  await writeFile(service.files.session(agentId), await readFile(manager.getSessionFile()));
+  service.files.bindSession(agentId, manager.getSessionFile());
   const complete = { cycleId: randomUUID(), generation, startedAt: 1, finishedAt: 2, state: "completed", leaf: manager.getLeafId(), requestIds: [], source: "interactive" };
   service.files.write(agentId, "completions/" + complete.cycleId + ".json", complete, cycle, true);
   service.files.write(agentId, "status.json", { generation, state: "idle", activity: "idle", updatedAt: 2, cycle: complete }, status);
@@ -68,37 +68,50 @@ test("stopped history remains readable, enforces branch ownership and never resu
 
 test("a real tmux Pi process with an unavailable model exits without a fake model or replay", { timeout: 30000 }, async t => {
   assert.equal(spawnSync("tmux", ["-V"]).status, 0, "tmux is required for process acceptance");
-  const root = await temp(t), service = new AgentService(root, join(root, "agents"), new PiAgents());
+  const root = await mkdtemp(join(tmpdir(), "pbot-agent-process-")), before = { ...process.env };
+  for (const key of Object.keys(process.env)) delete process.env[key];
+  Object.assign(process.env, { PATH: before.PATH, HOME: root, TERM: "xterm-256color", PI_OFFLINE: "1",
+    PI_CODING_AGENT_DIR: join(root, "config"), TMUX_TMPDIR: root, XDG_DATA_HOME: before.XDG_DATA_HOME });
+  const service = new AgentService(root, join(root, "agents"), new PiAgents());
+  t.after(async () => {
+    try { await service.close(owner); } finally {
+      spawnSync("tmux", ["kill-server"], { stdio: "ignore" });
+      for (const key of Object.keys(process.env)) delete process.env[key]; Object.assign(process.env, before);
+      await rm(root, { recursive: true, force: true });
+    }
+  });
   const result = service.start({ message: "No model request", provider: "not-configured", model: "not-configured", noExtensions: true,
     noSkills: true, noContextFiles: true, noPromptTemplates: true }, owner);
-  t.after(() => service.close(owner));
   const deadline = Date.now() + 15000;
   while (service.host.alive(result.agentId) && Date.now() < deadline) await new Promise(r => setTimeout(r, 100));
   assert.equal(service.host.alive(result.agentId), false);
   assert.equal(service.completions(owner)[0].cycle.state, "interrupted");
   assert.equal(service.files.messages(result.agentId).length, 1);
-  const before = result.generation;
+  const previousGeneration = result.generation;
   const resumed = service.resume(result.agentId, "Explicit new request", owner);
-  assert.notEqual(resumed.generation, before);
-  assert.equal(service.files.completions(result.agentId).find(c => c.generation === before)?.state, "interrupted");
+  assert.notEqual(resumed.generation, previousGeneration);
+  assert.equal(service.files.completions(result.agentId).find(c => c.generation === previousGeneration)?.state, "interrupted");
   assert.equal(service.files.messages(result.agentId).filter(m => m.generation === resumed.generation).length, 1);
 });
 
 test("agent tool exposes control and report data without replaying launch context or storage identities", { timeout: 30000 }, async t => {
-  const directory = await temp(t), prior = process.env.PI_CODING_AGENT_DIR;
-  process.env.PI_CODING_AGENT_DIR = join(directory, "config");
+  const directory = await temp(t), before = { ...process.env };
+  for (const key of Object.keys(process.env)) delete process.env[key];
+  Object.assign(process.env, { PATH: before.PATH, HOME: directory, TERM: "xterm-256color", PI_OFFLINE: "1",
+    PI_CODING_AGENT_DIR: join(directory, "config"), TMUX_TMPDIR: directory, XDG_DATA_HOME: before.XDG_DATA_HOME });
   try {
     const { root, session } = await host(t);
     await session.extensionRunner.emit({ type: "agent_settled", aborted: true });
     const files = new AgentFiles(agentDirectory()), ctx = session.extensionRunner.createToolContext("local", undefined);
     const options = { message: "Original task", prompts: ["Original context"], provider: "not-configured", model: "not-configured" };
     const identity = saved(files, root, agentOwner(ctx), options);
-    const manager = SessionManager.create(root, files.directory(identity.agentId));
+    const report = "Historical answer\n\n```json\n{\"value\": 42}\n```\n````\n";
+    const manager = SessionManager.create(root, join(directory, "sessions"), { id: identity.agentId });
     manager.appendMessage({ role: "user", content: options.message, timestamp: 1 });
-    manager.appendMessage({ role: "assistant", content: [{ type: "text", text: "Historical answer" }], api: "openai-responses",
+    manager.appendMessage({ role: "assistant", content: [{ type: "text", text: report }], api: "openai-responses",
       provider: "openai", model: "historical", stopReason: "stop", timestamp: 2,
       usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } } });
-    await writeFile(files.session(identity.agentId), await readFile(manager.getSessionFile()));
+    files.bindSession(identity.agentId, manager.getSessionFile());
     const complete = { cycleId: randomUUID(), generation: identity.generation, startedAt: 1, finishedAt: 2, state: "completed",
       leaf: manager.getLeafId(), requestIds: ["request"], source: "interactive" };
     files.write(identity.agentId, "completions/" + complete.cycleId + ".json", complete, cycle, true);
@@ -125,7 +138,9 @@ test("agent tool exposes control and report data without replaying launch contex
     assert.equal(first.structuredContent.report, "Histo"); assert.equal(first.structuredContent.nextOffset, 5);
     assert.deepEqual(first.details.agentReadKeys, [identity.agentId + ":" + complete.cycleId]);
     const rest = await execute({ action: "read", agentId: identity.agentId, cycleId: complete.cycleId, offset: 5 });
-    assert.equal(rest.structuredContent.report, "rical answer"); assert.equal(rest.structuredContent.nextOffset, null);
+    assert.equal(rest.structuredContent.report, report.slice(5)); assert.equal(rest.structuredContent.nextOffset, null);
+    const renderedReport = rest.content[0].text.match(/^## report\n\n(`{3,})text\n([\s\S]*?)\n\1(?=\n|$)/m);
+    assert.equal(renderedReport[2], rest.structuredContent.report);
     assert.equal((await execute({ action: "rename", agentId: identity.agentId, name: "renamed" })).structuredContent.name, "renamed");
     await execute({ action: "stop", agentId: identity.agentId });
     assert.deepEqual(files.read(identity.agentId, "descriptor.json", descriptor).options, options);
@@ -139,7 +154,8 @@ test("agent tool exposes control and report data without replaying launch contex
     while (agentHost.alive(started.agentId) && Date.now() < deadline) await new Promise(r => setTimeout(r, 100));
     assert.equal(agentHost.alive(started.agentId), false);
   } finally {
-    if (prior === undefined) delete process.env.PI_CODING_AGENT_DIR; else process.env.PI_CODING_AGENT_DIR = prior;
+    spawnSync("tmux", ["kill-server"], { stdio: "ignore" });
+    for (const key of Object.keys(process.env)) delete process.env[key]; Object.assign(process.env, before);
   }
 });
 
@@ -173,8 +189,9 @@ test("actual child entry uses native tools without provider state or recursive d
   const root = await temp(t);
   const cwd = join(root, "projects/work"); await mkdir(cwd, { recursive: true });
   const files = new AgentFiles(join(root, "agents")), savedRun = saved(files, root, owner, { cwd, noSkills: true, noContextFiles: true }), directory = files.directory(savedRun.agentId);
-  const initial = SessionManager.create(cwd, directory); initial.appendMessage({ role: "user", content: "Saved context", timestamp: 1 });
-  await writeFile(files.session(savedRun.agentId), await readFile(initial.getSessionFile()));
+  const initial = SessionManager.create(cwd, join(root, "sessions"), { id: savedRun.agentId });
+  initial.appendMessage({ role: "user", content: "Saved context", timestamp: 1 });
+  files.bindSession(savedRun.agentId, initial.getSessionFile());
   const values = { PBOT_SUBAGENT_RUN_ID: savedRun.agentId, PBOT_SUBAGENT_DIR: directory,
     PBOT_SUBAGENT_GENERATION: savedRun.generation, PI_CODING_AGENT_DIR: join(root, "pi-config") };
   const previous = Object.fromEntries(Object.keys(values).map(key => [key, process.env[key]])); Object.assign(process.env, values);
@@ -190,11 +207,11 @@ test("actual child entry uses native tools without provider state or recursive d
   const errors = []; await session.bindExtensions({ mode: "json", onError: error => errors.push(error) });
   t.after(async () => { await session.extensionRunner.emit({ type: "session_shutdown", reason: "quit" }); session.dispose(); });
   assert.deepEqual(errors, []);
-  assert.deepEqual(session.getActiveToolNames().filter(n => n.startsWith("pbot_")), []);
+  assert.deepEqual(session.getActiveToolNames().filter(n => n.startsWith("pbot_")), ["pbot_team_message"]);
   assert.ok(session.extensionRunner.getRegisteredCommands().some(c => c.name === "mcp"));
   for (const name of ["codemode", "tool_search"]) assert.ok(session.getAllTools().some(t => t.name === name));
   assert.deepEqual(loader.getSkills().skills, []);
-  const started = await session.extensionRunner.emitBeforeAgentStart("", undefined, { cwd });
+  const started = await session.extensionRunner.emitBeforeAgentStart({ messageType: "user", prompt: "" }, { cwd });
   const environment = JSON.parse(started.systemPromptOptions.sections.pbot_environment);
   assert.equal(environment.workspaceRoot, root); assert.equal(environment.cwd, cwd); assert.equal(environment.resourceRoot, resourceRoot);
   assert.equal(environment.python.state, "error"); assert.equal(typeof environment.python.error, "string");
@@ -234,10 +251,10 @@ test("real SDK boundaries defer notifications on abort and persist completion de
     const delivered = await boundary();
     assert.equal(delivered.valid, true); assert.equal(delivered.continue, true);
     assert.deepEqual(delivered.entries[0].details.keys, [identity.agentId + ":" + complete.cycleId]);
-    const record = JSON.parse(delivered.entries[0].content.split("\n").at(-1));
-    assert.equal(record.agentId, identity.agentId);
-    assert.deepEqual(record.cycle, { cycleId: complete.cycleId, state: "completed", source: "parent", requestIds: ["request"] });
-    assert.equal(record.report, ""); assert.equal(record.truncated, false);
+    const fields = Object.fromEntries([...delivered.entries[0].content.matchAll(/^- (\w+): (.*)$/gm)].map(match => [match[1], match[2]]));
+    assert.equal(fields.agentId, identity.agentId); assert.equal(fields.cycleId, complete.cycleId);
+    assert.equal(fields.state, complete.state); assert.equal(fields.source, complete.source);
+    assert.equal(fields.truncated, "false");
     for (const entry of delivered.entries) session.sessionManager.appendCustomMessageEntry(entry.customType, entry.content, entry.display, entry.details);
     assert.equal((await boundary()).continue, false);
     assert.deepEqual(errors, []);

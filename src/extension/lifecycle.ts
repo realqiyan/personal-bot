@@ -5,6 +5,7 @@ import { authorizeMutation } from "../services/workspace/workspace-files.js";
 import type { AgentOwner } from "../model/agent.js";
 import type { PythonEnvironmentService } from "../services/workspace/python-environment-service.js";
 import type { AgentService } from "../services/agents/agent-service.js";
+import type { TeamService } from "../services/agents/team-service.js";
 import type { CallAccess } from "../tools/access.js";
 
 export class WorkspaceInstance implements CallAccess {
@@ -12,7 +13,7 @@ export class WorkspaceInstance implements CallAccess {
   #work = new AbortController();
   #closing: Promise<void> | undefined;
   #restorePython: (() => void) | undefined;
-  constructor(readonly root: string, readonly pythonEnvironment: PythonEnvironmentService, readonly agents: AgentService) {}
+  constructor(readonly root: string, readonly pythonEnvironment: PythonEnvironmentService, readonly agents: AgentService, readonly teams: TeamService) {}
   async preparePython(signal?: AbortSignal) {
     this.check();
     this.#restorePython?.();
@@ -45,8 +46,12 @@ export class WorkspaceInstance implements CallAccess {
     this.#work.abort();
     this.#closing = (async () => {
       try {
+        const errors: unknown[] = [];
+        try { if (this.agentOwner) this.teams.pauseAll(this.agentOwner, "主会话关闭或重新载入"); }
+        catch (error) { errors.push(error); }
+        this.teams.dispose();
         const results = await Promise.allSettled([this.agents.close(this.agentOwner, preserveAgents), this.pythonEnvironment.close()]);
-        const errors = results.filter(result => result.status === "rejected").map(result => result.reason);
+        errors.push(...results.filter(result => result.status === "rejected").map(result => result.reason));
         if (errors.length) throw new AggregateError(errors, "工作区关闭失败。");
       } finally { this.#restorePython?.(); this.#restorePython = undefined; }
     })();

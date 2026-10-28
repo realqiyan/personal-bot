@@ -11,7 +11,7 @@ test("E2E: startup reports a damaged Python environment, preserves history and l
   const workspace = await rpcWorkspace(t);
   let pi = await workspace.start();
   const resources = await pi.inspect();
-  assert.deepEqual(resources.tools.filter(name => name.startsWith("pbot_")).sort(), ["pbot_agent"]);
+  assert.deepEqual(resources.tools.filter(name => name.startsWith("pbot_")).sort(), ["pbot_agent", "pbot_team", "pbot_team_message"]);
   assert.ok(resources.skills.length > 0);
   assert.deepEqual(await readdir(workspace.root), []);
   const context = await pi.driver("context");

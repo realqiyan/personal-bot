@@ -14,7 +14,7 @@ test("smoke: loading the source package enables Personal Bot without creating wo
   const { commands } = await pi.request("get_commands");
   assert.ok(commands.some(command => command.name === "pbot"));
   const resources = await pi.inspect();
-  assert.deepEqual(resources.tools.filter(name => name.startsWith("pbot_")).sort(), ["pbot_agent"]);
+  assert.deepEqual(resources.tools.filter(name => name.startsWith("pbot_")).sort(), ["pbot_agent", "pbot_team", "pbot_team_message"]);
   assert.ok(resources.skills.length > 0);
   await pi.command("/pbot status");
   await pi.command("/pbot upgrade");
@@ -31,7 +31,7 @@ test("smoke: obsolete state cannot block Personal Bot and preparation preserves 
   await writeFile(join(internal, "workspace.json"), value);
   await writeFile(join(internal, "records.bin"), records);
   const pi = await workspace.start();
-  assert.deepEqual((await pi.inspect()).tools.filter(name => name.startsWith("pbot_")).sort(), ["pbot_agent"]);
+  assert.deepEqual((await pi.inspect()).tools.filter(name => name.startsWith("pbot_")).sort(), ["pbot_agent", "pbot_team", "pbot_team_message"]);
   await pi.command("/pbot upgrade");
   await pi.command("/pbot init");
   assert.equal(await readFile(join(internal, "workspace.json"), "utf8"), value);
@@ -60,7 +60,7 @@ test("smoke: packed sources load tools and the standalone setup script without d
   await assert.rejects(readdir(join(packed, "dist")), { code: "ENOENT" });
   const pi = await workspace.start(packed);
   const resources = await pi.inspect();
-  assert.deepEqual(resources.tools.filter(name => name.startsWith("pbot_")).sort(), ["pbot_agent"]);
+  assert.deepEqual(resources.tools.filter(name => name.startsWith("pbot_")).sort(), ["pbot_agent", "pbot_team", "pbot_team_message"]);
   assert.ok(resources.skills.length > 0);
   assert.equal((await pi.driver("context")).environment.workspaceRoot, workspace.root);
   assert.deepEqual(await readdir(workspace.root), []);
