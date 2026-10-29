@@ -9,7 +9,7 @@ Personal Bot 保留独立工作和团队工作。成员仍由 tmux 和独立 Pi 
 | start | 新建上下文，可指定 name/provider/model/thinking/cwd/tools；有 message/prompts/files 时执行初始工作，否则只启动待命进程 |
 | send | 向 agentId 发送 message；delivery 默认为 steer，followUp 排到当前工作之后 |
 | rename | 修改名称，agentId 保持不变 |
-| status/list | 查询状态或当前父会话的子会话 |
+| status/list | 查询状态或当前父会话的子会话；status 不读取报告正文，报告通过 read 获取 |
 | read | 按 agentId、可选 cycleId 和 offset/limit 读取报告 |
 | stop | 请求停止，保留历史 |
 | resume | 用新 message 重启已停止子会话，不重放旧工作 |
@@ -17,6 +17,8 @@ Personal Bot 保留独立工作和团队工作。成员仍由 tmux 和独立 Pi 
 每个父会话最多 50 个存活进程，包括待命进程。启动异步返回，不提供 wait。无任务 start 不请求模型，也不产生工作完成通知；停止未接过任务的进程不伪造失败周期。
 
 start 支持 noExtensions、noSkills、noPromptTemplates 和 noContextFiles。noExtensions 默认 true，显式保留子入口及 Pi 内置 MCP、codemode、工具搜索；设为 false 时按 Pi 规则发现其他扩展。tools 遵循 Pi 原生选择。子入口只增加 pbot_team_message，不提供 pbot_agent 或 pbot_team 管理能力。
+
+初始 files 相对工作区根目录解析。子入口在每份附件前标出绝对来源路径，保留 Pi 原生 read 的文本、图像及截断提示；未读完的附件由成员沿该路径续读。message 与 prompts 合并为一次输入，不继承父聊天历史。
 
 初始模型与思考级别默认继承主会话；恢复时交由 Pi 使用保存的原生模型配置，不重新传入初始模型选项。模型不可用或缺少认证时仍遵循 Pi 的原生回退与错误行为。子会话从自己的 cwd 和 Pi agent dir 取得原生配置与认证，不继承父进程临时注册的模型或 MCP。环境与授权规则见[工具与执行](capability-design.md)。
 
@@ -71,7 +73,7 @@ run 要求全部成员空闲、无未消费的私人输入，并已加载可用�
 
 团队公共记录独立于各自私人会话。新团队请求通过原有 inbox 投递；before_agent_start 注入已署名的公共原文，运行中在 turn_end 安全边界追加消息，不请求额外 continuation。空闲成员在下一次团队请求时取得信息，私人工作不自动注入新群消息。
 
-成员任务、团队背景、自动注入的公共消息和批次通知使用 Markdown 文档。团队背景按共同目标、成员职责和本批次要求分节；公共消息按 seq 分节，列出作者、回复关系与来源，正文放入保留原文的代码区块，包含代码围栏的正文也不会破坏区块边界。成员原文中的 JSON 保留原样。
+成员任务、团队背景、自动注入的公共消息和批次通知使用 Markdown 文档。团队背景按共同目标和成员职责分节，保留身份与轮次；本批次要求仅在成员任务输入中给出，避免在系统简报中重复。公共消息按 seq 分节，列出作者、回复关系与来源，正文放入保留原文的代码区块，包含代码围栏的正文也不会破坏区块边界。成员原文中的 JSON 保留原样。
 
 read 的文本结果也使用 Markdown，同时保留工具的结构化结果。nextOffset 非空表示该条正文未读完，用同一 teamId、seq 和 offset 续读；nextAfterSeq 用于后续消息。自动注入按实际 Markdown 长度限制上下文，并用 remainingFromSeq 标明未包含的消息，从 afterSeq: remainingFromSeq - 1 继续读取。不能将展示片段当作完整记录。Pi 压缩不删除公共记录。
 
@@ -99,7 +101,7 @@ read 的文本结果也使用 Markdown，同时保留工具的结构化结果。
 
 主 agent 收到的独立子会话结果通知，以及 pbot_agent、pbot_team 和 pbot_team_message 的文本结果均使用 Markdown。列表、状态、工作周期和报告分节展示，报告保留原文；通知中的报告最多展示 2000 字符，完整内容通过 read 分页读取。工具的 structuredContent、details 与 read 收据保持原有契约。
 
-独立周期保留原有自动通知与 read 收据。团队关联周期不重复发个人完成通知；主模型只收到批次结束、暂停和收尾状态。普通 post 不唤醒主模型。团队通知按 teamId/runId/状态去重，UI 或工具 read 不领取模型通知。
+独立周期的 read 结果进入当前分支后领取该周期通知，包括只读取部分正文的情况。nextOffset 非空时，以同一 agentId、返回的 cycle.cycleId 和 nextOffset 续读，避免默认最新周期发生变化；status 不领取通知。团队关联周期不重复发个人完成通知；主模型只收到批次结束、暂停和收尾状态。普通 post 不唤醒主模型。团队通知按 teamId/runId/状态去重，UI 或工具 read 不领取模型通知。
 
 团队与成员均绑定父 session/分支。失去归属时暂停新安排，不向当前主分支投递结果。fork 不接管旧团队；返回原分支不会自动恢复旧批次。公共记录与外部工作不会随树导航回滚。
 
@@ -120,7 +122,9 @@ pause 返回时可能仍有在途请求。unresolved 区分排队、已接收、
 
 /pbot agents 提供状态列表、进入子 TUI、补充要求、重命名和停止，不再提供单独的报告查看或恢复并继续菜单。报告仍可通过 pbot_agent read 获取。/pbot teams 提供团队状态、公共记录分页、post、新批次、pause、close，以及相同的成员菜单。无 TUI 时通过同样的结构化工具使用，不支持 attach。
 
-后台扫描遇到短暂的 `.control` 锁竞争时，在下一次扫描重试，不立即显示错误；连续至少 5 秒仍无法取得锁时显示错误。扫描成功后清除旧错误提示。此等待不自动删除锁，也不重跑旧任务；命令和工具的锁冲突仍直接报告。
+后台扫描遇到短暂的 `.control` 锁竞争时，在下一次扫描重试；连续至少 5 秒仍无法取得锁，包括主会话中断后暂停团队仍被锁阻塞的情况，会保留 UI 错误并通知模型。暂停未成功时，通知明确说明暂停尚未确认。报告或控制记录读取失败也会通知模型。同一持续故障在当前分支去重；恢复要求升级时补发一次通知。主会话中断期间延后投递，恢复输入后再通知。
+
+通知按实际服务状态说明恢复方式：锁释放后自动恢复扫描；可恢复的读取错误先排障，修复后由后台重试；团队服务或协作存储已停用时，修复文件仍不能恢复当前实例，须请用户在当前 Pi 会话执行 `/reload`。重载前不反复调用 pbot_team，可通过 pbot_agent list/status/read 核对仍可读取的成员状态与报告；重载后再用 pbot_team status/read 核对团队。成功扫描后清除故障状态。通知不重发任务、不删除锁，命令和工具的错误仍直接返回。
 
 选择成员后，操作菜单的“进入 TUI”选项直接标明返回快捷键，选中后立即进入，不再二次确认。团队成员入口使用相同流程。默认 tmux 绑定下，普通终端按 Ctrl+B 后按 d 脱离子会话；主会话已在 tmux 中时，按 Ctrl+B 后按小写 l 切回上一个会话。自定义绑定以自己的 tmux 配置为准。返回不会停止成员，不要用 /exit 代替返回。
 

@@ -6,7 +6,7 @@ export function agentOwner(ctx: ExtensionContext): AgentOwner {
 export function deliveredCycles(ctx: ExtensionContext): Set<string> {
   const keys = new Set<string>();
   for (const entry of ctx.sessionManager.getBranch()) {
-    const data = entry.type === "custom_message" && entry.customType === "pbot.agent-results" ? entry.details
+    const data = entry.type === "custom_message" && ["pbot.agent-results", "pbot.agent-error"].includes(entry.customType) ? entry.details
       : entry.type === "custom" && entry.customType === "pbot.agent-read" ? entry.data : undefined;
     if (entry.type === "custom" && entry.customType === "pbot.agent-read") {
       const receipt = entry.data as { toolCallId?: string };

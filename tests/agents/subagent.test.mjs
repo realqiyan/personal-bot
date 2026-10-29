@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, rename, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
@@ -133,7 +133,21 @@ test("agent tool exposes control and report data without replaying launch contex
     const listed = (await execute({ action: "list" })).structuredContent.agents[0];
     assert.equal(listed.agentId, identity.agentId); assert.equal(listed.owned, true);
     assert.equal(listed.state, "stopped"); assert.equal(listed.cycle.state, "completed");
-    assert.equal((await execute({ action: "status", agentId: identity.agentId })).structuredContent.cycle.cycleId, complete.cycleId);
+    // Status must survive an unavailable native transcript and find the latest saved completion
+    // even when the current process status has no cycle (for example after an idle restart).
+    const sessionFile = manager.getSessionFile();
+    await rename(sessionFile, sessionFile + ".unavailable");
+    files.write(identity.agentId, "status.json", { generation: identity.generation, state: "idle", activity: "idle", updatedAt: 3 }, status);
+    try {
+      const current = await execute({ action: "status", agentId: identity.agentId });
+      assert.equal(current.structuredContent.cycle.cycleId, complete.cycleId);
+      assert.equal(current.structuredContent.cycle.state, "completed");
+      assert.equal(current.structuredContent.state, "stopped");
+      for (const field of ["report", "totalLength", "nextOffset", "cycles"]) assert.equal(Object.hasOwn(current.structuredContent, field), false);
+      assert.equal(Object.hasOwn(current.details, "agentReadKeys"), false);
+    } finally {
+      await rename(sessionFile + ".unavailable", sessionFile);
+    }
     const first = await execute({ action: "read", agentId: identity.agentId, cycleId: complete.cycleId, limit: 5 });
     assert.equal(first.structuredContent.report, "Histo"); assert.equal(first.structuredContent.nextOffset, 5);
     assert.deepEqual(first.details.agentReadKeys, [identity.agentId + ":" + complete.cycleId]);

@@ -2,8 +2,7 @@ import { readFile, stat } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { existsSync, realpathSync } from "node:fs";
 import { randomUUID } from "node:crypto";
-import { createReadTool, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
-import type { TextContent, ImageContent } from "@earendil-works/pi-ai";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { AgentFiles, descriptor, launch, status, cycle } from "../storage/agent-files.js";
 import { TeamFiles } from "../storage/team-files.js";
 import { TeamService } from "../services/agents/team-service.js";
@@ -15,6 +14,7 @@ import { PythonEnvironmentService } from "../services/workspace/python-environme
 import { activatePython } from "../integrations/python-activation.js";
 import { authorizeMutation } from "../services/workspace/workspace-files.js";
 import { agentText } from "../integrations/pi/agent-resources.js";
+import { agentInput } from "../integrations/pi/agent-input.js";
 import { agentFileTools } from "../integrations/pi/agent-tools.js";
 import { resourceRoot } from "../common/paths.js";
 import { requireThat } from "../common/validation.js";
@@ -118,12 +118,7 @@ export default function subagent(pi: ExtensionAPI) {
         const link = links.get(request.requestId);
         if (link && (link.team.closed || link.run.state !== "running" || link.run.deadlineAt <= Date.now())) continue;
         if (link && (!ctx.isIdle() || ctx.hasPendingMessages() || current || interactive || queuedRequests.length)) break;
-        const content: (TextContent | ImageContent)[] = [];
-        for (const path of request.files) {
-          const output = await createReadTool(d.cwd).execute("file-" + request.requestId, { path }, lifetime.signal);
-          content.push(...output.content.filter((p): p is TextContent | ImageContent => p.type === "text" || p.type === "image"));
-        }
-        content.push({ type: "text", text: request.message || "请处理所附文件。" });
+        const content = await agentInput(d.cwd, request, lifetime.signal);
         requireThat(ctx.model, "子会话没有可用模型。");
         requireThat(ctx.modelRegistry.hasConfiguredAuth(ctx.model) || await ctx.modelRegistry.getProviderAuth(ctx.model.provider), "子会话模型未认证，请配置原生 Pi 认证后显式恢复。");
         ensure();

@@ -255,6 +255,74 @@ test("bounded message pages retain every original character and reject invalid s
   assert.equal(schema(teamMessageActionSchema)({ action: "post", teamId: f.team.teamId, text: "x", author: "other" }), false);
 });
 
+test("native team tools reject missing and action-inapplicable fields before accessing team state", async t => {
+  const { session } = await host(t);
+  await session.extensionRunner.emit({ type: "agent_settled", aborted: true });
+  const team = session.agent.state.tools.find(tool => tool.name === "pbot_team");
+  const message = session.agent.state.tools.find(tool => tool.name === "pbot_team_message");
+  const validTeam = schema(teamActionSchema), validMessage = schema(teamMessageActionSchema);
+  const actions = [
+    { action: "create", name: "local", brief: "Review", members: [{ agentId: "member", role: "review" }] },
+    { action: "list" },
+    ...["status", "pause", "close"].map(action => ({ action, teamId: "team" })),
+    { action: "run", teamId: "team", instruction: "Review", mode: "parallel" },
+    { action: "read", teamId: "team", seq: 1, offset: 0, limit: 10 },
+  ];
+  for (const input of actions) {
+    assert.equal(schema(team.parameters)(input), true);
+    assert.equal(validTeam(input), true);
+    const extra = { ...input, ...(input.action === "create" ? { teamId: "team" } : { name: "unexpected" }) };
+    assert.equal(validTeam(extra), false);
+    await assert.rejects(team.execute("invalid", extra));
+    const required = input.action === "create" ? ["name", "brief", "members"]
+      : input.action === "run" ? ["teamId", "instruction", "mode"] : input.action === "list" ? [] : ["teamId"];
+    for (const key of required) {
+      const missing = { ...input }; delete missing[key];
+      assert.equal(validTeam(missing), false);
+      await assert.rejects(team.execute("invalid", missing));
+    }
+  }
+  for (const input of [{ action: "read", teamId: "team", text: "unexpected" },
+    { action: "post", teamId: "team", text: "public", offset: 0 }, { action: "post", teamId: "team" }]) {
+    assert.equal(validMessage(input), false);
+    await assert.rejects(message.execute("invalid", input));
+  }
+});
+
+test("team concurrency defaults and limits apply before saving a new batch", async t => {
+  for (const count of [1, 3]) {
+    const f = await fixture(t, count);
+    const parallel = f.service.run(f.team.teamId, owner, { instruction: "Review", mode: "parallel" }, f.views);
+    assert.equal(parallel.rounds, 2); assert.equal(parallel.maxConcurrent, Math.min(2, count));
+    f.service.pause(f.team.teamId, owner);
+    const robin = f.service.run(f.team.teamId, owner, { instruction: "Review again", mode: "roundRobin" }, f.views);
+    assert.equal(robin.maxConcurrent, 1);
+    f.service.pause(f.team.teamId, owner);
+    for (const options of [{ mode: "roundRobin", maxConcurrent: 2 }, { mode: "parallel", maxConcurrent: count + 1 }]) {
+      assert.throws(() => f.service.run(f.team.teamId, owner, { instruction: "Invalid", ...options }, f.views));
+    }
+    assert.equal(f.files.read(f.team.teamId).runs.length, 2);
+  }
+});
+
+test("an expired batch tracks accepted requests until completion and rejects new claims", async t => {
+  const f = await fixture(t, 2);
+  f.service.run(f.team.teamId, owner, { instruction: "Review", mode: "parallel" }, f.views);
+  const [a, b] = f.advance(); f.queue(a); f.queue(b); f.claim(a);
+  const stored = f.files.read(f.team.teamId); stored.runs[0].deadlineAt = Date.now() - 1;
+  f.agents.control(() => f.files.save(stored));
+  assert.equal(f.claim(b), undefined); assert.deepEqual(f.advance(), []);
+  const current = f.service.status(f.team.teamId, owner, f.views);
+  assert.equal(current.run.state, "paused"); assert.equal(current.activeCount, 1);
+  assert.equal(current.unresolved.find(q => q.requestId === a.requestId).state, "accepted");
+  assert.equal(current.unresolved.find(q => q.requestId === b.requestId).state, "cancelled");
+  await f.finish(a);
+  assert.equal(f.service.status(f.team.teamId, owner, f.views).unresolved.find(q => q.requestId === a.requestId).state, "unpublished");
+  assert.deepEqual(f.advance(), []);
+  assert.equal(f.service.status(f.team.teamId, owner, f.views).unresolved.some(q => q.requestId === a.requestId), false);
+  assert.equal(f.files.read(f.team.teamId).messages.length, 1);
+});
+
 test("independent local publishers serialize on the existing lock without losing messages", async t => {
   const f = await fixture(t, 1);
   const code = `

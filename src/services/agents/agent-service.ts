@@ -171,6 +171,10 @@ export class AgentService {
     }
     return values;
   }
+  status(id: string, owner: AgentOwner) {
+    const d = this.get(id, owner), latest = this.cycles(id, owner).at(-1);
+    return { ...this.view(d, owner), ...(latest ? { cycle: latest } : {}) };
+  }
   read(id: string, owner: AgentOwner, cycleId?: string, offset = 0, limit = 16000) {
     const d = this.get(id, owner), cycles = this.cycles(id, owner);
     const c = cycleId ? cycles.find(v => v.cycleId === cycleId) : cycles.at(-1);

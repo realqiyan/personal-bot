@@ -17,14 +17,14 @@ const options = {
   noContextFiles: Type.Optional(Type.Boolean({ description: "关闭 Pi 原生上下文文件加载，默认 false。" })),
 };
 const page = {
-  cycleId: Type.Optional(Type.String({ ...id, description: "read 的历史工作周期；省略时读取最近周期。" })),
-  offset: Type.Optional(Type.Integer({ minimum: 0, description: "报告字符偏移，默认 0。" })),
-  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 16000, description: "最多返回字符数，默认 16000。" })),
+  cycleId: Type.Optional(Type.String({ ...id, description: "仅 read：省略时读取最近周期；按 nextOffset 续读时须固定为上页返回的 cycle.cycleId，避免切换到新周期。" })),
+  offset: Type.Optional(Type.Integer({ minimum: 0, description: "仅 read：报告正文的 UTF-16 字符偏移，默认 0；续读使用上页 nextOffset。" })),
+  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 16000, description: "仅 read：最多返回的正文 UTF-16 字符数，默认 16000，不是消息数或 token 数。" })),
 };
 const delivery = Type.Optional(Type.Union([Type.Literal("steer"), Type.Literal("followUp")], { description: "send 默认 steer 补充当前工作；followUp 排到当前工作之后。" }));
 export const agentParametersSchema = Type.Object({
   action: Type.Union([Type.Literal("start"), Type.Literal("send"), Type.Literal("rename"), Type.Literal("status"), Type.Literal("list"), Type.Literal("read"), Type.Literal("stop"), Type.Literal("resume")], {
-    description: "start 可省略 message/prompts/files，只创建待命进程；启动选项仅用于 start。list 不带其他字段；其余操作须 agentId。send/resume 须 message，rename 须 name；分页仅用于 read。",
+    description: "start 仅接受启动选项，可省略 message/prompts/files 创建待命进程，禁止 agentId/delivery/分页字段；list 只接受 action；status/stop 只接受并必填 agentId；send 必填 agentId/message，仅可选 delivery；resume 必填 agentId/message；rename 必填 agentId/name；read 必填 agentId，仅可选 cycleId/offset/limit。禁止携带其他 action 的字段。",
   }),
   agentId: Type.Optional(id), ...options, ...page, delivery,
 }, { additionalProperties: false });
@@ -48,7 +48,9 @@ export const agentViewSchema = Type.Object({ agentId: Type.String(), name: Type.
   state: Type.Union([Type.Literal("starting"), Type.Literal("busy"), Type.Literal("idle"), Type.Literal("stopping"), Type.Literal("stopped"), Type.Literal("error")], { description: "进程状态；idle 不代表上轮工作成功，结果见 cycle.state。" }),
   activity: Type.String(), cycle: Type.Optional(cycle), error: Type.Optional(Type.String()),
   requestId: Type.Optional(Type.String()), messageStatus: Type.Optional(Type.Literal("queued", { description: "消息已入队，不代表模型已阅读或完成。" })),
-  cycles: Type.Optional(Type.Array(Type.Object({ cycleId: Type.String(), state: Type.String() }))),
-  report: Type.Optional(Type.String()), totalLength: Type.Optional(Type.Integer()), nextOffset: Type.Optional(Type.Union([Type.Integer(), Type.Null()])),
+  cycles: Type.Optional(Type.Array(Type.Object({ cycleId: Type.String(), state: Type.String() }), { description: "仅 read 返回：可读取的周期索引。" })),
+  report: Type.Optional(Type.String({ description: "仅 read 返回：选定周期的报告正文片段。已结束周期的读取结果持久化后领取该周期通知，即使本页未读完。" })),
+  totalLength: Type.Optional(Type.Integer({ description: "仅 read 返回：完整报告的 UTF-16 字符数。" })),
+  nextOffset: Type.Optional(Type.Union([Type.Integer(), Type.Null()], { description: "仅 read 返回：null 表示本报告已读完；否则以相同 agentId、cycle.cycleId 和此 offset 继续。" })),
 }, { additionalProperties: false });
 export const agentResultSchema = Type.Union([agentViewSchema, Type.Object({ agents: Type.Array(agentViewSchema) }, { additionalProperties: false })]);

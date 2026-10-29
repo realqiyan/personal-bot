@@ -1,6 +1,6 @@
 {
   "name": "personal-bot",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/realqiyan/personal-bot.git"
@@ -24,6 +24,7 @@
     "themes": []
   },
   "files": [
+    "npm-shrinkwrap.json",
     "src",
     "resources",
     "scripts/setup-python.py",

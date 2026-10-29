@@ -27,13 +27,15 @@ function agentOutput(view: AgentView & Partial<AgentOutput>): AgentOutput {
 }
 
 export function agentTool(service: AgentService, access: CallAccess) {
-  const valid = schema(agentActionSchema);
+  const validators = new Map(agentActionSchema.anyOf.map(action => [action.properties.action.const, schema(action)]));
   return defineTool({ name: "pbot_agent", label: "子会话",
-    description: "独立 Pi 子会话，不继承父聊天历史。start 立即返回；未提供 message/prompts/files 时只启动待命进程，不调用模型。完成自动通知，无需轮询。团队占用期间不能私人 send。send 继续对话，rename 改名，status/list 查看状态，read 非阻塞读取报告。state 是进程状态，cycle.state 是工作结果，queued 仅表示入队。stop 停止并保留历史，resume 携新 message 恢复，不重放旧工作。独立复核须 start 新上下文。子会话使用原生 CLI/MCP，按委派范围工作，不递归委派。每个父会话最多 50 个存活子会话，空闲也计入。",
+    description: "独立 Pi 子会话，不继承父聊天历史。start 立即返回；未提供 message/prompts/files 时只启动待命进程，不调用模型。完成自动通知，无需轮询。团队占用期间不能私人 send。send 继续对话，rename 改名，status/list 查看状态，status 返回最近周期且不读取报告正文。read 非阻塞读取报告；读取已结束周期会领取该周期的完成通知（包括部分读取），后续不再重复通知。nextOffset 非空时以返回的 cycle.cycleId 固定周期续读。state 是进程状态，cycle.state 是工作结果，queued 仅表示入队。stop 停止并保留历史，resume 携新 message 恢复，不重放旧工作。独立复核须 start 新上下文。子会话使用原生 CLI/MCP，按委派范围工作，不递归委派。每个父会话最多 50 个存活子会话，空闲也计入。",
     parameters: agentParametersSchema, outputSchema: agentResultSchema,
     async execute(_id, args, signal, _update, ctx) {
       access.check(); signal?.throwIfAborted();
-      requireThat(valid(args), "子会话参数不符合所选 action；请核对必要字段。");
+      const valid = validators.get(args.action);
+      requireThat(valid, "未知的子会话 action：" + args.action);
+      requireThat(valid(args), "子会话 " + args.action + " 参数无效：" + JSON.stringify(valid.errors));
       const input = args as Static<typeof agentParametersSchema>, owner = agentOwner(ctx);
       let value: AgentView & Partial<AgentOutput>;
       switch (input.action) {
@@ -46,7 +48,7 @@ export function agentTool(service: AgentService, access: CallAccess) {
         case "rename": value = service.rename(input.agentId!, input.name!, owner); break;
         case "resume": value = service.resume(input.agentId!, input.message!, owner); break;
         case "stop": value = service.stop(input.agentId!, owner); break;
-        case "status": value = service.read(input.agentId!, owner, undefined, 0, 1); break;
+        case "status": value = service.status(input.agentId!, owner); break;
         case "read": {
           const page = service.read(input.agentId!, owner, input.cycleId, input.offset, input.limit);
           const data = agentOutput(page), output = markdownResult(data, "子会话报告");

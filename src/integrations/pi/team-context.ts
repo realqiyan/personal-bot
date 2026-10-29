@@ -31,8 +31,7 @@ export function teamBrief(link: TeamLink): string {
   return ["# 团队协作", "", "- 团队：" + link.team.name, "- `teamId`: `" + link.team.teamId + "`",
     "- 当前成员 `agentId`: `" + link.request.agentId + "`", "- `runId`: `" + link.run.runId + "`",
     "- 轮次：" + link.request.round + " / " + link.run.rounds, "", "## 共同目标", "", link.team.brief,
-    "", "## 成员职责", "", ...link.team.members.flatMap(member => ["### " + member.agentId, "", member.role, ""]),
-    "## 本批次要求", "", link.run.instruction].join("\n");
+    "", "## 成员职责", "", ...link.team.members.flatMap(member => ["### " + member.agentId, "", member.role, ""])].join("\n");
 }
 
 /** Branch-local context, not a durable read receipt. Long messages retain explicit read positions. */

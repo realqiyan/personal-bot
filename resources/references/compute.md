@@ -2,9 +2,9 @@
 
 ## 环境
 
-主会话与专家的 `pbot_environment.python` 给出当前共享 Python 3.11+ 环境状态。为 ready 时，通过 Bash 使用 python 或 python3，按任务导入第三方库原生 API。项目构建和测试明确要求另一环境时，按项目约定在对应命令中使用。
+主会话与专家的 `pbot_environment.python` 给出当前共享 Python 3.11+ 环境状态。为 ready 时，通过 Bash 使用 python 或 python3，按任务导入第三方库原生 API。项目构建和测试遵循项目声明的环境，在对应命令中使用。
 
-状态未就绪或依赖异常时，暂停依赖该环境的计算并说明问题，不自动退回系统 Python，不删除或重建环境。主会话修复后可用 `/pbot python setup` 重试；专家交回错误，由主会话处理。额外依赖或环境变更须取得用户同意。
+状态未就绪或依赖异常时，可自主诊断，只暂停依赖该环境的计算，不自动退回系统 Python，不删除或重建共享环境。额外依赖或共享环境变更先核对已有授权及影响范围；未获授权时说明所需变更并询问。需要重试 setup 时，请用户在当前 Pi 会话执行 `/pbot python setup`；专家将所需会话操作或补充授权交回主会话。
 
 所有 pbot 工作区共用当前用户的环境。更新依赖前停止相关计算，避免影响其他工作区；不同插件版本的依赖要求可能冲突。库清单说明可用方法，不代替本次环境状态检查。
 
@@ -60,7 +60,7 @@ plt.close(fig)
 
 ## TA-Lib 技术指标
 
-使用原生 API，不需要指标包装层。常用函数包括 `SMA`、`EMA`、`MACD`、`RSI`、`BBANDS`、`ATR`、`ADX`、`STOCH`、`OBV` 和 `CDL*` 形态函数。用 `talib.get_function_groups()` 或 `talib.get_functions()` 查找能力，用 `help(talib.函数名)` 核对参数与返回值，不凭名称猜测。
+常用原生函数包括 `SMA`、`EMA`、`MACD`、`RSI`、`BBANDS`、`ATR`、`ADX`、`STOCH`、`OBV` 和 `CDL*` 形态函数。用 `talib.get_function_groups()` 或 `talib.get_functions()` 查找能力，用 `help(talib.函数名)` 核对参数与返回值，不凭名称猜测。
 
 以下脚本从第一个命令行参数指定的 JSON 文件读取 close 数组，计算均线并输出严格 JSON：
 
