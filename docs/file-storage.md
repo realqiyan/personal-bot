@@ -4,7 +4,7 @@
 
 | 位置 | 内容与所有者 |
 | --- | --- |
-| 工作区 AGENTS.md、areas/、projects/、knowledge/ 等 | 用户资料、任务定义与证据 |
+| 工作区 AGENTS.md、areas/、projects/、knowledge/ 等 | 用户资料、任务定义、方法、结论与交付物 |
 | 工作区 providers/<id>/GUIDE.md | 提供方使用说明 |
 | 工作区 .pi/settings.json、.pi/mcp.json | Pi 原生项目配置 |
 | Pi 原生 sessions/ 或原生配置指定的目录 | 主会话与子会话的 JSONL 对话，由 Pi 管理 |

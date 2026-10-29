@@ -5,9 +5,9 @@
 ```text
 ./
 ├── areas/          # 长期目标、约束、建议、决策与复盘
-├── projects/       # 任务结论、必要数据与复现代码
-├── knowledge/      # 可复用知识、方法与参考资料
+├── projects/       # 任务定义、结论、交付物与源码
+├── knowledge/      # 可复用的概念、方法与口径
 ├── providers/      # 能力提供方导航与手册
-├── scratch/        # 临时文件、运行环境与计算产物
+├── scratch/        # 临时脚本、查询与计算数据、下载及运行环境
 └── agents/         # coordinator.md 与 general-purpose.md 的职责补充
 ```

@@ -74,33 +74,35 @@ Describe the task directly: organize project materials, compare research finding
 | `/reload` | Pi's native command to reload extensions and resources |
 
 - **Native tools:** Use CLI commands through Bash with their current help. Keep concise provider guides and evidence references. Configure MCP for the current project by default: run `pi mcp add --local <server> ...` from the workspace root to write `.pi/mcp.json`, then inspect the configuration source with `/mcp`. Change user-level configuration only when cross-project use is explicitly requested. No Personal Bot registration, parameter binding, or permission table is needed. See the [connection skill](resources/skills/provider-connections/SKILL.md).
-- **Research and analysis:** Ask the assistant to synthesize evidence, explain conflicts, check calculations and definitions, or identify assumptions to validate first. It uses the [research evidence](resources/skills/research-evidence/SKILL.md) and [analysis validation](resources/skills/analysis-validation/SKILL.md) skills as needed, with conclusions and limitations tied to the task.
+- **Research and analysis:** Ask the assistant to synthesize evidence, explain conflicts, check calculations and definitions, or identify assumptions to validate first.
 - **Independent sub-sessions:** Personal Bot supports tmux and independent Pi sessions; install tmux on the system to use them. `pbot_agent start` returns immediately; without a message, prompts, or files it creates an idle process without calling a model. Task completion produces a notification. Options cover models, directories, files, tools, and resources. Operations include send, follow-up, rename, status, read, stop, and explicit resume; there is no foreground/background flag or wait operation. `/pbot agents` shows active agents and can open their TUI. Main-session reload preserves running agents; exit or session switching stops them and retains history. Sub-sessions use native CLI/MCP within their delegated scope. See [specialist collaboration](docs/agent-collaboration.md).
 - **Teams:** `pbot_team` groups existing agents for `roundRobin` discussion or `parallel` rounds. Members exchange original messages through `pbot_team_message`; ordinary posts do not wake models. A running team reserves its members. Pause and drain in-flight work before private messages; reload pauses teams without replaying requests. The first release uses fixed membership and bounded rounds, not dynamic ask/reply wake-ups. See [specialist collaboration](docs/agent-collaboration.md).
 - **Scheduled and durable tasks:** The main session uses optional Task Conductor directly through native MCP, its `using-task-conductor` skill, and actual tool contracts. Without it, ordinary Personal Bot features still work, but scheduling is unavailable. Personal Bot adds no durable task scheduler or forwarding layer. Query and stop external tasks separately from sub-sessions. Cancelling the current run does not stop future recurrences, and closing Pi does not imply that external tasks stopped.
 - **Python:** All workspaces share one dedicated venv for the current user. Loading Personal Bot creates or updates it with locked dependencies and activates it in the current Pi process. Main and specialist sessions use `python` or `python3` through Bash. Failures are reported; fix the cause and retry with `/pbot python setup`. System Python, external terminals, existing scripts, and historical results are not changed. Shared dependency updates affect other workspaces, so stop relevant scripts before changing plugin versions or retrying setup. See the [Python guide](python/README.md) and [computation reference](resources/references/compute.md).
-- **Material maintenance:** Ask to organize project materials, reproduce a report using its previous definitions, or review delivery and close a task. The [project maintenance skill](resources/skills/project-maintenance/SKILL.md) updates the current task and affected materials within your requested scope. Current guidance is consolidated by topic; conclusions, conditions, task definitions, historical evidence, and important decisions remain traceable. Cleanup removes unnecessary temporary outputs within scope, not formal materials, history, or backups.
+- **Material maintenance:** Ask to organize project materials, reproduce a report using its previous definitions, or review delivery and close a task. The [project maintenance skill](resources/skills/project-maintenance/SKILL.md) updates the current task and affected materials within your requested scope. Current guidance is consolidated by topic, with reusable methods and analysis definitions extracted from project conclusions. Sources and important decisions remain traceable. Cleanup removes unnecessary temporary outputs within scope, not formal materials, history, or backups.
 
 Main and child transcripts use Pi's native session storage. Use `pi --resume` to select a chat explicitly; `pi --continue` may select the most recently active child. Enter managed children through `/pbot agents`; stopped children reopen their saved session idle, without calling a model. Use `pbot_agent resume` to restart with a new instruction. Never open a second writer for a running child's session file. Do not resend a potentially side-effecting operation merely because a session resumed.
 
-Personal Bot maintains no separate provider-call ledger or result wrapper. Native tools own their results and large-output handling; save formal evidence with the task. If an outcome is unclear, query native status first. Complete result retention is not guaranteed after a process crash.
+Personal Bot maintains no separate provider-call ledger or result wrapper. Native tools own their results and large-output handling; project conclusions cite relevant sources and results. If an outcome is unclear, query native status first. Complete result retention is not guaranteed after a process crash.
 
 ## Workspace materials
 
 | Location | Purpose |
 | --- | --- |
 | `AGENTS.md` | Material navigation and working agreements |
-| `areas/`, `projects/` | Long-term goals, task definitions, conclusions, and evidence |
-| `knowledge/` | Reusable knowledge |
+| `areas/`, `projects/` | Long-term goals, task definitions, conclusions, and deliverables |
+| `knowledge/` | Reusable concepts, methods, and analysis definitions |
 | `providers/` | Provider guides, coverage gaps, and validation evidence |
-| `scratch/` | Temporary calculations and reproducible outputs |
+| `scratch/` | Temporary scripts, query and calculation data, downloads, and runtime environments |
 | `agents/`, `.agents/skills/` | Workspace additions to coordinator/general-purpose roles and workspace skills |
+
+Fetch data that can be queried again when needed, using the recorded definitions.
 
 Personal Bot stores no private activation state in the workspace. Pi owns its configuration; reload when required by Pi. Stop the old instance before copying a workspace. Concurrent writes from multiple machines to a synchronized directory are not supported. See [file storage](docs/file-storage.md) for storage and copying boundaries.
 
 ## Updates and historical data
 
-Current release: **0.2.1**. Personal Bot maintains no workspace format, initialization state, or workspace upgrade mechanism. Update the plugin through Pi package management. For a local installation, update the source, run `npm ci --ignore-scripts` if dependencies changed, then reload or restart Pi.
+Current release: **0.2.2**. Personal Bot maintains no workspace format, initialization state, or workspace upgrade mechanism. Update the plugin through Pi package management. For a local installation, update the source, run `npm ci --ignore-scripts` if dependencies changed, then reload or restart Pi.
 
 Stop active sub-sessions before changing versions. Sub-session compatibility follows the minor version before 1.0 and the major version from 1.0 onward. Sessions from another compatibility line cannot be resumed directly.
 
