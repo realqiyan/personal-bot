@@ -30,7 +30,7 @@ test("native autocomplete exposes current command contracts", async t => {
   const suggest = text => autocomplete.getSuggestions([text], 0, text.length, { force: false });
   const all = await suggest("/pbot ");
   assert.equal(all.prefix, "");
-  assert.deepEqual(all.items.map(item => item.value), ["init", "status", "agents", "teams", "python"]);
+  assert.deepEqual(all.items.map(item => item.value), ["init", "status", "history", "agents", "teams", "python"]);
   const filtered = await suggest("/pbot st");
   assert.deepEqual(filtered.items.map(item => item.value), ["status"]);
   const completed = autocomplete.applyCompletion(["/pbot st"], 0, 8, filtered.items[0], filtered.prefix);
@@ -54,7 +54,7 @@ for (const legacy of [undefined, '{"format":"legacy/1","status":"pending"}', "in
     assert.equal(environment.resourceRoot, resourceRoot);
     assert.equal(environment.python.state, "error");
     assert.deepEqual(errors, []);
-    assert.deepEqual(session.getAllTools().map(t => t.name).filter(n => n.startsWith("pbot_")).sort(), ["pbot_agent", "pbot_team", "pbot_team_message"]);
+    assert.deepEqual(session.getAllTools().map(t => t.name).filter(n => n.startsWith("pbot_")).sort(), ["pbot_agent", "pbot_history", "pbot_team", "pbot_team_message"]);
     assert.ok(loader.getSkills().skills.length > 0);
     assert.deepEqual(await readdir(root), legacy === undefined ? [] : [".legacy"]);
     if (legacy !== undefined) assert.equal(await readFile(join(root, ".legacy/workspace.json"), "utf8"), legacy);
@@ -63,7 +63,7 @@ for (const legacy of [undefined, '{"format":"legacy/1","status":"pending"}', "in
     await writeFile(join(root, "AGENTS.md"), "User instructions");
     await session.prompt("/pbot init");
     assert.equal(await readFile(join(root, "AGENTS.md"), "utf8"), "User instructions");
-    assert.deepEqual(session.getAllTools().map(t => t.name).filter(n => n.startsWith("pbot_")).sort(), ["pbot_agent", "pbot_team", "pbot_team_message"]);
+    assert.deepEqual(session.getAllTools().map(t => t.name).filter(n => n.startsWith("pbot_")).sort(), ["pbot_agent", "pbot_history", "pbot_team", "pbot_team_message"]);
   });
 }
 
@@ -94,7 +94,7 @@ test("real codemode discovers Personal Bot and uses native CLI without initializ
     return { names, namespace: namespace.name, agents, output };
   `);
   const data = scriptValue(result);
-  assert.deepEqual(data.names, ["pbot_agent", "pbot_team", "pbot_team_message"]);
+  assert.deepEqual(data.names, ["pbot_agent", "pbot_history", "pbot_team", "pbot_team_message"]);
   assert.equal(data.namespace, "pbot");
   assert.deepEqual(data.agents, { agents: [] });
   assert.ok(result.details.calls.every(call => call.status === "ok"));
@@ -124,12 +124,19 @@ test("remaining tool declarations and structured outputs match their contracts",
   assert.ok(schema(agent.outputSchema)(output.structuredContent));
   assert.deepEqual(output.details, output.structuredContent);
   await assert.rejects(agent.execute("removed", { action: "wait", agentId: "x" }));
+  const history = tools.find(t => t.name === "pbot_history");
+  const found = await history.execute("history", { action: "search" });
+  assert.ok(schema(history.outputSchema)(found.structuredContent));
+  assert.equal(found.structuredContent.total, 0);
+  await assert.rejects(history.execute("missing-node", { action: "read" }));
 });
 
 test("workspace shutdown invalidates previously acquired tools", async t => {
   const { session } = await host(t);
   const agent = session.agent.state.tools.find(t => t.name === "pbot_agent");
+  const history = session.agent.state.tools.find(t => t.name === "pbot_history");
   await session.extensionRunner.emit({ type: "session_shutdown", reason: "reload" });
   await assert.rejects(agent.execute("stale", { action: "list" }));
+  await assert.rejects(history.execute("stale", { action: "search" }));
   assert.ok(!session.getCallableToolNames().includes("pbot_agent"));
 });

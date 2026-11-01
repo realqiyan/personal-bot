@@ -68,12 +68,14 @@ Describe the task directly: organize project materials, compare research finding
 | --- | --- |
 | `/pbot init` | Create missing material directories and root `AGENTS.md` |
 | `/pbot status` | Show workspace path, Personal Bot version, and Python environment status |
+| `/pbot history [text]` | Search historical exchanges and summaries; read originals and navigate their parents and children |
 | `/pbot agents` | Inspect specialists; enter sessions, send instructions, rename, or stop tasks |
 | `/pbot teams` | Inspect teams and public messages; start rounds, pause, close, or open members |
 | `/pbot python setup` | Retry shared venv preparation and activation; no path argument needed |
 | `/reload` | Pi's native command to reload extensions and resources |
 
 - **Native tools:** Use CLI commands through Bash with their current help. Keep concise provider guides and evidence references. Configure MCP for the current project by default: run `pi mcp add --local <server> ...` from the workspace root to write `.pi/mcp.json`, then inspect the configuration source with `/mcp`. Change user-level configuration only when cross-project use is explicitly requested. No Personal Bot registration, parameter binding, or permission table is needed. See the [connection skill](resources/skills/provider-connections/SKILL.md).
+- **History:** No session naming is required. Browse with `/pbot history`, or ask the assistant to look something up. `pbot_history` searches originals and summaries and follows parent/child references. Groups of four consecutive exchanges form a summary tree. Originals are searchable first; after a main interaction ends, the current Pi model builds pending summaries one at a time, including older discovered sessions. This makes extra model calls. New input cancels this work; a later idle period resumes it. Loading and searching make no model calls. Exchanges and summaries are stored in the workspace at `.pi/pbot/history/` and remain searchable when copied to another machine. Existing user-level indexes are copied into the workspace, keeping the old copies. See [history](docs/history.md).
 - **Research and analysis:** Ask the assistant to synthesize evidence, explain conflicts, check calculations and definitions, or identify assumptions to validate first.
 - **Independent sub-sessions:** Personal Bot supports tmux and independent Pi sessions; install tmux on the system to use them. `pbot_agent start` returns immediately; without a message, prompts, or files it creates an idle process without calling a model. Task completion produces a notification. Options cover models, directories, files, tools, and resources. Operations include send, follow-up, rename, status, read, stop, and explicit resume; there is no foreground/background flag or wait operation. `/pbot agents` shows active agents and can open their TUI. Main-session reload preserves running agents; exit or session switching stops them and retains history. Sub-sessions use native CLI/MCP within their delegated scope. See [specialist collaboration](docs/agent-collaboration.md).
 - **Teams:** `pbot_team` groups existing agents for `roundRobin` discussion or `parallel` rounds. Members exchange original messages through `pbot_team_message`; ordinary posts do not wake models. A running team reserves its members. Pause and drain in-flight work before private messages; reload pauses teams without replaying requests. The first release uses fixed membership and bounded rounds, not dynamic ask/reply wake-ups. See [specialist collaboration](docs/agent-collaboration.md).
@@ -92,6 +94,7 @@ Personal Bot maintains no separate provider-call ledger or result wrapper. Nativ
 | `AGENTS.md` | Material navigation and working agreements |
 | `areas/`, `projects/` | Long-term goals, task definitions, conclusions, and deliverables |
 | `knowledge/` | Reusable concepts, methods, and analysis definitions |
+| `.pi/pbot/history/` | Saved exchanges, summaries, and node links that can travel with the workspace |
 | `providers/` | Provider guides, coverage gaps, and validation evidence |
 | `scratch/` | Temporary scripts, query and calculation data, downloads, and runtime environments |
 | `agents/`, `.agents/skills/` | Workspace additions to coordinator/general-purpose roles and workspace skills |

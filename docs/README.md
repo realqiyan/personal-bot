@@ -8,6 +8,7 @@
 | [技术设计](technical-design.md) | 系统组成、生命周期与资源加载 |
 | [工具与执行](capability-design.md) | CLI/MCP 接入、授权和结果核验 |
 | [专家协作](agent-collaboration.md) | 子会话工具、通信、通知和生命周期 |
+| [历史对话](history.md) | 自动收录、连续摘要树、全文查询与原文展开 |
 | [文件存储](file-storage.md) | 数据位置、写入规则和历史保留 |
 | [验证](validation.md) | 本地测试、真实模型冒烟结果与剩余验收 |
 | [npm 发布](release.md) | 发布配置、授权、操作与验收 |

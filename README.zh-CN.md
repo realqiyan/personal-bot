@@ -66,12 +66,14 @@ pi install --local npm:task-conductor-plugin
 | --- | --- |
 | `/pbot init` | 可选地补建资料目录和缺失的根 `AGENTS.md` |
 | `/pbot status` | 查看工作区路径、Personal Bot 版本和 Python 环境状态 |
+| `/pbot history [关键词]` | 搜索历史问答与分层摘要，查看原文和上下层节点 |
 | `/pbot agents` | 查看专家状态；进入会话、补充要求、重命名或停止任务 |
 | `/pbot teams` | 查看团队与公共消息，开展轮次、暂停、关闭或进入成员 |
 | `/pbot python setup` | 手工重试共享 venv 的准备并激活，无需指定路径 |
 | `/reload` | Pi 原生命令，重载插件与资源 |
 
 - **原生工具**：CLI 通过 Bash 使用原生命令与当前 help，手册只保留当前使用所需的信息和证据引用；MCP 默认只接入当前项目，从工作区根目录执行 `pi mcp add --local <server> ...`，保存到 `.pi/mcp.json`，通过 `/mcp` 核对配置来源。只有明确要求跨项目使用时才修改用户级配置。不需要 Personal Bot 注册、参数绑定或权限表。方法见[接入技能](resources/skills/provider-connections/SKILL.md)。
+- **历史回溯**：无需命名会话。用 `/pbot history` 浏览，或直接请助手查找；`pbot_history` 搜索原文和各层摘要，沿父子节点展开。连续问答每四个节点逐层汇总，原文先可查询，摘要在主交互结束后使用当前 Pi 模型串行补齐，有额外模型调用。新输入会取消整理，后续继续。加载与查询不调用模型。问答与摘要保存在工作区 `.pi/pbot/history/`，随工作区复制后仍能查询；旧用户级索引会复制过来并保留旧副本。详见[历史对话](docs/history.md)。
 - **研究与分析**：可要求“综合这些资料并说明证据冲突”“核验这份分析的口径与计算”或“找出先要验证的关键假设”。
 - **独立子会话**：包内提供 tmux 与独立 Pi 会话，需系统安装 tmux。`pbot_agent start` 立即返回；省略 message/prompts/files 时只创建待命进程，不调用模型。工作完成后自动通知。支持模型/目录/文件/工具与资源选项、send、follow-up、rename、status、read、stop 和显式 resume，没有前后台参数或 wait。`/pbot agents` 展示正在工作的 agent，可进入子 TUI。主 reload 保持运行，退出或切换会话停止并保留历史。子会话也使用原生 CLI/MCP，按委派范围工作。详见[专家协作](docs/agent-collaboration.md)。
 - **团队协作**：`pbot_team` 将已有 agent 组成固定团队，支持 roundRobin 轮流讨论和 parallel 并行轮次。成员通过 `pbot_team_message` 直接交换原文，普通 post 不唤醒模型。运行中的团队占用成员；先暂停并收尾，再切换私人工作。reload 暂停团队，不重放旧请求。首版不包含动态 ask/返回唤醒，详见[专家协作](docs/agent-collaboration.md)。
@@ -90,6 +92,7 @@ pi install --local npm:task-conductor-plugin
 | `AGENTS.md` | 资料导航与工作约定 |
 | `areas/`、`projects/` | 长期目标、任务定义、结论与交付物 |
 | `knowledge/` | 可复用的概念、方法与口径 |
+| `.pi/pbot/history/` | 可随工作区分享的问答原文、摘要与节点关系 |
 | `providers/` | 提供方手册、覆盖缺口与验证依据 |
 | `scratch/` | 临时脚本、查询与计算数据、下载及运行环境 |
 | `agents/`、`.agents/skills/` | coordinator/general-purpose 职责补充与工作区技能 |

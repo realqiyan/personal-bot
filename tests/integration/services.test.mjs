@@ -13,13 +13,16 @@ import { TeamService } from "../../dist/services/agents/team-service.js";
 import { PythonEnvironmentService } from "../../dist/services/workspace/python-environment-service.js";
 import { WorkspaceInstance } from "../../dist/extension/lifecycle.js";
 import { Confirmations } from "../../dist/ui/confirmation.js";
+import { HistoryService } from "../../dist/services/history/history-service.js";
+import { HistoryFiles } from "../../dist/storage/history-files.js";
+import { PiHistory } from "../../dist/integrations/pi/history.js";
 
 async function fixture(t) {
   const { root, session } = await host(t);
   const confirmations = new Confirmations(), ctx = session.extensionRunner.createToolContext("local", undefined);
   const agents = new AgentService(root, join(root, "agent-state"), new PiAgents());
   const instance = new WorkspaceInstance(root, new PythonEnvironmentService(root), agents,
-    new TeamService(root, agents.files, agents.teamFiles));
+    new TeamService(root, agents.files, agents.teamFiles), new HistoryService(root, new HistoryFiles(join(root, "history-index")), new PiHistory(root)));
   t.after(() => instance.close());
   return { root, ctx, confirmations, instance };
 }
