@@ -7,7 +7,7 @@ import { fileId } from "./file-access.js";
 
 function record(value: unknown): HistoryRecord {
   requireThat(object(value) && typeof value.id === "string" && typeof value.sessionId === "string" &&
-    typeof value.file === "string" && Array.isArray(value.nodes), "历史索引无效。");
+    typeof value.name === "string" && Array.isArray(value.nodes), "历史索引无效。");
   return value as unknown as HistoryRecord;
 }
 export class HistoryFiles {

@@ -14,7 +14,7 @@ const resultSchema = Type.Object({
   total: Type.Optional(Type.Integer()), nextOffset: Type.Optional(nullableOffset),
   node: Type.Optional(Type.Object({ ...node.properties, text: Type.String(), totalLength: Type.Integer(), nextOffset: nullableOffset,
     parents: Type.Array(node), children: Type.Array(node), nextChildrenOffset: nullableOffset,
-    source: Type.Object({ file: Type.String({ description: "原生来源路径，相对工作区；跨机器后可能不存在，问答正文保存在工作区存档中。" }), entryIds: Type.Array(Type.String()) }), warnings: Type.Array(Type.String()) })),
+    source: Type.Object({ sessionId: Type.String({ description: "原始 Pi 会话 ID；来源不保存文件路径。" }), entryIds: Type.Array(Type.String()) }), warnings: Type.Array(Type.String()) })),
   warnings: Type.Array(Type.String()),
 });
 export function historyTool(service: HistoryService, access: CallAccess) {

@@ -1,11 +1,10 @@
 import { randomUUID } from "node:crypto";
-import { relative, resolve } from "node:path";
 import type { HistoryExchange, HistoryLocation, HistoryNode, HistoryRecord, HistorySession, HistorySource, HistorySummarizer } from "../../model/history.js";
 import type { HistoryFiles } from "../../storage/history-files.js";
 import { requireThat } from "../../common/validation.js";
 
 /** Shared prefixes reuse nodes; only consecutive exchanges on one native branch can merge. */
-export function indexHistory(workspace: string, session: HistorySession, previous?: HistoryRecord): HistoryRecord {
+export function indexHistory(session: HistorySession, previous?: HistoryRecord): HistoryRecord {
   const id = previous?.id ?? randomUUID(), nodes = new Map<string, HistoryNode>();
   const old = new Map(previous?.nodes.map(node => [node.id, node])), changed = new Set<string>();
   const add = (value: HistoryExchange, level: number, children: string[] = []): HistoryNode => {
@@ -38,7 +37,7 @@ export function indexHistory(workspace: string, session: HistorySession, previou
     from: dates[0] ?? "", to: dates.at(-1) ?? "", parents: [],
     children: [...roots].sort((a, b) => nodes.get(a)!.from.localeCompare(nodes.get(b)!.from)) });
   for (const node of nodes.values()) for (const child of node.children) nodes.get(child)!.parents.push(node.id);
-  return { id, sessionId: session.sessionId, file: relative(workspace, session.file), name: session.name, nodes: [...nodes.values()] };
+  return { id, sessionId: session.sessionId, name: session.name, nodes: [...nodes.values()] };
 }
 
 export interface HistoryQuery { query?: string; sessionId?: string; from?: string; to?: string; offset?: number; limit?: number }
@@ -64,17 +63,21 @@ export class HistoryService {
   }
   private async load(location: HistoryLocation, signal?: AbortSignal) {
     const previous = this.files.list();
-    for (const { id, sessionId, file, name, nodes } of this.previousFiles?.list(this.root) ?? []) {
+    for (const value of previous) if ("file" in value) {
+      const { id, sessionId, name, nodes } = value;
+      this.files.save({ id, sessionId, name, nodes });
+    }
+    for (const { id, sessionId, name, nodes } of this.previousFiles?.list(this.root) ?? []) {
       if (previous.some(record => record.sessionId === sessionId)) continue;
-      const value = { id, sessionId, file: relative(this.root, file), name, nodes };
+      const value = { id, sessionId, name, nodes };
       this.files.save(value); previous.push(value);
     }
     this.previousFiles = undefined;
-    const { sessions, warnings } = await this.source.scan(location, previous.map(record => resolve(this.root, record.file)), signal);
+    const { sessions, warnings } = await this.source.scan(location, signal);
     this.check(); signal?.throwIfAborted();
     const known = new Map(this.files.list().map(record => [record.sessionId, record]));
     for (const session of sessions) {
-      const before = known.get(session.sessionId), value = indexHistory(this.root, session, before);
+      const before = known.get(session.sessionId), value = indexHistory(session, before);
       if (JSON.stringify(before) !== JSON.stringify(value)) this.files.save(value);
       known.set(session.sessionId, value);
     }
@@ -112,7 +115,7 @@ export class HistoryService {
     return { ...brief(record, node), text: node.text.slice(offset, end), totalLength: node.text.length,
       nextOffset: end < node.text.length ? end : null,
       parents: node.parents.map(id => brief(record, lookup.get(id)!)), children: children.values.map(id => brief(record, lookup.get(id)!)),
-      nextChildrenOffset: children.nextOffset, source: { file: record.file, entryIds: node.entryIds }, warnings: this.warnings };
+      nextChildrenOffset: children.nextOffset, source: { sessionId: record.sessionId, entryIds: node.entryIds }, warnings: this.warnings };
   }
   /** One worker per workspace instance. Failed or cancelled nodes remain pending for the next idle period. */
   organize(summarize: HistorySummarizer, signal: AbortSignal): Promise<void> {

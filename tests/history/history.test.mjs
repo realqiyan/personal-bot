@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { basename, join, relative } from "node:path";
+import { basename, join } from "node:path";
 import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
@@ -28,7 +28,7 @@ async function fixture(t) {
 }
 
 test("history preserves Q&A and steering, omits tool logs, and merges only within native branches", async t => {
-  const { root, manager, file } = await fixture(t);
+  const { manager, file } = await fixture(t);
   const hidden = randomUUID();
   manager.appendMessage({ role: "user", content: "第一问", timestamp: Date.now() });
   assistant(manager, [{ type: "text", text: hidden }, { type: "toolCall", id: "call", name: "bash", arguments: { command: "pwd" } }], "toolUse");
@@ -42,9 +42,9 @@ test("history preserves Q&A and steering, omits tool logs, and merges only withi
   for (let i = 5; i <= 8; i++) exchange(manager, `方案 B ${i}`, `结果 B ${i}`);
   manager.appendMessage({ role: "user", content: "尚未完成", timestamp: Date.now() });
   assistant(manager, [{ type: "text", text: "部分回答" }], "aborted");
-  const original = await readFile(file, "utf8"), source = projectHistory(file, original);
+  const original = await readFile(file, "utf8"), source = projectHistory(original);
   assert.equal(source.branches.length, 2);
-  const record = indexHistory(root, source), leaves = record.nodes.filter(node => node.kind === "exchange");
+  const record = indexHistory(source), leaves = record.nodes.filter(node => node.kind === "exchange");
   assert.equal(leaves.length, 13);
   assert.equal(leaves.filter(node => !node.completed).length, 1);
   assert.ok(leaves.some(node => node.entryIds.length === 3 && node.text.includes("补充要求")));
@@ -85,10 +85,10 @@ test("workspace archives retain summaries across old-store import, copying, miss
   for (let i = 0; i < 4; i++) exchange(manager, `迁移问题 ${i}`, `回答 ${i}`);
   exchange(foreign.manager, "其他工作区", "不应导入");
   const original = await readFile(file, "utf8"), previousFiles = new HistoryFiles(join(root, "user-history"));
-  const record = { ...indexHistory(root, projectHistory(file, original)), workspace: root, file };
+  const record = { ...indexHistory(projectHistory(original)), workspace: root, file };
   const summary = record.nodes.find(node => node.kind === "summary"), needle = randomUUID();
   summary.text = needle; summary.ready = true; previousFiles.save(record);
-  previousFiles.save({ ...indexHistory(foreign.root, projectHistory(foreign.file, await readFile(foreign.file, "utf8"))),
+  previousFiles.save({ ...indexHistory(projectHistory(await readFile(foreign.file, "utf8"))),
     workspace: foreign.root, file: foreign.file });
   const oldPath = join(previousFiles.directory, record.id + ".json"), oldContent = await readFile(oldPath, "utf8");
   const files = new HistoryFiles(join(root, ".pi/pbot/history"));
@@ -97,7 +97,7 @@ test("workspace archives retain summaries across old-store import, copying, miss
   await service.refresh({ directory: manager.getSessionDir(), file });
   assert.equal(service.search().total, 1);
   assert.equal(service.read(summary.id).text, needle);
-  assert.equal(files.list()[0].file, relative(root, file));
+  assert.equal(Object.hasOwn(files.list()[0], "file"), false);
   assert.equal(Object.hasOwn(files.list()[0], "workspace"), false);
   assert.equal(await readFile(oldPath, "utf8"), oldContent);
   // Loading again must prefer the newer workspace archive over the old user-level copy.
@@ -110,10 +110,14 @@ test("workspace archives retain summaries across old-store import, copying, miss
 
   const copiedRoot = join(root, "another-machine"), copiedFiles = new HistoryFiles(join(copiedRoot, ".pi/pbot/history"));
   await cp(files.directory, copiedFiles.directory, { recursive: true });
+  const stored = copiedFiles.list()[0], archiveFile = join(copiedFiles.directory, stored.id + ".json");
+  // An older archive's path must be removed without following it or changing the saved content.
+  await writeFile(archiveFile, JSON.stringify({ ...stored, file: foreign.file }));
   const copied = new HistoryService(copiedRoot, copiedFiles, new PiHistory(copiedRoot));
   t.after(() => copied.close());
   const location = { directory: join(copiedRoot, "native-sessions") };
   await copied.refresh(location);
+  assert.deepEqual(JSON.parse(await readFile(archiveFile, "utf8")), stored);
   assert.deepEqual(copied.warnings, []);
   assert.equal(copied.search().total, 1);
   const found = copied.search({ query: needle }).matches[0];
@@ -127,7 +131,7 @@ test("workspace archives retain summaries across old-store import, copying, miss
   await copied.refresh({ ...location, file: relocated });
   assert.equal(copied.search().total, 1);
   assert.equal(copied.read(summary.id).text, needle + " updated");
-  assert.equal(copied.read(summary.id).source.file, relative(copiedRoot, relocated));
+  assert.deepEqual(copied.read(summary.id).source, { sessionId: manager.getSessionId(), entryIds: summary.entryIds });
   assert.equal(copiedFiles.list().length, 1);
   assert.equal(await readFile(file, "utf8"), original);
 });
@@ -135,8 +139,8 @@ test("workspace archives retain summaries across old-store import, copying, miss
 test("history searches all levels, pages original text and links, and reuses saved summaries after refresh", async t => {
   const { root, manager, file } = await fixture(t);
   for (let i = 0; i < 20; i++) exchange(manager, `中文问题 ${i}`, "长回答🙂".repeat(400));
-  const original = await readFile(file, "utf8"), source = projectHistory(file, original);
-  const files = new HistoryFiles(join(root, "index")), record = indexHistory(root, source);
+  const original = await readFile(file, "utf8"), source = projectHistory(original);
+  const files = new HistoryFiles(join(root, "index")), record = indexHistory(source);
   const saved = record.nodes.find(node => node.kind === "summary"), needle = randomUUID();
   saved.text = needle; saved.ready = true; files.save(record);
   const service = new HistoryService(root, files, new PiHistory(root));

@@ -37,13 +37,13 @@ function exchanges(branch: SessionEntry[]): HistoryExchange[] {
 }
 
 /** Parse in memory; never open a writable SessionManager or migrate native JSONL. */
-export function projectHistory(file: string, content: string): HistorySession {
+export function projectHistory(content: string): HistorySession {
   const parsed = parseSessionEntries(content), header = parsed[0];
   requireThat(header?.type === "session", "缺少 Pi 会话头。");
   const manager = SessionManager.inMemory(header.cwd, undefined, parsed), entries = manager.getEntries();
   const parents = new Set(entries.map(entry => entry.parentId));
   const tips = entries.filter(entry => !parents.has(entry.id));
-  return { sessionId: header.id, file, name: manager.getSessionName() ?? "", branches: tips.map(tip => exchanges(manager.getBranch(tip.id))).filter(branch => branch.length) };
+  return { sessionId: header.id, name: manager.getSessionName() ?? "", branches: tips.map(tip => exchanges(manager.getBranch(tip.id))).filter(branch => branch.length) };
 }
 
 export const historyLocation = (ctx: ExtensionContext): HistoryLocation => {
@@ -52,15 +52,15 @@ export const historyLocation = (ctx: ExtensionContext): HistoryLocation => {
 };
 export class PiHistory implements HistorySource {
   constructor(private readonly root: string, private readonly relatedFiles: () => string[] = () => []) {}
-  async scan(location: HistoryLocation, knownFiles: string[], signal?: AbortSignal) {
+  async scan(location: HistoryLocation, signal?: AbortSignal) {
     const lists = await Promise.all([SessionManager.list(this.root, undefined, undefined, signal),
       SessionManager.list(this.root, location.directory, undefined, signal)]);
-    const files = new Set([...lists.flat().map(session => session.path), ...knownFiles, ...this.relatedFiles(), ...(location.file ? [location.file] : [])]);
+    const files = new Set([...lists.flat().map(session => session.path), ...this.relatedFiles(), ...(location.file ? [location.file] : [])]);
     const sessions: HistorySession[] = [], warnings: string[] = [];
     for (const file of files) {
       signal?.throwIfAborted();
       try {
-        const session = projectHistory(file, await readFile(file, { encoding: "utf8", signal }));
+        const session = projectHistory(await readFile(file, { encoding: "utf8", signal }));
         if (session.branches.length) {
           session.name ||= session.branches[0]![0]!.text.replace(/\s+/g, " ").slice(0, 80);
           sessions.push(session);

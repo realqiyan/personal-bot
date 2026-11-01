@@ -60,7 +60,7 @@ export async function showHistory(instance: WorkspaceInstance, ctx: ExtensionCom
       if (action === body || action === nextText) {
         if (action === nextText) textOffset = node.nextOffset!;
         const page = service.read(id, textOffset, 12000, childrenOffset);
-        await ctx.ui.editor(`历史正文 ${textOffset}/${page.totalLength}（修改不保存）`, page.text || "摘要尚未生成，可以展开下层节点。\n" + page.source.file);
+        await ctx.ui.editor(`历史正文 ${textOffset}/${page.totalLength}（修改不保存）`, page.text || "摘要尚未生成，可以展开下层节点。");
         continue;
       }
       if (action === nextChildren) { childrenOffset = node.nextChildrenOffset!; continue; }

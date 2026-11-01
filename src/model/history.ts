@@ -7,7 +7,6 @@ export interface HistoryExchange {
 }
 export interface HistorySession {
   sessionId: string;
-  file: string;
   name: string;
   branches: HistoryExchange[][];
 }
@@ -22,12 +21,11 @@ export interface HistoryNode extends HistoryExchange {
 export interface HistoryRecord {
   id: string;
   sessionId: string;
-  file: string;
   name: string;
   nodes: HistoryNode[];
 }
 export interface HistoryLocation { directory: string; file?: string }
 export interface HistorySource {
-  scan(location: HistoryLocation, knownFiles: string[], signal?: AbortSignal): Promise<{ sessions: HistorySession[]; warnings: string[] }>;
+  scan(location: HistoryLocation, signal?: AbortSignal): Promise<{ sessions: HistorySession[]; warnings: string[] }>;
 }
 export type HistorySummarizer = (text: string, signal: AbortSignal) => Promise<string>;
