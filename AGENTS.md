@@ -2,7 +2,7 @@
 
 ## Structure
 
-Personal Bot connects knowledge, research, and action. It is currently implemented as a workspace-scoped Pi extension package, not a standalone CLI.
+Personal Bot connects knowledge, research, and action. It is implemented as a workspace-scoped Pi extension package with a standalone installation CLI.
 
 - `src/pbot.ts`: dependency assembly and registration.
 - `src/tools/`: complete tool contracts, execution adapters, and explicit tool lists.
@@ -18,6 +18,8 @@ Personal Bot connects knowledge, research, and action. It is currently implement
 - `python/`: locked calculation dependencies, usage guidance, and native-library integration tests.
 - `docs/`: current architecture and validation limits.
 - `scripts/`: build helpers and shared Python venv preparation.
+- `bin/pbot.mjs`: standalone installation CLI launcher.
+- `lib/`: generated CLI imports shipped in the npm package.
 - `dist/`: generated test imports. Do not edit generated files.
 
 Keep the top-level layers. Group related files by domain within a layer: services use `agents/` and `workspace/`; integrations use `pi/` for session integration; tool contracts stay beside their domain tools. Tests use domain subdirectories under `tests/`.
@@ -33,11 +35,12 @@ Use Linux with Node.js 22.19 or later. Computation requires Python 3.11+.
 - `npm ci --ignore-scripts`: install locked dependencies.
 - `npm run check`: check TypeScript and dependency boundaries without emitting files.
 - `npm run check:dependencies`: check imports and cycles with dependency-cruiser.
-- `npm run build`: compile test imports into dist.
+- `npm run build`: compile test imports into dist and build the installation CLI.
+- `npm run build:cli`: compile the standalone installation CLI into lib.
 - `npm test`: build and run Node tests serially.
 - `npm pack --dry-run`: inspect package contents.
 
-Pi loads the source extension with jiti. The package does not require compiled JavaScript at runtime. Declare host-provided packages as peers, not runtime dependencies.
+Pi loads the source extension with jiti. The standalone CLI uses prebuilt lib files and must start without Pi. Declare host-provided packages as optional peers, not runtime dependencies. Installation adapters use the detected host's SDK in a separate process; do not bundle a second Pi SDK or create an installation registry.
 
 ## Development Principles
 

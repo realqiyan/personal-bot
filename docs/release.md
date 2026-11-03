@@ -1,6 +1,6 @@
 # npm 发布
 
-发布配置以 package.json 为准：包名 personal-bot，registry 为 npmjs，稳定版本使用 latest。包包含 Pi 扩展源码与资源，消费者由 Pi 直接加载。
+发布配置以 package.json 为准：包名 personal-bot，registry 为 npmjs，稳定版本使用 latest。包包含 Pi 扩展源码、资源和预构建的安装 CLI。扩展由 Pi 加载；npx 与全局 pbot 命令由 Node 直接运行。
 
 ## 首次配置
 
@@ -38,7 +38,7 @@ npm pack --dry-run
 npm pack
 ```
 
-核对包清单包含 src、resources、Python 锁文件、setup 脚本和 npm-shrinkwrap.json，排除 dist、node_modules、凭据与运行数据。Pi 宿主包保持 peerDependencies。
+prepack 先检查再构建 CLI。核对包清单包含 bin、lib、src、resources、Python 锁文件、setup 脚本和 npm-shrinkwrap.json，排除 dist、node_modules、凭据与运行数据。Pi 宿主包保持 optional peerDependencies，避免 npx 安装入口隐式下载宿主。另在独立 npm cache/prefix 中验证 tarball 的 npm exec 与全局 pbot --version，检查未额外安装 Pi SDK。
 
 在独立 Pi 配置和临时工作区验收安装；加载扩展会准备用户级 Python 环境，因此验收同时使用独立用户数据目录。
 

@@ -1,0 +1,16 @@
+[
+  {
+    "id": "task-conductor",
+    "label": "Task Conductor",
+    "description": "周期任务、流程和 DAG 的接入与使用引导；服务另行准备",
+    "source": "npm:task-conductor-plugin",
+    "defaultSelected": true
+  },
+  {
+    "id": "web-access",
+    "label": "Pi Web Access",
+    "description": "网页搜索与内容获取",
+    "source": "npm:pi-web-access",
+    "defaultSelected": true
+  }
+]

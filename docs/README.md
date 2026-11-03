@@ -12,6 +12,7 @@
 | [文件存储](file-storage.md) | 数据位置、写入规则和历史保留 |
 | [验证](validation.md) | 本地测试、真实模型冒烟结果与剩余验收 |
 | [npm 发布](release.md) | 发布配置、授权、操作与验收 |
+| [安装与升级](installation-design.md) | npx setup、工作区选择、插件安装、初始化与失败恢复 |
 
 增量设计与范围取舍见 [Subagent 升级方案](subagent-upgrade-proposal.md)。团队策略在 0.1.3 实现，0.2.0 将子会话对话交给 Pi 原生存储，不迁移旧历史。当前用法见专家协作；0.1.3 的真实模型冒烟、0.2.0 本地验证与剩余验收见验证。
 

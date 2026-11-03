@@ -10,25 +10,55 @@
 
 ## 安装
 
-需要 Linux、Node.js 22.19+，以及已配置模型和认证的 Pi。Python 计算需要 Python 3.11+。当前开发与测试使用 Pi 1.4.0，其他宿主版本需另行验证。
+安装器支持 Linux 和 macOS，需要 Node.js 22.19+、npm、Python 3.11+ 及 venv/ensurepip。在终端运行：
 
-从目标工作区根目录安装 npm 包并启动：
+```bash
+npx personal-bot@latest setup
+# 也可直接指定工作区
+npx personal-bot@latest setup --workspace ~/pbot-workspace
+```
+
+向导支持选择当前目录、已有目录或新建目录，安装或升级当前用户共用的 Pi，并在所选工作区安装 pbot。配套插件 `task-conductor-plugin`、`pi-web-access` 首次默认勾选，可取消；重复运行时按已有安装预选。各组件独立更新到最新稳定版，本地源码、Git 和固定版本默认保留，可显式切换。取消勾选或从维护者清单移除插件不会卸载已有安装。
+
+缺少 tmux 时使用已有的 Homebrew 或受支持的 Linux 包管理器安装。基础 Python 不满足要求时先给出修复指引；共享 venv 在 pbot 加载后自动准备。完成后默认提供启动 Pi，并执行 `/pbot init`，资料文件仍由原有命令补建。Pi 原生处理项目信任、登录和模型选择，安装本身不调用模型。
+
+需要长期使用短命令时，可另行安装：
+
+```bash
+npm install -g personal-bot@latest
+pbot setup
+```
+
+这里的全局 npm 安装只提供 `pbot` 命令，不向 Pi 注册全局扩展。`pbot setup` 使用全局安装的安装器版本；用 npm 更新它，或继续使用 `npx personal-bot@latest setup` 获取最新安装器。安装器不自动全局安装自己。
+
+核心步骤失败时停止启动，可选插件失败时继续处理其他项并汇总。成功步骤保留，修复后重跑同一命令；不自动整体回滚。工作区作用域、版本选择和边界见[安装与升级](docs/installation-design.md)。
+
+### 直接使用 Pi 安装
+
+已有 Pi 时，也可从目标工作区根目录安装并启动：
 
 ```bash
 pi install --local npm:personal-bot
 pi
 ```
 
-`--local` 将包声明保存在项目 `.pi/settings.json`。按 Pi 提示确认项目信任，每次从工作区根目录启动。Pi 加载 Personal Bot 就会启用角色、技能、工具及共享 Python 环境准备；没有第二个启用开关。不要全局安装，除非希望所有 Pi 会话都启用 Personal Bot。已有全局安装请用 Pi 原生包管理或 `pi config` 调整加载范围。
+`--local` 将包声明保存在项目 `.pi/settings.json`。按 Pi 提示确认项目信任，每次从工作区根目录启动。Pi 加载 Personal Bot 就会启用角色、技能、工具及共享 Python 环境准备；没有第二个启用开关。除非希望所有 Pi 会话都启用 Personal Bot，否则不要用省略 `--local` 的 `pi install` 注册全局扩展。已有全局安装请用 Pi 原生包管理或 `pi config` 调整加载范围。开发与原有测试基线为 Pi 1.4.0，安装器验收范围见[验证](docs/validation.md)。
 
 ### 从源码安装
 
-开发时可改用本地源码：
+开发时可改用本地源码；试用源码中的安装器先构建 CLI：
 
 ```bash
 git clone https://github.com/realqiyan/personal-bot.git
 cd personal-bot
 npm ci --ignore-scripts
+npm run build:cli
+node bin/pbot.mjs setup
+```
+
+若只需将源码作为 Pi 扩展加载：
+
+```bash
 cd /path/to/workspace
 pi install --local /absolute/path/to/personal-bot
 pi
@@ -103,7 +133,7 @@ Personal Bot 不在工作区内保存私有启用状态。Pi 配置仍由 Pi 管
 
 ## 更新与历史数据
 
-当前版本为 **0.2.3**。不维护工作区格式、初始化状态或升级机制。插件更新使用 Pi 原生包管理；本地安装则更新来源源码，依赖变化后执行 `npm ci --ignore-scripts`，再重载或重启 Pi。更换版本前先停止活动子会话；不同兼容线的子会话不能直接恢复。
+当前版本为 **0.2.4**。不维护工作区格式、初始化状态或升级机制。插件更新使用 Pi 原生包管理；本地安装则更新来源源码，依赖变化后执行 `npm ci --ignore-scripts`，再重载或重启 Pi。更换版本前先停止活动子会话；不同兼容线的子会话不能直接恢复。
 
 子会话 JSONL 由 Pi 保存在原生 sessions 目录或原生配置指定的位置；`pbot/subagents/` 只保存控制记录与会话引用，团队公共记录保存在 `pbot/teams/`。0.2.0 不兼容旧会话位置，不迁移或删除 0.1.x 历史；旧记录不进入当前列表或后台调度。先在旧版停止活动成员，更新后重新创建 agent。共享 Python 环境使用用户级 `pbot/python/.venv`，具体系统路径见 [Python 说明](python/README.md)。不自动导入其他应用的会话、配置或环境，也不修改其数据。MCP 连接与 CLI 环境按原生方式显式配置；用户资料、历史证据和备份原样保留。
 
@@ -124,7 +154,7 @@ npm test
 git diff --check
 ```
 
-`npm test` 包含冒烟和 E2E 测试，并生成测试用 `dist/`；运行时直接加载源码。包内容可用 `npm pack --dry-run` 检查。测试分组与限制见[验证](docs/validation.md)。
+`npm test` 包含冒烟和 E2E 测试，并生成测试用 `dist/` 与发布用 CLI `lib/`；Pi 扩展运行时仍直接加载源码。包内容可用 `npm pack --dry-run` 检查。测试分组与限制见[验证](docs/validation.md)。
 
 - [开发文档索引](docs/README.md)：架构、工具、专家协作、存储与验证。
 - [npm 发布](docs/release.md)：配置、授权、发布与安装验收。

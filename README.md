@@ -10,9 +10,32 @@ The model handles analysis, coordination, and native tools. Personal Bot adds wo
 
 ## Install
 
-Requirements: Linux, Node.js 22.19+, and Pi with a configured model and authentication. Python computation requires Python 3.11+. Development and local tests currently use Pi 1.4.0; other host versions need separate validation. Native MCP and the optional Task Conductor integration require Pi 1.4.0+.
+The installer supports Linux and macOS. It requires Node.js 22.19+, npm, and Python 3.11+ with venv/ensurepip. Run in an interactive terminal:
 
-From your workspace root:
+```bash
+npx personal-bot@latest setup
+# Or select the workspace directly
+npx personal-bot@latest setup --workspace ~/pbot-workspace
+```
+
+The wizard selects an existing or new directory, installs or updates the shared Pi executable, and installs pbot in that workspace. It offers `task-conductor-plugin` and `pi-web-access`, both selected by default on the first installation. Later runs preselect existing packages. Each normal npm package updates to its latest stable version. Local sources, Git sources, and pinned versions are kept unless you choose to switch. Deselecting a plugin or removing it from the maintained catalog does not uninstall it.
+
+Missing tmux is installed through an existing Homebrew or supported Linux package manager. Missing Python prerequisites produce repair instructions. pbot prepares its shared Python venv on startup. After installation, the wizard offers to start Pi and run `/pbot init`; the existing command owns workspace material creation. Pi handles project trust, login, and model selection. Installation does not call a model.
+
+For a persistent short command, install the package separately:
+
+```bash
+npm install -g personal-bot@latest
+pbot setup
+```
+
+This global npm installation provides the command; it does not register a global Pi extension. `pbot setup` uses the globally installed installer version. Update it with npm, or use `npx personal-bot@latest setup` for the latest installer. The npx command does not install itself globally.
+
+A core failure stops startup. An optional plugin failure allows the other plugins to proceed and is reported before you choose whether to start Pi. Completed steps remain in place; fix the cause and rerun setup. There is no automatic rollback across package managers. See the [installation design](docs/installation-design.md) for scope and recovery rules.
+
+### Install directly with Pi
+
+If Pi is already installed, run from your workspace root:
 
 ```bash
 pi install --local npm:personal-bot
@@ -21,16 +44,23 @@ pi
 
 `--local` saves the package declaration in the project's `.pi/settings.json`. Review and grant project trust when Pi prompts you, and start Pi from the workspace root. Loading Personal Bot enables its roles, skills, tools, and shared Python environment preparation. There is no separate activation switch.
 
-Avoid a global installation unless you want Personal Bot in every Pi session. Use Pi package management or `pi config` to adjust an existing installation's scope. Do not load both the npm and source installations.
+Use `pi install` without `--local` only when you want the extension in every Pi session. Use Pi package management or `pi config` to adjust an existing installation's scope. Do not load both the npm and source installations. The existing development and test baseline is Pi 1.4.0; installer acceptance limits are recorded in [validation](docs/validation.md).
 
 ### Install from source
 
-For development:
+To try the installer from source:
 
 ```bash
 git clone https://github.com/realqiyan/personal-bot.git
 cd personal-bot
 npm ci --ignore-scripts
+npm run build:cli
+node bin/pbot.mjs setup
+```
+
+To load only the source extension:
+
+```bash
 cd /path/to/workspace
 pi install --local /absolute/path/to/personal-bot
 pi
@@ -105,7 +135,7 @@ Personal Bot stores no private activation state in the workspace. Pi owns its co
 
 ## Updates and historical data
 
-Current release: **0.2.3**. Personal Bot maintains no workspace format, initialization state, or workspace upgrade mechanism. Update the plugin through Pi package management. For a local installation, update the source, run `npm ci --ignore-scripts` if dependencies changed, then reload or restart Pi.
+Current release: **0.2.4**. Personal Bot maintains no workspace format, initialization state, or workspace upgrade mechanism. Update the plugin through Pi package management. For a local installation, update the source, run `npm ci --ignore-scripts` if dependencies changed, then reload or restart Pi.
 
 Stop active sub-sessions before changing versions. Sub-session compatibility follows the minor version before 1.0 and the major version from 1.0 onward. Sessions from another compatibility line cannot be resumed directly.
 
@@ -128,7 +158,7 @@ npm test
 git diff --check
 ```
 
-`npm test` includes smoke and E2E tests and generates `dist/` for test imports. Runtime loading uses source files directly. Inspect package contents with `npm pack --dry-run`. See [validation](docs/validation.md) for test groups and limits.
+`npm test` includes smoke and E2E tests and generates `dist/` for test imports and `lib/` for the installation CLI. Pi still loads the extension source directly. Inspect package contents with `npm pack --dry-run`. See [validation](docs/validation.md) for test groups and limits.
 
 The README is available in English and Simplified Chinese. Detailed design documents and bundled guides are currently primarily in Chinese.
 

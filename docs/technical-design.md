@@ -16,7 +16,7 @@ Pi 命令、工具与事件
           integrations
 ```
 
-src/pbot.ts 装配依赖并注册入口。
+src/pbot.ts 装配扩展依赖并注册入口。src/extension/setup-cli.ts 装配独立安装命令；`pbot setup` 通过原生 npm/Pi 准备一个工作区，再启动 Pi 执行 `/pbot init`。安装器的顺序、来源保留与失败恢复由 services/installation 管理，接入层调用实际宿主的包管理接口，不创建模型会话。详见[安装与升级](installation-design.md)。
 
 | 目录 | 责任 |
 | --- | --- |
@@ -99,6 +99,6 @@ WorkspaceInstance 在当前进程激活 PATH、VIRTUAL_ENV 和 Python 路径变�
 
 工具提供 outputSchema，由 Pi 纳入 pbot namespace；codemode 按工具契约组合调用。原生 CLI/MCP 与可选 Task Conductor 的接入和授权见[工具与执行](capability-design.md)。
 
-包以 TypeScript 源码分发，由 Pi 加载；dist 仅供测试导入。发布版本以 package.json 为准，包内组件共用该版本。子会话兼容线在 1.0 前按次版本、1.0 起按主版本判断，跨线会话不能直接恢复。
+扩展以 TypeScript 源码分发，由 Pi 加载；dist 仅供测试导入。安装 CLI 使用现有 TypeScript 工具链单独生成 lib，由 bin/pbot.mjs 启动，消费者无需编译或预装 Pi。宿主 peer 标记 optional，避免 npx 自动安装 Pi；安装检查子进程在发现真实宿主后使用该宿主的 SDK 读取配置和切换来源声明。发布版本以 package.json 为准，包内组件共用该版本。子会话兼容线在 1.0 前按次版本、1.0 起按主版本判断，跨线会话不能直接恢复。
 
 开发验证见[验证](validation.md)，分发流程见[npm 发布](release.md)。

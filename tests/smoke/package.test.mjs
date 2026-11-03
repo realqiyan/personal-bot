@@ -57,6 +57,13 @@ test("smoke: packed sources load tools and the standalone setup script without d
   assert.deepEqual(await readdir(workspace.root), []);
   // Supply the already installed locked dependencies; do not download or install packages.
   await symlink(join(packageRoot, "node_modules"), join(packed, "node_modules"), "dir");
+  const manifest = JSON.parse(await readFile(join(packed, "package.json"), "utf8"));
+  const cli = await exec(process.execPath, [join(packed, "bin/pbot.mjs"), "--version"], {
+    cwd: workspace.root, env: { HOME: temp, PATH: "/usr/bin:/bin" },
+  });
+  assert.equal(cli.stdout.trim(), manifest.version);
+  assert.equal(manifest.bin.pbot, "./bin/pbot.mjs");
+  assert.ok((await readdir(join(packed, "resources/installer"))).includes("plugins.json"));
   await assert.rejects(readdir(join(packed, "dist")), { code: "ENOENT" });
   const pi = await workspace.start(packed);
   const resources = await pi.inspect();
