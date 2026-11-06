@@ -21,7 +21,7 @@ provenance 所用 repository 元数据须与实际公开仓库匹配。若改为
 
 ## 准备候选包
 
-使用 Linux、Node.js 22.19+ 和 Python 3.11+。更新版本：
+使用 Linux、Node.js 24.9+ 和 Python 3.11+ 准备发布包。Pi 与独立 CLI 的消费者检查仍使用 Node.js 22.19.0。更新版本：
 
 ```bash
 npm version <新版本> --no-git-tag-version --ignore-scripts
@@ -44,7 +44,7 @@ prepack 先检查再构建 CLI。核对包清单包含 bin、lib、src、resourc
 
 ## GitHub 发布
 
-[CI](../.github/workflows/ci.yml) 在 Node 22.19.0/24.x 执行检查和测试，再生成候选 tarball。[发布工作流](../.github/workflows/publish.yml)要求：
+[CI](../.github/workflows/ci.yml) 在 Node 24.x 安装完整开发依赖、执行检查和测试，再生成候选 tarball；独立 Node 22.19.0 作业安装同一 tarball，检查 CLI 不隐式安装宿主 SDK，再显式安装锁定的 Pi SDK，验证扩展、工具、技能和资料初始化。消费者检查不安装 dsh 开发依赖，不调用模型。[发布工作流](../.github/workflows/publish.yml)要求：
 
 - tag 为 v<稳定版本>，包与锁文件版本一致。
 - 提交已进入远端默认分支。
@@ -59,7 +59,7 @@ git tag "v$VERSION"
 git push origin "v$VERSION"
 ```
 
-发布作业下载本次 CI 的同一 tarball，使用 OIDC 和 provenance 上传，跳过包脚本，然后查询公开版本与 latest。npm 可能在上传成功后继续处理包，查询最多执行 20 次，失败后间隔 15 秒；只重试只读查询，不重试上传。普通分支推送只运行 CI；已推送的发布 tag 保持不变。预发布版本不适用此流程。
+发布作业下载本次 CI 的同一 tarball，使用 OIDC 和 provenance 上传，跳过包脚本，然后查询公开版本与 latest。npm 可能在上传成功后继续处理包，查询最多执行 20 次，失败后间隔 15 秒；只重试只读查询，不重试上传。普通分支推送只运行 CI；已发布到 npm 的版本及对应 tag 保持不变。只有 registry 明确返回该版本 404、此前未执行上传，并经维护者同意时，才可在修复和检查后将失败发布的 tag 更新到修复提交，继续发布同一版本；更新前再次核对 registry，并用远端旧 tag 对象限定推送，避免覆盖并发修改。预发布版本不适用此流程。
 
 ## 本机发布
 

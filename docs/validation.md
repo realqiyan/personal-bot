@@ -9,7 +9,7 @@ git diff --check
 npm pack --dry-run
 ```
 
-完整开发与验收使用 Linux、Node.js 24.9+；Pi 与独立 CLI 消费路径保留 Node.js 22.19+。npm test 先构建 dist 和 CLI、dsh Host/Web 的 lib，再串行执行 Node 测试。测试使用真实本地文件、进程、计算、Pi 1.4.0 与固定版 dsh 0.2.2-rc.1 SDK。Pi 开发依赖与相关传递组件统一锁定 1.4.0；宿主提供的包声明为 optional peer，不增加运行时副本。发布包包含 bin/lib，扩展仍由 Pi 加载 src，dist 不进入发布包。
+完整开发与验收使用 Linux、Node.js 24.9+；Pi 与独立 CLI 消费路径保留 Node.js 22.19+。CI 使用 Node 24.x 安装完整开发依赖、执行全量检查并构建候选包，再由独立 Node 22.19.0 作业安装同一 tarball，检查无宿主 SDK 的 CLI 与显式安装 Pi SDK 后的扩展、工具、技能及资料初始化。消费者检查不安装 dsh 开发依赖，也不调用模型。npm test 先构建 dist 和 CLI、dsh Host/Web 的 lib，再串行执行 Node 测试。测试使用真实本地文件、进程、计算、Pi 1.4.0 与固定版 dsh 0.2.2-rc.1 SDK。Pi 开发依赖与相关传递组件统一锁定 1.4.0；宿主提供的包声明为 optional peer，不增加运行时副本。发布包包含 bin/lib，扩展仍由 Pi 加载 src，dist 不进入发布包。
 
 | 范围 | 检查内容 |
 | --- | --- |

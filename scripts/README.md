@@ -14,6 +14,10 @@
 
 `npm run build:dsh` 调用 `build-dsh.mjs`，由 tsconfig.dsh.json 编译 Host 与浏览器入口，再用 esbuild 将 Web 代码包装为固定版原生包根 Loader 模块。宿主 SDK 保持 external；完整 build 和 prepack 先构建 CLI、再构建 dsh，统一输出到 lib。
 
+## 发布包消费者检查
+
+`node scripts/check-consumer.mjs <tarball>` 在临时目录安装实际发布包，先检查独立 CLI 与宿主 SDK 缺省状态，再安装 package.json 中锁定的 Pi SDK，验证扩展、工具、技能和资料初始化。CI 使用 Node.js 22.19.0 执行，完整开发依赖、dsh 构建和全量测试仍使用 Node.js 24.9+。检查使用独立用户目录与损坏 Python 目标，不下载计算依赖或调用模型；结束后删除本次临时目录。
+
 ## 构建清理
 
 `clean-dist.mjs` 由 npm run build 调用，仅清理仓库内生成的 dist/，供 TypeScript 重新编译测试导入。
