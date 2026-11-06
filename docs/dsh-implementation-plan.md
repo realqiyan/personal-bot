@@ -63,7 +63,7 @@ Pi 只维护 `.pi/pbot/history/`，dsh 只维护 `.dsh/pbot/history/`，两端�
 
 原生命令提供 `/pbot init`、`status`、`python setup` 及专家、团队、history 入口。Web 模块通过 dsh 原生 Remote 查询和操作同一服务，提供专家完整记录、直接对话、停止/恢复，团队操作与 history 展开。查询路径不得隐式激活 Agent。
 
-bundle patch 基于原生 Web profile，声明默认 pbot 组合、服务端插件和客户端依赖。固定版客户端发现只接受包根 Loader 名称，因此 `personal-bot` 包根导出作为 dsh 服务端入口的别名，bundle 使用包根名称加载；`personal-bot/dsh` 独立入口仍保留，Pi 继续显式加载源码入口。客户端遵守固定版本 module loader 格式；外部复用 Cordis、React 和原生 UI。宿主包为可选 peer，开发依赖固定版本，不在发布产物打包第二份 SDK。TypeBox 由本包作为共享契约库提供运行时依赖；dsh 不提供它，不能继续依靠 Pi 的安装间接供应。固定版 dsh 的输出 schema 只支持结构约束和 `oneOf`，因此协作工具保留完整生产端校验，并向宿主提供去除 TypeBox 元数据、采用互斥分支的结构 schema。
+bundle patch 基于原生 Web profile，声明默认 pbot 组合、服务端插件和客户端依赖。固定版客户端发现只接受包根 Loader 名称，因此 `personal-bot` 包根导出作为 dsh 服务端入口的别名，bundle 使用包根名称加载；`personal-bot/dsh` 独立入口仍保留，Pi 继续显式加载源码入口。客户端遵守固定版本 module loader 格式；外部复用 Cordis、React 和原生 UI。宿主包为可选 peer，开发依赖固定版本，不在发布产物打包第二份 SDK。TypeBox 是共享契约库，声明为范围为 `"*"` 的必需 peer，并在开发依赖中锁定版本。Pi 原生加载器提供 TypeBox；dsh 不提供它，由包管理器在安装时补齐，不能依靠 Pi 的安装间接供应。固定版 dsh 的输出 schema 只支持结构约束和 `oneOf`，因此协作工具保留完整生产端校验，并向宿主提供去除 TypeBox 元数据、采用互斥分支的结构 schema。
 
 安装使用原生插件流程。`--from-default-profile` 仅用于首次创建，不作为升级命令。Pi 安装 CLI 不扩展为 dsh 配置管理器。`prepack` 生成 CLI、dsh 服务端和 Web 产物；`dist` 仍只用于测试。
 

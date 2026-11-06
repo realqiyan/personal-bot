@@ -47,6 +47,7 @@ for (const legacy of [undefined, '{"format":"legacy/1","status":"pending"}', "in
       await mkdir(join(root, ".legacy"));
       await writeFile(join(root, ".legacy/workspace.json"), legacy);
     } });
+    assert.deepEqual(loader.getExtensions().warnings ?? [], []);
     const started = await session.extensionRunner.emitBeforeAgentStart({ messageType: "user", prompt: "" }, { cwd: root });
     assert.doesNotThrow(() => buildSystemPrompt(started.systemPromptOptions));
     const environment = JSON.parse(started.systemPromptOptions.sections.pbot_environment);

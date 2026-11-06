@@ -44,7 +44,7 @@ pi
 
 `--local` saves the package declaration in the project's `.pi/settings.json`. Review and grant project trust when Pi prompts you, and start Pi from the workspace root. Loading Personal Bot enables its roles, skills, tools, and shared Python environment preparation. There is no separate activation switch.
 
-Use `pi install` without `--local` only when you want the extension in every Pi session. Use Pi package management or `pi config` to adjust an existing installation's scope. Do not load both the npm and source installations. The existing development and test baseline is Pi 1.4.0; installer acceptance limits are recorded in [validation](docs/validation.md).
+Use `pi install` without `--local` only when you want the extension in every Pi session. Use Pi package management or `pi config` to adjust an existing installation's scope. Do not load both the npm and source installations. The development and test baseline is Pi 1.5.0; installer acceptance limits are recorded in [validation](docs/validation.md).
 
 ### Install from source
 
@@ -76,7 +76,7 @@ The bare `/pbot` action opens workspace, specialist, team, and history managemen
 
 ### Optional: Task Conductor
 
-For scheduled tasks, recurring workflows, or DAGs, install `task-conductor-plugin`. This integration package is distinct from the `task-conductor` service and is not required for Personal Bot. It requires Pi 1.4.0+ with native MCP support and npm.
+For scheduled tasks, recurring workflows, or DAGs, install `task-conductor-plugin`. This integration package is distinct from the `task-conductor` service and is not required for Personal Bot. Use it with the project's Pi 1.5.0 baseline, native MCP support, and npm.
 
 Check `pi list` first. If the package is already installed but its skill is missing, check resource configuration and reload rather than installing it again. Review the [upstream integration guide](https://github.com/realqiyan/task-conductor/blob/master/docs/host-integrations.md), then run from the workspace root:
 
@@ -142,7 +142,7 @@ Personal Bot stores no private activation state in the workspace. Pi owns its co
 
 ## Updates and historical data
 
-Current release: **0.2.5**. Personal Bot maintains no workspace format, initialization state, or workspace upgrade mechanism. Update the plugin through its native host package manager. For a local Pi installation, update the source, run `npm ci --ignore-scripts` if dependencies changed, then reload or restart Pi.
+Current release: **0.2.6**. Personal Bot maintains no workspace format, initialization state, or workspace upgrade mechanism. Update the plugin through its native host package manager. For a local Pi installation, update the source, run `npm ci --ignore-scripts` if dependencies changed, then reload or restart Pi.
 
 Stop active sub-sessions before changing versions. Sub-session compatibility follows the minor version before 1.0 and the major version from 1.0 onward. Sessions from another compatibility line cannot be resumed directly.
 

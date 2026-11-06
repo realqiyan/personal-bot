@@ -42,7 +42,7 @@ pi install --local npm:personal-bot
 pi
 ```
 
-`--local` 将包声明保存在项目 `.pi/settings.json`。按 Pi 提示确认项目信任，每次从工作区根目录启动。Pi 加载 Personal Bot 就会启用角色、技能、工具及共享 Python 环境准备；没有第二个启用开关。除非希望所有 Pi 会话都启用 Personal Bot，否则不要用省略 `--local` 的 `pi install` 注册全局扩展。已有全局安装请用 Pi 原生包管理或 `pi config` 调整加载范围。开发与原有测试基线为 Pi 1.4.0，安装器验收范围见[验证](docs/validation.md)。
+`--local` 将包声明保存在项目 `.pi/settings.json`。按 Pi 提示确认项目信任，每次从工作区根目录启动。Pi 加载 Personal Bot 就会启用角色、技能、工具及共享 Python 环境准备；没有第二个启用开关。除非希望所有 Pi 会话都启用 Personal Bot，否则不要用省略 `--local` 的 `pi install` 注册全局扩展。已有全局安装请用 Pi 原生包管理或 `pi config` 调整加载范围。开发与测试基线为 Pi 1.5.0，安装器验收范围见[验证](docs/validation.md)。
 
 ### 从源码安装
 
@@ -74,7 +74,7 @@ Web 的裸 `/pbot` 打开工作区、专家、团队和历史管理页。专家�
 
 ### 可选安装 Task Conductor
 
-需要周期任务、重复流程或 DAG 时，安装接入包 `task-conductor-plugin`。它不是服务包 `task-conductor`，也不是启用 pbot 的前提。该接入方式需要 Pi 1.4.0+ 的原生 MCP 和 npm。
+需要周期任务、重复流程或 DAG 时，安装接入包 `task-conductor-plugin`。它不是服务包 `task-conductor`，也不是启用 pbot 的前提。按本项目 Pi 1.5.0 基线使用原生 MCP 和 npm 接入。
 
 先用 `pi list` 检查是否已经安装；已安装但技能不可见时，检查资源是否启用并重载，不要重复安装。新安装请审阅[官方接入说明](https://github.com/realqiyan/task-conductor/blob/master/docs/host-integrations.md)，从工作区根目录执行：
 
@@ -140,7 +140,7 @@ Personal Bot 不在工作区内保存私有启用状态。Pi 配置仍由 Pi 管
 
 ## 更新与历史数据
 
-当前版本为 **0.2.5**。不维护工作区格式、初始化状态或升级机制。插件更新使用对应宿主的原生包管理；Pi 本地安装则更新来源源码，依赖变化后执行 `npm ci --ignore-scripts`，再重载或重启 Pi。更换版本前先停止活动子会话；不同兼容线的子会话不能直接恢复。
+当前版本为 **0.2.6**。不维护工作区格式、初始化状态或升级机制。插件更新使用对应宿主的原生包管理；Pi 本地安装则更新来源源码，依赖变化后执行 `npm ci --ignore-scripts`，再重载或重启 Pi。更换版本前先停止活动子会话；不同兼容线的子会话不能直接恢复。
 
 子会话 JSONL 由 Pi 保存在原生 sessions 目录或原生配置指定的位置；`pbot/subagents/` 只保存控制记录与会话引用，团队公共记录保存在 `pbot/teams/`。0.2.0 不兼容旧会话位置，不迁移或删除 0.1.x 历史；旧记录不进入当前列表或后台调度。先在旧版停止活动成员，更新后重新创建 agent。共享 Python 环境使用用户级 `pbot/python/.venv`，具体系统路径见 [Python 说明](python/README.md)。不自动导入其他应用的会话、配置或环境，也不修改其数据。MCP 连接与 CLI 环境按原生方式显式配置；用户资料、历史证据和备份原样保留。
 

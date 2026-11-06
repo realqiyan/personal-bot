@@ -113,6 +113,6 @@ Web 拥有草稿、上传和查询；接纳后的命令归服务端。命令不�
 
 Pi 将工具纳入 pbot namespace，codemode 按契约组合；dsh 注册原生工具，并在固定版可表达的 schema 之外继续校验完整领域契约。原生 CLI/MCP 与可选 Task Conductor 的接入和授权见[工具与执行](capability-design.md)。
 
-扩展以 TypeScript 源码分发，由 Pi 加载；dist 仅供测试导入。安装 CLI 使用现有 TypeScript 工具链单独生成 lib，由 bin/pbot.mjs 启动，消费者无需编译或预装 Pi。dsh Host 与 Web 也编译到 lib，客户端由原生包根 Loader 发现；Pi 的入口仍由包清单明确指向 src。宿主 SDK 均为 optional peer，不捆绑另一份运行时；TypeBox 是共享契约所需的包自身运行时依赖。Pi/CLI 保持 Node.js 22.19+，dsh 与完整开发使用 Node.js 24.9+。安装检查子进程在发现真实宿主后使用该宿主的 SDK 读取配置和切换来源声明。发布版本以 package.json 为准，包内组件共用该版本。子会话兼容线在 1.0 前按次版本、1.0 起按主版本判断，跨线会话不能直接恢复。
+扩展以 TypeScript 源码分发，由 Pi 加载；dist 仅供测试导入。安装 CLI 使用现有 TypeScript 工具链单独生成 lib，由 bin/pbot.mjs 启动，消费者无需编译或预装 Pi。dsh Host 与 Web 也编译到 lib，客户端由原生包根 Loader 发现；Pi 的入口仍由包清单明确指向 src。宿主 SDK 均为 optional peer，不捆绑另一份运行时；TypeBox 声明为范围为 `"*"` 的必需 peer：Pi 通过原生加载器提供；dsh 安装时由包管理器补齐。开发依赖锁定 TypeBox 版本，不随包捆绑。Pi/CLI 保持 Node.js 22.19+，dsh 与完整开发使用 Node.js 24.9+。安装检查子进程在发现真实宿主后使用该宿主的 SDK 读取配置和切换来源声明。发布版本以 package.json 为准，包内组件共用该版本。子会话兼容线在 1.0 前按次版本、1.0 起按主版本判断，跨线会话不能直接恢复。
 
 开发验证见[验证](validation.md)，分发流程见[npm 发布](release.md)。

@@ -44,6 +44,7 @@ const settingsManager = SettingsManager.inMemory({ packages: [packed] });
 const loader = new DefaultResourceLoader({ cwd: workspace, agentDir, settingsManager, noContextFiles: true });
 await loader.reload();
 assert.deepEqual(loader.getExtensions().errors, []);
+assert.deepEqual(loader.getExtensions().warnings ?? [], []);
 const modelRuntime = await ModelRuntime.create({ authPath: join(agentDir, "auth.json"), modelsPath: join(agentDir, "models.json") });
 const { session } = await createAgentSession({ cwd: workspace, agentDir, settingsManager, resourceLoader: loader,
   modelRuntime, model: modelRuntime.getModels("openai-codex")[0], sessionManager: SessionManager.inMemory(workspace) });
