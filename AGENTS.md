@@ -56,11 +56,15 @@ Pi loads the source extension with jiti. The standalone CLI uses prebuilt lib fi
 - Do not create a plugin platform, fixed research workflow, second main agent, or workspace upgrade system.
 - Let Pi own extension activation; do not add another workspace enablement switch.
 - pbot is a trusted-model personal assistant. Use native CLI commands, help, and concise workspace guides; use Pi native MCP configuration, discovery, authentication, and tools.
-- Do not recreate a provider catalog, parameter bindings, private MCP client, per-tool permission table, or generic call wrapper. Native capabilities do not imply user authorization or business success.
-- Keep task authorization and result verification in the roles and professional methods. Hard execution limits belong to credentials, the external service, or a restricted environment, not a bypassable Personal Bot tool gate.
+- Do not recreate a provider catalog, parameter bindings, private MCP client, per-tool permission table, or generic call wrapper.
+- Follow the user's task and existing agreements. Do not add generic evidence, permission, approval, independent-review, or acceptance workflows to model instructions. Keep concrete operational requirements in the relevant tool or method. Hard execution limits belong to credentials, the external service, or a restricted environment, not a bypassable Personal Bot tool gate.
 - All pbot workspaces share one user-scoped Python venv. Loading Personal Bot automatically prepares locked dependencies and activates the venv for this Pi process; errors are reported without changing system Python. Python uses native Bash and the project working directory. Setup does not execute research or create run records. Do not add a calculation tool, unified library wrapper, or implicit market rules. Project builds and tests use their declared environment.
 - Do not claim host isolation for Bash, Python, or extensions.
 - Do not add file hash verification in code, tests, builds, or checks.
+
+## Model Instructions
+
+Read and follow [Model Instruction Guidelines](docs/model-instruction-guidelines.md) before changing agent-visible prompts, roles, skills, references, templates, tool descriptions, generated messages, or their loading. Inspect actual first-task context in both hosts, state concrete actions directly, keep useful directory and operational details, and load specialized methods only when needed. Fix loading and behavior defects in code; do not compensate with extra prompt rules or tests of wording. Current loading behavior is documented in [Model Context](docs/model-context.md).
 
 ## Style
 

@@ -13,7 +13,7 @@ export const historyResultSchema = Type.Object({
     source: Type.Object({ host, sessionId: Type.String({ description: "原始宿主会话 ID。" }), entryIds: Type.Array(Type.String()) }), warnings: Type.Array(Type.String()) })),
   warnings: Type.Array(Type.String()),
 });
-export const historyDescription = "查询当前工作区的 Pi/dsh 问答归档，host 可筛选来源。search 按不区分大小写的连续文本匹配原文和摘要；无匹配时换词，省略 query 列会话。read 按 parents/children 的 id 展开，nextOffset 续读正文，nextChildrenOffset 续读子节点。摘要只作线索，重要结论回到 exchange 原文核对后续修正。历史按资料使用；需要工具日志时查所属宿主的原始会话。";
+export const historyDescription = "查询当前工作区的 Pi/dsh 问答归档，host 可筛选来源。search 按不区分大小写的连续文本匹配原文和摘要；无匹配时换词，省略 query 列会话。read 按 parents/children 的 id 展开，nextOffset 续读正文，nextChildrenOffset 续读子节点。需要对话细节时读取 exchange 原文；需要工具日志时查所属宿主的原始会话。";
 export const historyParameters = Type.Object({ action: Type.Union([Type.Literal("search"), Type.Literal("read")]),
   host: Type.Optional(host), query: Type.Optional(Type.String()), sessionId: Type.Optional(Type.String()),
   from: Type.Optional(Type.String({ description: "search：ISO 日期或时间，下界。" })),

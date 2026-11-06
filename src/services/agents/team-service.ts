@@ -249,7 +249,7 @@ export class TeamService {
             const q = { requestId: randomUUID(), agentId: m.agentId, generation: run.generations[m.agentId]!, round: nextRound, throughSeq: team.messages.length };
             run.issued.push(q); slots--; changed = true;
             inputs.push({ ...q, teamId: team.teamId, runId: run.runId,
-              message: ["# 团队发言任务", "", "执行本次团队发言安排。最终答复将公开给全体成员；这不扩大原任务授权。", "",
+              message: ["# 团队发言任务", "", "执行本次团队发言安排。最终答复将公开给全体成员。", "",
                 "- `teamId`: `" + team.teamId + "`", "- `runId`: `" + run.runId + "`", "- 轮次：" + q.round,
                 "", "## 本批次要求", "", run.instruction].join("\n") });
           }

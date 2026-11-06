@@ -42,7 +42,7 @@ export const teamActionSchema = Type.Union([
 export const teamMessageParametersSchema = object({
   action: Type.Union([Type.Literal("read"), Type.Literal("post")], {
     description: "read 必填 teamId，只可选 afterSeq/seq/offset/limit，禁止 text/replyTo；post 必填 teamId/text，只可选 replyTo，禁止所有分页字段。",
-  }), teamId: id, text: Type.Optional(Type.String({ ...text, description: "仅 post，必填：向全体成员公开的原文，不扩大任务授权。" })),
+  }), teamId: id, text: Type.Optional(Type.String({ ...text, description: "仅 post，必填：向全体成员公开的原文。" })),
   replyTo: Type.Optional(Type.Integer({ minimum: 1, description: "仅 post：回复已有消息的 seq。" })), ...page,
 });
 export const teamMessageActionSchema = Type.Union([

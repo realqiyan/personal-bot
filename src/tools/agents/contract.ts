@@ -3,7 +3,7 @@ import { Type } from "typebox";
 export const agentDescription = "委派专家并继续对话。start 启动后即返回，完成自动通知，无需轮询；省略初始输入时待命。send 继续对话，团队占用期间不可私人 send。status 查看状态，read 读取报告；读取已结束周期即领取其通知，包括部分读取。续读固定 cycle.cycleId 并使用 nextOffset。state 表示执行状态，cycle.state 表示工作结果，queued 只表示入队。stop 保留历史，resume 携新 message 继续。每个父会话最多 50 个存活专家，空闲也计入。";
 
 const id = Type.String({ minLength: 1, maxLength: 128 });
-const message = Type.String({ minLength: 1, maxLength: 24000, description: "本次目标、交付要求、资料依据与约束。" });
+const message = Type.String({ minLength: 1, maxLength: 24000, description: "本次目标、相关资料、约束和交付要求。" });
 const name = Type.String({ minLength: 1, maxLength: 64, pattern: "^[^\\r\\n\\x00-\\x1f]+$" });
 export const agentStartOptions = {
   name: Type.Optional(name), message: Type.Optional(message),
@@ -42,7 +42,7 @@ export const agentActionSchema = Type.Union([
 ]);
 
 const cycle = Type.Object({ cycleId: Type.String(), startedAt: Type.Number(), finishedAt: Type.Optional(Type.Number()),
-  state: Type.Union([Type.Literal("running"), Type.Literal("completed"), Type.Literal("failed"), Type.Literal("cancelled"), Type.Literal("interrupted")], { description: "本周期的工作结果；completed 仍须核验实际交付。" }),
+  state: Type.Union([Type.Literal("running"), Type.Literal("completed"), Type.Literal("failed"), Type.Literal("cancelled"), Type.Literal("interrupted")], { description: "本周期的工作结果，正文用 read 读取。" }),
   requestIds: Type.Array(Type.String()),
   source: Type.Union([Type.Literal("parent"), Type.Literal("interactive"), Type.Literal("mixed")]), error: Type.Optional(Type.String()),
 }, { additionalProperties: false });

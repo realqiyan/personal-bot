@@ -90,7 +90,7 @@ export class DshAgentEvents {
     let value: { keys: string[]; content: string } | undefined;
     if (this.#error && this.#errorKey) {
       if (!known.has(this.#errorKey)) value = { keys: [this.#errorKey], content: "# 协作扫描故障\n\n" + this.#error +
-        "\n\n先核对控制记录和原生报告；结果未知不是重跑许可。" +
+        "\n\n先查看控制记录和原生报告，再决定是否重试，避免重复执行。" +
         (this.#recovery === "reload" ? "团队服务已停用；修复文件后还需重载服务端 personal-bot 插件。" :
           this.#recovery === "retry" ? "控制锁持续占用，后台会继续重试；不会自动删除锁或重新提交任务。" : "报告或控制记录读取失败，修复后后台会重试扫描。") +
         (this.#pausePending ? "\n\n团队暂停尚未确认，不能据此开始成员私人任务。" : "") };

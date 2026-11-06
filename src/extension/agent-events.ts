@@ -82,7 +82,7 @@ export function registerAgentEvents(pi: ExtensionAPI, lifecycle: Lifecycle, conf
     return { type: "custom_message", customType: "pbot.agent-error", display: true,
       content: ["# 子会话自动跟进故障", "", recovery,
         ...(pausePending ? ["", "团队暂停尚未确认，不能据此开始成员私人任务。"] : []), "",
-        "尚未交付的结果未确认。需要核对成员时，用 pbot_agent list/status 查询状态、pbot_agent read 读取可用报告；结果未知不构成重新提交的依据。", "",
+        "用 pbot_agent list/status 查询成员状态，pbot_agent read 读取可用报告。重试前先查看原请求结果，避免重复执行。", "",
         markdownFields({ error: failure.error })].join("\n"), details: { keys: [failure.key] } };
   };
   const refreshWork = async () => {
