@@ -9,7 +9,7 @@ git diff --check
 npm pack --dry-run
 ```
 
-完整开发与验收使用 Linux、Node.js 24.9+；Pi 与独立 CLI 消费路径保留 Node.js 22.19+。CI 使用 Node 24.x 安装完整开发依赖、执行全量检查并构建候选包，再由独立 Node 22.19.0 作业安装同一 tarball，检查无宿主 SDK 的 CLI 与显式安装 Pi SDK 后的扩展、工具、技能及资料初始化。消费者检查不安装 dsh 开发依赖，也不调用模型。npm test 先构建 dist 和 CLI、dsh Host/Web 的 lib，再串行执行 Node 测试。测试使用真实本地文件、进程、计算、Pi 1.5.0 与固定版 dsh 0.2.2-rc.1 SDK。Pi 开发依赖与相关传递组件统一锁定 1.5.0；宿主提供的包声明为 optional peer，不增加运行时副本。发布包包含 bin/lib，扩展仍由 Pi 加载 src，dist 不进入发布包。
+完整开发与验收使用 Linux、Node.js 24.9+；Pi 与独立 CLI 消费路径保留 Node.js 22.19+。CI 使用 Node 24.x 安装完整开发依赖、执行全量检查并构建候选包，再由独立 Node 22.19.0 作业安装同一 tarball，检查无宿主 SDK 的 CLI 与显式安装 Pi SDK 后的扩展、工具、技能及资料初始化。消费者检查不安装 dsh 开发依赖，也不调用模型。npm test 先构建 dist 和 CLI、dsh Host/Web 的 lib，再串行执行 Node 测试。测试使用真实本地文件、进程、计算、Pi 1.5.0 与开发基线 dsh 0.2.2-rc.1 SDK。Pi 开发依赖与相关传递组件统一锁定 1.5.0；宿主提供的包声明为 optional peer，不增加运行时副本。发布包包含 bin/lib，扩展仍由 Pi 加载 src，dist 不进入发布包。
 
 | 范围 | 检查内容 |
 | --- | --- |
@@ -44,7 +44,33 @@ Node 测试不下载第三方 Python 依赖；原生库集成验证见 [Python �
 
 实际 tarball 在隔离消费者目录通过 `scripts/check-consumer.mjs` 验证：独立 CLI 无需 Pi/dsh SDK，显式安装 Pi 1.5.0 后扩展加载无错误或包警告，四个工具、技能和 `/pbot init` 均通过，不发起模型请求。
 
-本轮未调用真实模型，也未重新执行 Linux、Node.js 22.19.0 或人工 TUI 验收。
+上述 Pi 1.5 本地批次未调用真实模型，也未重新执行 Linux、Node.js 22.19.0 或人工 TUI 验收。后续 CI 结果单独记录如下，不改写本地批次的范围。
+
+## CI 与发布（2026-11-06）
+
+以下记录限定为提交 `1625a78af324de412ba12b0689de6c9ebde61698`、`personal-bot@0.2.6`，Pi SDK 为 1.5.0，dsh 为 0.2.2-rc.1。
+
+- [CI 运行 42242658306](https://github.com/realqiyan/personal-bot/actions/runs/42242658306)：Ubuntu、Node.js 24.22.2、npm 11.19.1 下，`npm ci --ignore-scripts`、`npm run check`、`npm test`、`git diff --check` 均通过。125 项测试全部通过，无失败或跳过；依赖边界为 135 个模块、554 条依赖。package 作业正常执行 `npm pack`，包括 prepack 的检查、CLI 构建和 dsh Host/Web 构建。
+- 同次 CI 的 pi-consumer 作业使用 Node.js 22.19.0、npm 10.9.3，安装同一候选 tarball。独立 CLI 与显式安装 Pi 1.5.0 后的扩展加载、四个工具、技能、`/pbot init` 均通过，不调用模型。
+- [发布运行 42242680832](https://github.com/realqiyan/personal-bot/actions/runs/42242680832)：同一提交的 OIDC 发布及 `Verify public version and latest` 成功。公开 npm registry 的只读核对确认 `personal-bot@0.2.6` 存在、`latest=0.2.6`，导出包含 `./lib/dsh.js` 与 `./lib/client.js`，dsh 元数据包含 Host/Web 所需的 bundle/client 声明。
+
+这些结果补齐了该提交的 Linux 全量、Node.js 22.19.0 Pi/CLI 消费者和远端发布检查。独立消费者作业仅覆盖 Pi/CLI；dsh 本地 SDK 测试不代表候选包的包根 Web 加载及 Remote 传输已自动验收。下文保留此前 tarball 的 Web/桌面人工验证；公开版本和元数据核对不代表 0.2.6 已从 registry 完成全新 npx、Pi 或 dsh 安装，也不证明完整桌面模型流程。人工 TUI、成功模型调用、摘要取消和长运行缺口仍保留。
+
+## 文档校正与安装来源回归（2026-11-07）
+
+本次记录针对基于 `1625a78` 的文档校正及安装来源检查修复，不属于已发布 0.2.6 的验收记录。macOS、Node.js 24.22.2、npm 11.19.1 下，`npm run check`、`npm test`、`git diff --check` 与正常执行 prepack 的 `npm pack --dry-run --json` 均通过；127 项测试全部通过，无失败或跳过。
+
+新增两项回归使用隔离的用户/项目配置、真实文件、子进程和 Pi SDK，检查缺失本地目录、未安装 Git 来源及无有效包名目录在计划前被拒绝，原配置保持不变；来源修复后能识别为保留项，独立单文件扩展与未安装 npm 声明仍可识别。测试没有执行联网安装或调用模型。本次改动未重新执行 Linux、Node.js 22.19.0、人工 TUI 或 dsh Web/桌面验收；前节 CI 结果仅适用于其记录的提交。
+
+## dsh 命令与版本策略（2026-11-07）
+
+当前源码的 dsh 安装示例改为 `latest`，`engines.dsh` 改为最低版本 `>=0.2.2-rc.1`，dsh SDK 保持 optional peer、范围为 `"*"`；开发依赖及解析版本仍为 0.2.2-rc.1。已同步中英文 README，并提供内容对应的[中文](dsh.md)和[英文](dsh.en.md)完整指南。已发布的 0.2.6 元数据没有被改写，本次范围放宽需后续发布才作用于 registry 安装。
+
+npm 只读查询确认当时 `latest=0.2.2-rc.1`、Node.js 要求为 `>=24.9.0`。实际运行原生 CLI 版本与帮助，在临时 DSH_HOME、HOME 和工作目录创建独立 Web profile、导出配置及读取 Web 帮助；未启动个人 profile 或调用模型。插件命令参数对照原生转发实现与 pnpm 文档核对，本机 PATH 没有 pnpm，因此本轮没有实际安装、更新或移除 profile 插件。
+
+使用真实 dsh `evaluatePluginCompatibility` 检查最低版本、后续版本和预发布版本字符串，并核对 package.json 与 shrinkwrap 的范围一致；这只验证范围语义，不代表那些后续版本的运行验收。macOS、Node.js 24.22.2、npm 11.19.1 下再次执行 `npm run check` 与 `npm test`，127/127 通过，无失败、取消或跳过，依赖边界为 135 个模块、554 条依赖。`git diff --check` 及正常执行 prepack 的 `npm pack --dry-run --json` 通过；267 个包条目包含两份 README、中英文 dsh 指南、Host/Web 产物和包/锁文件。
+
+同日此前的全量复测还在已准备的用户级 Python 3.12.16 venv 中执行隔离模式的 `pip check` 与 `python/tests` 原生库测试，依赖检查和 5/5 测试通过；未安装或升级依赖。本轮文档和包声明修改后未重复计算库测试。Linux、Node.js 22.19.0、真实 Web/桌面插件安装及成功模型工作流的范围仍以上述既有记录为限。
 
 ## 模型上下文审查（2026-11-07）
 
@@ -70,11 +96,17 @@ Node 测试不下载第三方 Python 依赖；原生库集成验证见 [Python �
 
 同一 macOS、Node.js 24.22.2、npm 11.19.1、Pi 1.5.0、dsh 0.2.2-rc.1 环境下，`npm run check`、`npm test`、`git diff --check` 通过；135/135 测试通过，无失败、取消或跳过，依赖边界仍为 137 个模块、558 条依赖。测试总数包含工作区已有的安装与通知回归。未调用真实模型；此前上下文快照对应上一轮措辞，本次通过现有行为回归检查加载、分页与通知，不将旧快照当作新文案实测。
 
+## 0.2.7 本地候选检查（2026-11-07）
+
+本次候选包含模型上下文与指令规则调整、Pi 安装来源检查、协作扫描恢复通知、dsh 最低版本与 optional peer 声明，以及中英文使用和设计文档。package.json、shrinkwrap 与两份 README 的当前版本同步为 0.2.7，子会话兼容线仍为 0.2。
+
+macOS、Node.js 24.22.2、npm 11.19.1、Pi 1.5.0、dsh 0.2.2-rc.1 下，`npm run check`、`npm test`、`git diff --check` 全部通过；135/135 测试通过，无失败、取消或跳过，依赖边界为 137 个模块、558 条依赖。正常执行 prepack 的 `npm pack --dry-run --json` 通过，270 个包条目包含 CLI、dsh Host/Web、Pi 源码、提示与技能、编写原则和中英文 dsh 指南，不包含 dist 或 node_modules。此记录为本地候选检查，未执行本版本的远端 CI、npm 发布或真实模型验收。
+
 ## 双宿主接入验收
 
-已完成固定版 dsh 的 Host/Web、专家与团队、附件、通知、双来源 history 和人工管理。当前结果与证据位置持续记录在[实施记录](dsh-implementation-plan.md)，使用入口见[dsh 使用](dsh.md)。
+已完成 dsh 0.2.2-rc.1 基线的 Host/Web、专家与团队、附件、通知、双来源 history 和人工管理。当前结果与证据位置持续记录在[实施记录](dsh-implementation-plan.md)，使用入口见[dsh 使用](dsh.md)。
 
-- 最新源码在 macOS、Node.js 24.22.2、npm 11.19.1 下完成 `npm run check`、`npm test`、`git diff --check`，125/125 通过，无跳过；依赖边界为 135 个模块、554 条依赖。正常 `npm pack --dry-run` 与 prepack 打包通过。最新 Linux 回归未完成。
+- Pi 1.5 本地回归在 macOS、Node.js 24.22.2、npm 11.19.1 下完成 `npm run check`、`npm test`、`git diff --check`，125/125 通过，无跳过；依赖边界为 135 个模块、554 条依赖。正常 `npm pack --dry-run` 与 prepack 打包通过。2026-11-06 对提交 `1625a78` 的 Linux 全量检查也已通过，见上节 CI 记录。
 - 正常 tarball 在独立消费者目录安装后没有安装 Pi/dsh SDK 副本；Node.js 22.19.0 下独立 CLI 返回版本，Pi 实际加载四个工具与技能、执行资料初始化和空专家查询通过。固定版 dsh 原生安装最终运行代码后，完整 Web 流程再次通过。
 - 正常执行 prepack 的 tarball 经原生插件命令安装后，真实 Chrome 验证四个 Remote、资料准备、文件与图片上传、长原生记录分页、私人草稿、公共消息分页、停止后冷读、显式恢复、history 查询与页面刷新。缺 provider 的批次真实失败并暂停，没有生成模拟响应。
 - 原生 Web 审批验证单次允许、真实取消以及等待期间符号链接变化；使用原生 Session 审计和真实 write 工具，不生成模型响应。
@@ -149,8 +181,8 @@ Python 测试已同时隔离 HOME 与 XDG_DATA_HOME，并用真实准备脚本�
 | Task Conductor | 实际多节点产物、至少两轮周期任务、Pi 关闭或重载后的查询与防重复提交 |
 | CLI/MCP | 认证、发现、重连、动态工具、取消与业务结果 |
 | TUI/RPC | 人工 attach、焦点、批准、查看器、长时间运行和会话导航 |
-| npm 分发 | 包含安装器的新版本 OIDC 发布、公开 registry 的 npx 入口与用户环境反馈 |
-| 平台与存储 | 最新源码的 Linux 全量、macOS 独立安装器的完整交互、断电持久性及文件系统差异 |
+| npm 分发 | 0.2.6 从公开 registry 全新安装的 npx 入口、Pi 与 dsh 原生安装及 Host/Web/Remote 检查、用户环境反馈；该版本 OIDC 发布与公开版本/latest 查询已于 2026-11-06 完成 |
+| 平台与存储 | macOS 独立安装器的完整交互、断电持久性及文件系统差异；提交 `1625a78` 的 Linux 全量检查已于 2026-11-06 完成 |
 
 研究与资料方法使用真实任务资料验收，重点检查来源追溯、口径一致、缺失数据处理、历史前提复核、产物引用和结项依据。知识沉淀需检查是否提炼方法与口径，以及后续任务能否据此重新取数。探索任务应区分实验失败与假设被否定。
 

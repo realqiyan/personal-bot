@@ -64,7 +64,7 @@ test("unreadable completion reports reach the model once and respect abort", asy
   }
 });
 
-test("a persistent control lock delaying pause is reported after input resumes and clears on recovery", async t => {
+for (const delivered of [false, true]) test(`a persistent control lock recovers after abort with delivered=${delivered}`, async t => {
   const root = await mkdtemp(join(tmpdir(), "pbot-pause-error-")), previous = process.env.PI_CODING_AGENT_DIR;
   process.env.PI_CODING_AGENT_DIR = root;
   const { session, errors } = await host(t);
@@ -80,6 +80,14 @@ test("a persistent control lock delaying pause is reported after input resumes a
     await new Promise(resolve => setTimeout(resolve, 5500));
     await session.extensionRunner.emit({ type: "session_tree" });
     assert.equal((await boundary()).continue, false);
+    if (!delivered) {
+      await rm(lock, { recursive: true });
+      await session.extensionRunner.emit({ type: "session_tree" });
+      await session.extensionRunner.emitInput("Continue", undefined, "interactive");
+      assert.equal((await boundary()).entries.length, 0);
+      assert.deepEqual(errors, []);
+      return;
+    }
     await session.extensionRunner.emitInput("Continue", undefined, "interactive");
     const notice = await boundary();
     assert.equal(notice.valid, true); assert.equal(notice.continue, true);
@@ -90,6 +98,25 @@ test("a persistent control lock delaying pause is reported after input resumes a
     assert.equal((await boundary()).entries.length, 0);
     await session.extensionRunner.emit({ type: "agent_settled", aborted: true });
     await rm(lock, { recursive: true });
+    // Recovery must be visible even when there are no agents or teams, and respect abort.
+    await session.extensionRunner.emit({ type: "session_tree" });
+    assert.equal((await boundary()).entries.length, 0);
+    await session.extensionRunner.emitInput("Continue", undefined, "interactive");
+    const recovery = await boundary();
+    assert.equal(recovery.valid, true); assert.equal(recovery.continue, true);
+    assert.equal(recovery.entries.length, 1);
+    const restored = recovery.entries[0];
+    assert.equal(restored.customType, "pbot.agent-recovered");
+    assert.equal(restored.details.failureKey, entry.details.keys[0]);
+    assert.deepEqual(restored.details.keys, [entry.details.keys[0] + ":recovered"]);
+    // A submitted notice must not be submitted again before the host commits it.
+    assert.equal((await boundary()).entries.length, 0);
+    session.sessionManager.appendCustomMessageEntry(restored.customType, restored.content, restored.display, restored.details);
+    await session.extensionRunner.emit({ type: "agent_settled", aborted: true });
+    await session.extensionRunner.emit({ type: "session_tree" });
+    await session.extensionRunner.emitInput("Continue", undefined, "interactive");
+    assert.equal((await boundary()).entries.length, 0);
+    await session.extensionRunner.emit({ type: "agent_settled", aborted: true });
     const files = new AgentFiles(agentDirectory()), ctx = session.extensionRunner.createToolContext("local", undefined);
     const owner = agentOwner(ctx), agentId = randomUUID(), generation = randomUUID(), cycleId = randomUUID();
     files.create({ agentId, release: packageVersion, workspace: ctx.cwd, cwd: ctx.cwd,

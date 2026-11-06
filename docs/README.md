@@ -9,7 +9,7 @@
 | [模型指令编写原则](model-instruction-guidelines.md) | 提示、角色、技能与工具说明的取舍、表达、加载和验证要求 |
 | [模型上下文](model-context.md) | 主会话、专家与摘要入口的内容、加载时机和验证边界 |
 | [界面设计](interaction-design.md) | Pi TUI 与 dsh GUI |
-| [dsh 使用](dsh.md) | 固定版本、原生 profile 安装、Web 管理与宿主差异 |
+| [dsh 使用（中文）](dsh.md) / [English](dsh.en.md) | 安装、更新、原生 profile、完整命令与 Web 管理 |
 | [工具与执行](capability-design.md) | CLI/MCP 接入、授权和结果核验 |
 | [专家协作](agent-collaboration.md) | 子会话工具、通信、通知和生命周期 |
 | [历史对话](history.md) | 自动收录、连续摘要树、全文查询与原文展开 |
@@ -22,4 +22,4 @@
 
 Python 环境与库许可见 [python/README.md](../python/README.md)。模型使用的方法维护在 resources/skills，运行时职责维护在 resources/agents。
 
-每个主题维护一份当前说明，总览通过链接引用。版本以 package.json 为准；历史设计查 Git 记录，临时排查过程不进入设计文档。
+每个主题维护当前说明，总览通过链接引用；提供中英文版本时同步维护命令、参数和限制。版本以 package.json 为准；历史设计查 Git 记录，临时排查过程不进入设计文档。

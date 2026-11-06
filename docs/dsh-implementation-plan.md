@@ -1,10 +1,10 @@
 # dsh 双宿主实施技术方案
 
-状态：双宿主实现及本机 SDK、分发、Web 和桌面验证已完成；最新 Linux 全量与成功模型工作流待验收。产品边界见[双宿主方案](dsh-support-proposal.md)，最新结果见[验证](validation.md)。
+状态：双宿主实现及本机 SDK、分发、Web 和桌面验证已完成；2026-11-06 的 Linux CI 全量检查通过，成功模型工作流仍待验收。产品边界见[双宿主方案](dsh-support-proposal.md)，分批验证结果见[验证](validation.md)。
 
 ## 目标与完成条件
 
-在同一个 `personal-bot` npm 包中保留 Pi 入口，增加 dsh 服务端和 Web 客户端入口。两端共用资料、业务规则和历史查询；各自管理原生会话、模型、认证、配置与执行生命周期。dsh 固定使用 `0.2.2-rc.1`，开发和完整验证使用 Linux、Node.js 24.9.0 以上。
+在同一个 `personal-bot` npm 包中保留 Pi 入口，增加 dsh 服务端和 Web 客户端入口。两端共用资料、业务规则和历史查询；各自管理原生会话、模型、认证、配置与执行生命周期。dsh 首轮实现与当前开发依赖基线为 `0.2.2-rc.1`，开发和完整验证使用 Linux、Node.js 24.9.0 以上。用户安装跟随 `latest`，包声明只设最低宿主版本；保留精确开发依赖与锁文件以复现检查。本文后续“固定版”指这批实施记录的版本，不限制用户更新。
 
 交付必须覆盖专家、团队、通知、history、共享 Python、资源、文件确认及人工管理。接入验证和部分功能可作为实施里程碑，不能被表述为完整支持。先验证真实接口，再调整共享服务，避免以假定 API 建立大范围改动。
 
@@ -74,8 +74,8 @@ bundle patch 基于原生 Web profile，声明默认 pbot 组合、服务端插�
 | A 固定版接入 | 隔离 home、真实插件加载、空 Agent flush/冷恢复、setup 清旧 inbox、只读查询、Remote/客户端加载、Bash 环境继承 | 已通过下列接入验证 |
 | B 公共边界 | 异步 AgentHost、原生引用、运行规则与工具契约提取；Pi 完整回归、既有持久契约保留 | 已通过 Linux 回归 |
 | C dsh 业务 | 专家、团队、通知、资源、文件确认、多会话与 Python 生命周期 | 核心接入和本地验证通过；完整工作流待验收 |
-| D History 与 Web | 来源查询与写隔离、原生历史及摘要、完整人工管理与重连 | 进行中 |
-| E 分发与验收 | tarball 双宿主加载、CLI 独立运行、文档更新、Linux 全量检查和真实 Web 验收 | 本机全量、双宿主 tarball 与 Web 通过；最新 Linux 和真实模型工作流未完成 |
+| D History 与 Web | 来源查询与写隔离、原生历史及摘要、完整人工管理与重连 | 实现及本机 SDK、Web、桌面验证完成；真实模型摘要成功与取消仍待验收 |
+| E 分发与验收 | tarball 双宿主加载、CLI 独立运行、文档更新、Linux 全量检查和真实 Web 验收 | 本机全量、双宿主 tarball、Web 与桌面验证通过；2026-11-06 Linux CI 通过，真实模型工作流仍待验收，见[验证](validation.md) |
 
 阶段 A 在临时目录安装固定发布包，不使用个人认证或工作区配置。使用真实 SDK 和 Session API 构造本地记录，不使用 mock、stub、假模型或模拟 provider。SDK 行为验证与最终插件行为测试分开记录；仅保留能覆盖实际正确性风险的测试。
 
@@ -86,7 +86,7 @@ bundle patch 基于原生 Web profile，声明默认 pbot 组合、服务端插�
 - 固定发布包的真实 Cordis、AgentLoop、JSONL persistence 和内存 query：空专家经 flush 后可被独立进程读取；冷恢复保留身份；恢复 setup 清除旧 inbox 后没有开启旧轮次；错误归属或缺失记录不会激活或替换会话。
 - 使用原生 Session API 写入轮次记录，验证报告固定到持久的 `turn/end`，后续对话及 Agent 释放不改变旧报告。
 - 原生 Bash 在 spawn 时读取进程 venv，两个工作区保留各自 cwd，禁用 user site，环境恢复通过。原生命令的两个父会话分别绑定工作区；关闭一个不影响另一个；卸载插件后旧 handler 失效。
-- Linux Node.js 24.15.0 的初始完整检查通过：`npm ci --ignore-scripts`、`npm run check`、`npm test`，103 项测试通过。之后新增的固定报告及工作区生命周期测试已在本地通过；最终 Linux 全量检查仍须重跑。
+- Linux Node.js 24.15.0 的初始完整检查通过：`npm ci --ignore-scripts`、`npm run check`、`npm test`，103 项测试通过。之后新增的固定报告及工作区生命周期测试已在本地通过；该接入检查点尚未重跑最终 Linux 全量检查。
 - npm tarball 经原生插件命令安装到隔离 `pbot` profile；真实 Chrome 打开 Web，选择临时工作区，展开 `/pbot` 菜单、执行 status 和 init、刷新后再次查询，工作区和父会话身份保持一致，没有 pageerror。客户端需要同时声明 `remote` 与 `remote.commands` 注入。包根发现规则及 Remote 依赖问题已修正。
 - Web 测试中的 Python 目录刻意包含无关数据，原生 setup 如实返回错误且没有覆盖该数据。该测试不证明完整 Python 依赖安装成功；真实计算环境测试由既有 Python 验证及原生 Bash 测试覆盖。
 
@@ -102,7 +102,7 @@ bundle patch 基于原生 Web profile，声明默认 pbot 组合、服务端插�
 
 原生 `write`、`edit`、`apply_patch` 已接入文件规则。整份 patch 的源与移动目标先检查，执行前重核 cwd 和目标身份；专家工作区外直接拒绝，主会话使用原生一次批准。真实文件测试覆盖内部修改、符号链接外逃、move 和混合补丁拒绝，以及原生 `rejected`/`unavailable` 审计。真实附件服务验证二进制文件跨块保存后原字节可读、图片准入、原路径删除后附件仍可读，以及目录、取消和图片数量上限拒绝。图片总字节与数量在批量载入期间按宿主限额检查。
 
-阶段 C 检查点仍缺最新 Linux 回归：服务器 SSH 不可达，本机没有 Docker、Colima、Lima 或 Podman，先前 C1 安装未取得成功退出证据。当时浏览器产物只到阶段 A；后续审批、资源与管理验收结果见下文。
+阶段 C 检查点当时未完成 Linux 回归：服务器 SSH 不可达，本机没有 Docker、Colima、Lima 或 Podman，先前 C1 安装未取得成功退出证据。这是历史检查点记录；当时浏览器产物只到阶段 A，后续审批、资源与管理验收结果见下文。
 
 阶段 D 的 history 服务和原生工具已接入。两个来源可共同搜索、分别维护；Pi 旧 ID、摘要、关系、分页和旧归档导入继续保留，dsh 不清理或导入 Pi 归档。公开 Session query 读取当前工作区及关联专家，按父级归属纳入不同 cwd 的专家，不把别的工作区专家因 cwd 相同而混入。普通 fork 保留为自身的原生会话；`isSeeded` 是 fork 标记，不是应排除的模板标记。人工 steering、未结束或截断答复保留为原文，工具记录仍由完整原生视图提供。
 
@@ -143,7 +143,9 @@ Web 管理已接入固定版公开的 `TypertRemoteService`、`Remote` 和 Typer
 
 本机桌面应用 0.2.2-rc.1（内置 Node.js 24.21.0）也完成实际验收：独立 Electron userData、DSH_HOME、HOME 与 Documents 目录，通过原生插件 UI 安装 tarball、启用并执行完整管理流程。附件、长记录、团队失败暂停、history、恢复与刷新通过，10 次管理写命令且页面错误为空；32 MiB 上传在关闭面板后取消，没有提交 chat 或追加 inbox。完整退出应用会停止专家，重开及插件重新启用均不自动恢复。临时登录 Shell 的 PATH 提供 Python 3.12 后，应用真实安装锁定依赖并达到 ready，pip check 和 5 项原生库测试通过。隔离实例模型选择器显示 `No models available`；原日常应用进程保持运行，测试进程已退出。详见[桌面验收记录](validation.md#macos-桌面应用实测)，证据在 `/tmp/pbot-dsh-desktop-test/`。
 
-后台模型整理成功、输入优先取消真实模型请求、成功专家/团队协作、模型实际使用资源与团队上下文，以及最新 Linux 全量仍未验收。SSH 最后重试仍超时；无模型检查和旧版 Pi 冒烟不能替代本次真实提供方工作流。
+后续证据：2026-11-06，提交 `1625a78af324de412ba12b0689de6c9ebde61698` 的 Linux CI 全量检查及同一候选包的 Node.js 22.19.0 Pi/CLI 消费者检查通过，详见[CI 与发布记录](validation.md#ci-与发布2026-11-06)。
+
+后台模型整理成功、输入优先取消真实模型请求、成功专家/团队协作，以及模型实际使用资源与团队上下文仍未验收。无模型检查和旧版 Pi 冒烟不能替代本次真实提供方工作流。
 
 ## 优先核查的风险
 

@@ -22,7 +22,7 @@ Pi 处理信任、认证与工具暴露。使用 /mcp 查看连接、工具和�
 
 子会话按自己的 cwd 和 Pi agent dir 加载配置。需要工作区项目 MCP 时，以工作区根目录作为 cwd，在命令中切换计算目录。父进程临时注册的连接不会自动转移到子进程。
 
-dsh 使用其固定版本的原生 MCP 组件和 profile 配置，模型与认证也由 dsh 管理。不得将上述 Pi 命令、配置目录或安装包声明直接用于 dsh，也不自动同步两套配置。同进程专家遵循 dsh 的原生作用域与工具可见性；不模拟 Pi 子进程的扩展开关。
+dsh 使用当前安装版本的原生 MCP 组件和 profile 配置，模型与认证也由 dsh 管理。不得将上述 Pi 命令、配置目录或安装包声明直接用于 dsh，也不自动同步两套配置。同进程专家遵循 dsh 的原生作用域与工具可见性；不模拟 Pi 子进程的扩展开关。
 
 ## 执行范围与结果
 
@@ -34,7 +34,7 @@ Bash、Python、MCP 和扩展拥有其实际账户与凭据权限。dsh 的原�
 
 ## 可选 Task Conductor
 
-Task Conductor 通过原生 MCP 提供周期任务、重复流程和 DAG，独立管理任务定义与运行状态。安装入口见[项目 README](../README.md#可选安装-task-conductor)，具体操作由其 using-task-conductor 技能和实际工具契约说明。
+Task Conductor 通过原生 MCP 提供周期任务、重复流程和 DAG，独立管理任务定义与运行状态。安装入口见[项目 README](../README.zh-CN.md#可选安装-task-conductor)，具体操作由其 using-task-conductor 技能和实际工具契约说明。
 
 提交任务时明确输入、cwd、工具与认证前提和输出；周期任务还需明确频率、时区、执行范围及每轮数据时点。项目资料保存任务定义、taskId、runId、节点 ID 和结果位置，实时状态向 Task Conductor 查询。
 

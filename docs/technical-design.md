@@ -1,6 +1,6 @@
 # 技术设计
 
-Personal Bot 提供按工作区加载的 Pi 扩展和固定版 dsh Host/Web 接入。模型负责分析、协调和工具使用；扩展负责资料准备、专家会话和共享 Python 环境。安装与命令见[项目 README](../README.md)。
+Personal Bot 提供按工作区加载的 Pi 扩展和原生 dsh Host/Web 接入。模型负责分析、协调和工具使用；扩展负责资料准备、专家会话和共享 Python 环境。安装与命令见[项目 README](../README.md)。
 
 ## 模块与依赖
 
@@ -21,8 +21,8 @@ src/pbot.ts 装配 Pi 入口，src/dsh.ts 装配 dsh Host，src/ui/dsh/index.ts 
 | 目录 | 责任 |
 | --- | --- |
 | src/tools/ | 输入、输出、schema、执行适配和工具列表 |
-| src/services/ | 业务规则、状态变更和操作顺序，按 agents、workspace 聚合 |
-| src/model/ | 数据类 |
+| src/services/ | 业务规则、状态变更和操作顺序，按 agents、workspace、history、installation 聚合 |
+| src/model/ | 业务数据类型与窄能力约定，不包含业务实现或宿主 SDK 类型 |
 | src/integrations/ | Pi/dsh 原生会话、Python 环境激活与进程执行 |
 | src/storage/ | 原子 JSON、子会话与团队文件 |
 | src/extension/ | 命令、事件和资源生命周期 |
@@ -30,7 +30,7 @@ src/pbot.ts 装配 Pi 入口，src/dsh.ts 装配 dsh Host，src/ui/dsh/index.ts 
 | src/common/ | JSON、校验、文件、包路径和版本辅助逻辑 |
 | resources/ | 角色、技能、提示词、模板和参考资料 |
 
-服务不依赖 Pi/dsh SDK、工具或 UI。共享进程执行可直接使用，其他宿主能力通过窄接口传入。接入层可引用服务类型；命令和工具通过服务执行状态变更。数据类在进入 JSON、存储和工具结果前转为普通数据。
+服务不依赖 Pi/dsh SDK、工具或 UI。共享进程执行可直接使用，其他宿主能力通过窄接口传入。接入层可引用服务类型；命令和工具通过服务执行状态变更。模型层用 interface/type 描述普通数据和窄能力契约；数据以普通对象进入 JSON、存储和工具结果。
 
 | 主体 | 管理内容 |
 | --- | --- |
@@ -87,7 +87,7 @@ PiAgents 使用 `--session-id <agentId>` 启动新的原生会话，让 Pi 按�
 
 恢复使用已绑定的绝对路径，不查找最近会话，也不因配置变化转用其他文件。AgentService 在更换 generation 和入队前要求 Pi 接入层验证文件、session ID 与 cwd。引用绑定后文件不可读取时保守失败，不将未知历史当作空白待命。父侧报告读取使用原生解析器和内存 SessionManager，不改写或迁移原生文件。
 
-会话文件移出控制目录改变恢复契约，因此版本为 0.2.0，旧兼容线不进入当前列表或后台调度；不导入、迁移或删除旧记录。既有控制字段、团队调度及完成叶节点关联保持不变。
+会话文件移出控制目录的恢复契约在 0.2.0 引入。旧兼容线不进入当前列表或后台调度；不导入、迁移或删除旧记录。既有控制字段、团队调度及完成叶节点关联保持不变。
 
 dsh 的 `native-session.json` 只保存原生 Session ID，不把它写入 Pi 路径字段。先持久化父会话，再创建并持久化空专家；冷读、恢复校验和固定 `dsh:<turn/end seq>` 报告均使用公开 Session API。恢复保留原生模型选择，清除旧 inbox，只接纳新代次的新请求。双方不接管对方的会话。
 
@@ -117,8 +117,8 @@ Web 拥有草稿、上传和查询；接纳后的命令归服务端。命令不�
 
 ## 工具与分发
 
-Pi 将工具纳入 pbot namespace，codemode 按契约组合；dsh 注册原生工具，并在固定版可表达的 schema 之外继续校验完整领域契约。原生 CLI/MCP 与可选 Task Conductor 的接入和授权见[工具与执行](capability-design.md)。
+Pi 将工具纳入 pbot namespace，codemode 按契约组合；dsh 注册原生工具，并在宿主可表达的 schema 之外继续校验完整领域契约。原生 CLI/MCP 与可选 Task Conductor 的接入和授权见[工具与执行](capability-design.md)。
 
-扩展以 TypeScript 源码分发，由 Pi 加载；dist 仅供测试导入。安装 CLI 使用现有 TypeScript 工具链单独生成 lib，由 bin/pbot.mjs 启动，消费者无需编译或预装 Pi。dsh Host 与 Web 也编译到 lib，客户端由原生包根 Loader 发现；Pi 的入口仍由包清单明确指向 src。宿主 SDK 均为 optional peer，不捆绑另一份运行时；TypeBox 声明为范围为 `"*"` 的必需 peer：Pi 通过原生加载器提供；dsh 安装时由包管理器补齐。开发依赖锁定 TypeBox 版本，不随包捆绑。Pi/CLI 保持 Node.js 22.19+，dsh 与完整开发使用 Node.js 24.9+。安装检查子进程在发现真实宿主后使用该宿主的 SDK 读取配置和切换来源声明。发布版本以 package.json 为准，包内组件共用该版本。子会话兼容线在 1.0 前按次版本、1.0 起按主版本判断，跨线会话不能直接恢复。
+扩展以 TypeScript 源码分发，由 Pi 加载；dist 仅供测试导入。安装 CLI 使用现有 TypeScript 工具链单独生成 lib，由 bin/pbot.mjs 启动，消费者无需编译或预装 Pi。dsh Host 与 Web 也编译到 lib，客户端由原生包根 Loader 发现；Pi 的入口仍由包清单明确指向 src。宿主 SDK 均为 optional peer，不捆绑另一份运行时。dsh 用户安装跟随 `latest`，`engines.dsh` 声明最低版本 `>=0.2.2-rc.1`，dsh SDK peer 范围为 `"*"`；开发依赖和锁文件仍保留精确版本，验收只证明记录中的实际版本。TypeBox 声明为范围为 `"*"` 的必需 peer：Pi 通过原生加载器提供；dsh 安装时由包管理器补齐。开发依赖锁定 TypeBox 版本，不随包捆绑。Pi/CLI 保持 Node.js 22.19+，dsh 与完整开发使用 Node.js 24.9+。安装检查子进程在发现真实宿主后使用该宿主的 SDK 读取配置和切换来源声明。发布版本以 package.json 为准，包内组件共用该版本。子会话兼容线在 1.0 前按次版本、1.0 起按主版本判断，跨线会话不能直接恢复。
 
 开发验证见[验证](validation.md)，分发流程见[npm 发布](release.md)。

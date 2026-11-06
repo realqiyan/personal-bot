@@ -124,6 +124,51 @@ test("native Pi inspection is read-only and retains scoped source and filter inf
   await assert.rejects(f.host.inspectPackages(pi, f.workspace));
 });
 
+test("native inspection rejects unidentified sources before planning without changing configuration", async t => {
+  const f = await fixture(t), unnamed = join(f.temp, "unnamed-package");
+  await mkdir(join(f.workspace, ".pi")); await mkdir(unnamed);
+  const pi = await f.host.inspectPi(piCommand), localFile = join(f.workspace, ".pi/settings.json"), userFile = join(f.agentDir, "settings.json");
+  const sources = [join(f.temp, "missing-checkout"), "git:github.com/realqiyan/personal-bot", unnamed];
+  for (const scope of ["project", "user"]) {
+    for (const source of sources) {
+      const declared = JSON.stringify({ packages: [source], customSetting: 42 });
+      const local = scope === "project" ? declared : "{}", user = scope === "user" ? declared : "{}";
+      await writeFile(localFile, local); await writeFile(userFile, user);
+      await assert.rejects(f.host.inspectPackages(pi, f.workspace));
+      assert.equal(await readFile(localFile, "utf8"), local);
+      assert.equal(await readFile(userFile, "utf8"), user);
+      assert.deepEqual(await readdir(join(f.workspace, ".pi")), ["settings.json"]);
+      assert.deepEqual(await readdir(f.agentDir), ["settings.json"]);
+    }
+  }
+  await writeFile(userFile, "{}");
+  await writeFile(localFile, JSON.stringify({ packages: [unnamed] }));
+  for (const manifest of [{}, { name: " " }, { name: 42 }]) {
+    await writeFile(join(unnamed, "package.json"), JSON.stringify(manifest));
+    await assert.rejects(f.host.inspectPackages(pi, f.workspace));
+  }
+  await writeFile(join(unnamed, "package.json"), await readFile(join(packageRoot, "package.json"), "utf8"));
+  const choice = packageChoices([], await f.host.inspectPackages(pi, f.workspace))[0];
+  assert.equal(choice.keep, true);
+  assert.deepEqual(choice.existing.map(pkg => pkg.source), [unnamed]);
+});
+
+test("native inspection preserves standalone extensions and recognizes uninstalled npm identities", async t => {
+  const f = await fixture(t), extension = join(f.temp, "local-extension.ts");
+  await mkdir(join(f.workspace, ".pi"));
+  await writeFile(extension, await readFile(join(packageRoot, "src/extension/setup-guard.ts")));
+  const settings = JSON.stringify({ packages: [extension, "npm:personal-bot"] });
+  await writeFile(join(f.workspace, ".pi/settings.json"), settings);
+  const pi = await f.host.inspectPi(piCommand), records = await f.host.inspectPackages(pi, f.workspace);
+  assert.equal(records.find(pkg => pkg.source === extension).installedPath, extension);
+  assert.equal(records.find(pkg => pkg.source === extension).name, undefined);
+  const choice = packageChoices([], records)[0];
+  assert.equal(choice.keep, false);
+  assert.deepEqual(choice.existing.map(pkg => pkg.source), ["npm:personal-bot"]);
+  assert.equal(await readFile(join(f.workspace, ".pi/settings.json"), "utf8"), settings);
+  assert.deepEqual(await readdir(join(f.workspace, ".pi")), ["settings.json"]);
+});
+
 test("native source replacement keeps filters, unrelated settings, source files and user configuration", async t => {
   const f = await fixture(t);
   await mkdir(join(f.workspace, ".pi/npm/node_modules"), { recursive: true });

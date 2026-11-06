@@ -14,6 +14,7 @@ export function registerAgentEvents(pi: ExtensionAPI, lifecycle: Lifecycle, conf
   let paused = false, epoch = 0, refreshEpoch = 0;
   let refreshing: Promise<void> | undefined;
   let controlBusySince: number | undefined;
+  let recoveredFailure: string | undefined;
   let failure: { key: string; error: string; recovery: "retry" | "repair" | "reload" } | undefined;
   const recordFailure = (error: unknown) => {
     const busy = (error as NodeJS.ErrnoException).code === "PBOT_CONTROL_BUSY";
@@ -67,7 +68,19 @@ export function registerAgentEvents(pi: ExtensionAPI, lifecycle: Lifecycle, conf
     if (!ctx || !lifecycle.active || paused || ctx.signal?.aborted) return;
     const instance = lifecycle.active, revision = epoch;
     if (!failure) {
-      try { return await collectNotification(); }
+      try {
+        const message = await collectNotification();
+        if (message) return message;
+        if (!ctx || revision !== epoch || instance !== lifecycle.active || paused || ctx.signal?.aborted || failure || !recoveredFailure || controlBusySince !== undefined) return;
+        const delivered = deliveredCycles(ctx), key = recoveredFailure + ":recovered";
+        if (!delivered.has(recoveredFailure) || delivered.has(key)) return;
+        const now = Date.now(), sent = submitting.get(key);
+        if (sent !== undefined && now - sent < 5000) return;
+        submitting.set(key, now);
+        return { type: "custom_message", customType: "pbot.agent-recovered", display: true,
+          content: "# 子会话自动跟进已恢复\n\n后台扫描已恢复。成员状态和报告可通过 pbot_agent status/read 查看。",
+          details: { keys: [key], failureKey: recoveredFailure } };
+      }
       catch (error) { if (revision !== epoch || instance !== lifecycle.active) return; recordFailure(error); }
     }
     if (!ctx || !failure || deliveredCycles(ctx).has(failure.key)) return;
@@ -103,7 +116,6 @@ export function registerAgentEvents(pi: ExtensionAPI, lifecycle: Lifecycle, conf
             try { instance.agents.enqueueTeam(input, instance.agentOwner); dispatching.delete(id); }
             catch (error) {
               const code = (error as NodeJS.ErrnoException).code;
-              if (code === "PBOT_CONTROL_BUSY") break;
               if (code !== "TEAM_INPUT_STALE") throw error;
               dispatching.delete(id); instance.teams.pauseMember(input.agentId, "安排失效；未自动重发");
             }
@@ -119,6 +131,7 @@ export function registerAgentEvents(pi: ExtensionAPI, lifecycle: Lifecycle, conf
       }
       if (ctx.mode === "tui") ctx.ui.setWidget("pbot-agents", values.some(v => ["starting", "busy", "stopping"].includes(v.state)) ? (_tui, theme) => agentBoard(values, theme) : undefined);
       if (!pausePending) {
+        if (failure) recoveredFailure = failure.key;
         failure = undefined; controlBusySince = undefined;
         if (ctx.hasUI) ctx.ui.setStatus("pbot-agents-error", undefined);
       }
@@ -150,7 +163,7 @@ export function registerAgentEvents(pi: ExtensionAPI, lifecycle: Lifecycle, conf
     return;
   };
   pi.on("session_start", (_event, context) => {
-    epoch++; ctx = context; paused = false; pausePending = false; controlBusySince = undefined; failure = undefined; confirmations.resume(); submitting.clear(); dispatching.clear();
+    epoch++; ctx = context; paused = false; pausePending = false; controlBusySince = undefined; failure = undefined; recoveredFailure = undefined; confirmations.resume(); submitting.clear(); dispatching.clear();
     if (timer) clearInterval(timer);
     if (lifecycle.active) { lifecycle.active.agentOwner = agentOwner(ctx); timer = setInterval(() => { void refresh(); }, 1000); timer.unref(); }
     return refresh();

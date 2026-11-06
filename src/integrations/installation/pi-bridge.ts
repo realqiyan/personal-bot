@@ -44,19 +44,21 @@ export async function inspectPackages(root: string, workspace: string): Promise<
   for (const pkg of manager.listConfiguredPackages()) {
     const entries = (pkg.scope === "project" ? settings.getProjectSettings() : settings.getGlobalSettings()).packages ?? [];
     const entry = entries.find(item => sourceOf(item) === pkg.source);
-    let name = npmName(pkg.source), version: string | undefined;
+    let name = npmName(pkg.source), version: string | undefined, singleFile = false;
     if (pkg.installedPath) {
-      let file = pkg.installedPath;
-      if ((await stat(file)).isDirectory()) file = join(file, "package.json");
-      else file = ""; // Single-file extensions have no npm identity.
-      if (file) {
+      const info = await stat(pkg.installedPath);
+      singleFile = info.isFile(); // An existing standalone extension has no npm identity.
+      if (info.isDirectory()) {
         try {
-          const manifest = JSON.parse(await readFile(file, "utf8")) as { name?: string; version?: string };
+          const manifest = JSON.parse(await readFile(join(pkg.installedPath, "package.json"), "utf8")) as { name?: string; version?: string };
           if (name && manifest.name !== name) throw new Error(`安装包身份不匹配：${pkg.source}`);
-          name = typeof manifest.name === "string" ? manifest.name : name;
+          name = typeof manifest.name === "string" && manifest.name.trim() ? manifest.name : name;
           version = typeof manifest.version === "string" ? manifest.version : undefined;
         } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
       }
+    }
+    if (!name && !singleFile) {
+      throw new Error(`无法辨认 ${pkg.scope} 来源的包身份：${pkg.source}。请先通过 Pi 原生配置恢复或修正该来源，再重新运行 setup。`);
     }
     result.push({ source: pkg.source, scope: pkg.scope, filtered: pkg.filtered, entry,
       ...(pkg.installedPath ? { installedPath: pkg.installedPath } : {}), ...(name ? { name } : {}), ...(version ? { version } : {}) });

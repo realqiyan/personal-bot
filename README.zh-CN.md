@@ -4,7 +4,7 @@
 
 **个人助手，连接知识、研究与行动。**
 
-提供 Pi 工作区扩展和固定版 dsh 原生 Web 接入，用于学习、项目推进、研究与决策支持，也支持投资分析与已授权业务。dsh 的使用和当前验收范围见[专门说明](docs/dsh.md)。
+提供 Pi 工作区扩展和 dsh 原生 Web 接入，用于学习、项目推进、研究与决策支持，也支持投资分析与已授权业务。dsh 的安装、命令和当前验收范围见[专门说明](docs/dsh.md)。
 
 定位为可信模型驱动的个人助手。模型负责分析、协调与原生工具使用；pbot 提供资料入口、专家协作和 Python 环境准备。不另建主 Agent，不自动开展任务或交易。
 
@@ -31,7 +31,7 @@ pbot setup
 
 这里的全局 npm 安装只提供 `pbot` 命令，不向 Pi 注册全局扩展。`pbot setup` 使用全局安装的安装器版本；用 npm 更新它，或继续使用 `npx personal-bot@latest setup` 获取最新安装器。安装器不自动全局安装自己。
 
-核心步骤失败时停止启动，可选插件失败时继续处理其他项并汇总。成功步骤保留，修复后重跑同一命令；不自动整体回滚。工作区作用域、版本选择和边界见[安装与升级](docs/installation-design.md)。
+核心步骤失败时停止启动。已配置的 Git 或本地目录来源缺失、或无法识别包名时，setup 保留声明并停止，须先通过 Pi 修复来源；已有独立单文件扩展仍可使用。可选插件失败时继续处理其他项并汇总。成功步骤保留，修复后重跑同一命令；不自动整体回滚。工作区作用域、版本选择和边界见[安装与升级](docs/installation-design.md)。
 
 ### 直接使用 Pi 安装
 
@@ -68,9 +68,32 @@ pi
 
 ### 使用 dsh
 
-dsh 接入固定为 `@deepseek-ai/dsh@0.2.2-rc.1`，使用 Node.js 24.9+。从当前源码正常 `npm pack` 后，按[dsh 使用说明](docs/dsh.md)建立独立 `pbot` Web profile，并通过 `dsh plugin --profile pbot add <tarball>` 安装。`pbot setup` 不配置 dsh。
+使用最新版 dsh，需要 Node.js 24.9+（若新版声明更高要求，以新版为准）、npm、pnpm 和 Python 3.11+。`pbot setup` 面向 Pi，dsh 使用原生 profile 和插件管理。在终端执行：
 
-Web 的裸 `/pbot` 打开工作区、专家、团队和历史管理页。专家使用同进程的原生 Agent/Session；页面刷新不停止已接纳工作。两种宿主共同读取历史归档，各自维护自己的来源，模型、认证和 MCP 配置分别由原生宿主管理。真实模型与最新 Linux 验收仍见[验证记录](docs/validation.md)。
+```bash
+npm install -g @deepseek-ai/dsh@latest pnpm@latest
+dsh --version
+pnpm --version
+# 仅首次创建：此命令会覆盖已有同名 profile。
+dsh --profile pbot --from-default-profile web --dump-config
+dsh plugin --profile pbot add personal-bot@latest
+dsh --profile pbot
+```
+
+最后一条命令启动 Web 服务，通常会自动打开浏览器。在页面中选择工作区和主会话，通过 dsh 原生设置配置模型与认证。在聊天输入框执行 `/pbot` 打开工作区、专家、团队和历史四页；`/pbot status` 检查工作区与 Python 环境；`/pbot init` 可选地补建缺失资料目录。加载插件和这些检查不调用模型。
+
+以后启动只需 `dsh --profile pbot`。停止活动专家和服务后，分别更新宿主与插件：
+
+```bash
+npm install -g @deepseek-ai/dsh@latest
+dsh plugin --profile pbot update personal-bot --latest
+dsh plugin --profile pbot list personal-bot --depth 0
+dsh --profile pbot
+```
+
+更新时不要重复 `--from-default-profile`。使用桌面应用时，在原生“插件”页面安装和管理 `personal-bot@latest`；npm CLI 的 `pbot` profile 与应用的 `desktop` profile 分开。
+
+[完整中文指南](docs/dsh.md)（[English](docs/dsh.en.md)）包含启动参数、插件查询与移除、源码打包、全部 `/pbot` 子命令、JSON 参数及示例。专家使用同进程的原生 Agent/Session，页面刷新不停止已接纳工作。Pi 和 dsh 共同查询历史归档，各自管理会话、模型、认证与 MCP。已验证的 dsh 基线为 `0.2.2-rc.1`；`latest` 会变化，不代表未来版本已经通过验收，详见[验证记录](docs/validation.md)。
 
 ### 可选安装 Task Conductor
 
@@ -140,7 +163,7 @@ Personal Bot 不在工作区内保存私有启用状态。Pi 配置仍由 Pi 管
 
 ## 更新与历史数据
 
-当前版本为 **0.2.6**。不维护工作区格式、初始化状态或升级机制。插件更新使用对应宿主的原生包管理；Pi 本地安装则更新来源源码，依赖变化后执行 `npm ci --ignore-scripts`，再重载或重启 Pi。更换版本前先停止活动子会话；不同兼容线的子会话不能直接恢复。
+当前版本为 **0.2.7**。不维护工作区格式、初始化状态或升级机制。插件更新使用对应宿主的原生包管理；Pi 本地安装则更新来源源码，依赖变化后执行 `npm ci --ignore-scripts`，再重载或重启 Pi。更换版本前先停止活动子会话；不同兼容线的子会话不能直接恢复。
 
 子会话 JSONL 由 Pi 保存在原生 sessions 目录或原生配置指定的位置；`pbot/subagents/` 只保存控制记录与会话引用，团队公共记录保存在 `pbot/teams/`。0.2.0 不兼容旧会话位置，不迁移或删除 0.1.x 历史；旧记录不进入当前列表或后台调度。先在旧版停止活动成员，更新后重新创建 agent。共享 Python 环境使用用户级 `pbot/python/.venv`，具体系统路径见 [Python 说明](python/README.md)。不自动导入其他应用的会话、配置或环境，也不修改其数据。MCP 连接与 CLI 环境按原生方式显式配置；用户资料、历史证据和备份原样保留。
 

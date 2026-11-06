@@ -4,7 +4,7 @@ English | [简体中文](README.zh-CN.md)
 
 **A personal assistant connecting knowledge, research, and action.**
 
-Personal Bot provides a workspace-scoped [Pi](https://pi.dev) extension and a native Web integration for a fixed dsh release. It supports learning, project work, research, decision support, investment analysis, and explicitly authorized operations. See the [dsh guide](docs/dsh.md) for its usage and acceptance limits.
+Personal Bot provides a workspace-scoped [Pi](https://pi.dev) extension and a native dsh Web integration. It supports learning, project work, research, decision support, investment analysis, and explicitly authorized operations. See the [dsh guide](docs/dsh.en.md) for installation, commands, and acceptance limits.
 
 The model handles analysis, coordination, and native tools. Personal Bot adds workspace materials, specialist collaboration, and Python environment preparation. It does not create a second main agent or start tasks or trades automatically.
 
@@ -31,7 +31,7 @@ pbot setup
 
 This global npm installation provides the command; it does not register a global Pi extension. `pbot setup` uses the globally installed installer version. Update it with npm, or use `npx personal-bot@latest setup` for the latest installer. The npx command does not install itself globally.
 
-A core failure stops startup. An optional plugin failure allows the other plugins to proceed and is reported before you choose whether to start Pi. Completed steps remain in place; fix the cause and rerun setup. There is no automatic rollback across package managers. See the [installation design](docs/installation-design.md) for scope and recovery rules.
+A core failure stops startup. If a configured Git or local directory source is missing or has no identifiable package name, setup stops and asks you to repair the source through Pi; it preserves the declaration. Existing standalone extension files remain supported. An optional plugin failure allows the other plugins to proceed and is reported before you choose whether to start Pi. Completed steps remain in place; fix the cause and rerun setup. There is no automatic rollback across package managers. See the [installation design](docs/installation-design.md) for scope and recovery rules.
 
 ### Install directly with Pi
 
@@ -70,9 +70,32 @@ Replace the example paths with your actual paths. A local installation loads the
 
 ### Use with dsh
 
-The integration targets `@deepseek-ai/dsh@0.2.2-rc.1` and requires Node.js 24.9+. Build a tarball from the current source with normal `npm pack`, create a separate `pbot` Web profile, and install it with `dsh plugin --profile pbot add <tarball>`. Follow the [dsh guide](docs/dsh.md); `pbot setup` remains the Pi installer.
+Use the latest dsh release with Node.js 24.9+ (or the newer minimum declared by that release), npm, pnpm, and Python 3.11+. `pbot setup` installs for Pi; dsh uses its native profiles and plugin manager. Run in a terminal:
 
-The bare `/pbot` action opens workspace, specialist, team, and history management. Specialists use native Agent/Session instances in the server process. Refreshing a page does not stop accepted work. Both hosts query the saved history archives while each maintains its own source. Models, authentication, and MCP remain under native host configuration. Real model workflows and the latest Linux checks remain subject to the [validation record](docs/validation.md).
+```bash
+npm install -g @deepseek-ai/dsh@latest pnpm@latest
+dsh --version
+pnpm --version
+# First creation only: this replaces an existing profile of the same name.
+dsh --profile pbot --from-default-profile web --dump-config
+dsh plugin --profile pbot add personal-bot@latest
+dsh --profile pbot
+```
+
+The last command starts the Web server and normally opens a browser. Select your workspace and main session there, then configure models and authentication in dsh's native settings. In the chat input, use `/pbot` to open the workspace, specialist, team, and history tabs; `/pbot status` checks the workspace and Python environment; `/pbot init` optionally creates missing material directories. Loading the plugin and these checks do not call a model.
+
+For subsequent starts, run `dsh --profile pbot`. After stopping active specialists and the server, update the host and plugin separately:
+
+```bash
+npm install -g @deepseek-ai/dsh@latest
+dsh plugin --profile pbot update personal-bot --latest
+dsh plugin --profile pbot list personal-bot --depth 0
+dsh --profile pbot
+```
+
+Do not repeat `--from-default-profile` during updates. For the desktop application, install and manage `personal-bot@latest` through its native Plugins page; the npm CLI's `pbot` profile and the application's `desktop` profile are separate.
+
+The [full English guide](docs/dsh.en.md) ([中文](docs/dsh.md)) covers launcher options, plugin inspection and removal, source tarballs, every `/pbot` subcommand, JSON parameters, and examples. Specialists use native Agent/Session instances in the server process; refreshing a page does not stop accepted work. Pi and dsh query shared history archives while owning their own sessions, models, authentication, and MCP configuration. The tested dsh baseline is `0.2.2-rc.1`; `latest` can change and does not imply that future releases have passed acceptance. See the [validation record](docs/validation.md).
 
 ### Optional: Task Conductor
 
@@ -98,7 +121,7 @@ Keep goals, markets, preferences, and working agreements in ordinary documents. 
 
 ## Daily use
 
-Describe the task directly: organize project materials, compare research findings, delegate an independent review, or run calculations. No fixed workflow is required. The command table and process details below describe Pi; see the [dsh guide](docs/dsh.md) for its Web interface and commands.
+Describe the task directly: organize project materials, compare research findings, delegate an independent review, or run calculations. No fixed workflow is required. The command table and process details below describe Pi; see the [dsh guide](docs/dsh.en.md) for its Web interface and commands.
 
 | Command | Purpose |
 | --- | --- |
@@ -142,7 +165,7 @@ Personal Bot stores no private activation state in the workspace. Pi owns its co
 
 ## Updates and historical data
 
-Current release: **0.2.6**. Personal Bot maintains no workspace format, initialization state, or workspace upgrade mechanism. Update the plugin through its native host package manager. For a local Pi installation, update the source, run `npm ci --ignore-scripts` if dependencies changed, then reload or restart Pi.
+Current release: **0.2.7**. Personal Bot maintains no workspace format, initialization state, or workspace upgrade mechanism. Update the plugin through its native host package manager. For a local Pi installation, update the source, run `npm ci --ignore-scripts` if dependencies changed, then reload or restart Pi.
 
 Stop active sub-sessions before changing versions. Sub-session compatibility follows the minor version before 1.0 and the major version from 1.0 onward. Sessions from another compatibility line cannot be resumed directly.
 

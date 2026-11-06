@@ -12,7 +12,7 @@
 
 ## dsh 构建
 
-`npm run build:dsh` 调用 `build-dsh.mjs`，由 tsconfig.dsh.json 编译 Host 与浏览器入口，再用 esbuild 将 Web 代码包装为固定版原生包根 Loader 模块。宿主 SDK 保持 external；完整 build 和 prepack 先构建 CLI、再构建 dsh，统一输出到 lib。
+`npm run build:dsh` 调用 `build-dsh.mjs`，由 tsconfig.dsh.json 编译 Host 与浏览器入口，再用 esbuild 将 Web 代码包装为当前开发基线的原生包根 Loader 模块。宿主 SDK 保持 external；完整 build 和 prepack 先构建 CLI、再构建 dsh，统一输出到 lib。
 
 ## 发布包消费者检查
 
