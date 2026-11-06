@@ -1,7 +1,7 @@
 import { Type } from "typebox";
 
-export const teamDescription = "主会话管理固定成员团队。create 不启动模型；run 开展有限 roundRobin 轮流讨论或 parallel 并行轮次，默认 2 轮、整批 15 分钟，成员直接取得公共原文。团队运行时占用成员；pause 停止新安排和领取，允许在途工作收尾，之后可私人 send；需要中止成员用 pbot_agent stop。到期时子入口尽力中止未被人工接管的团队工作。close 保留成员会话和历史；换成员须关闭旧团队再创建。继续须明确 run 新批次，不重放旧请求。完成仍需业务验收。";
-export const teamMessageDescription = "直接读取/发布团队公共原文。post 不唤醒模型、不增加轮次，所有成员可见，不提供私信或递归委派。成员只能在自己的团队工作中 post。read 用 afterSeq 分页；长消息用 seq/offset/limit 继续，nextOffset 非空表示该条正文不完整。保存成功不是模型已读或业务完成。";
+export const teamDescription = "组织固定成员协作。create 建立团队，run 开始一批讨论。运行时占用成员；pause 停止新安排，允许在途工作收尾，之后可私人 send；中止成员用 pbot_agent stop。close 保留成员和历史；换成员须关闭旧团队再创建。继续讨论用 run 提交新要求。成员最终答复向团队公开。";
+export const teamMessageDescription = "读写团队公共原文。post 向全体成员发布信息，需要安排回答时由主会话调用 pbot_team run；成员只能在自己的团队工作中 post。read 用 afterSeq 翻页，长正文按 seq/offset 续读，先补完 nextOffset 非空的消息。";
 
 import type { TSchema } from "typebox";
 
@@ -10,13 +10,13 @@ const text = Type.String({ minLength: 1, maxLength: 24000 });
 const name = Type.String({ minLength: 1, maxLength: 64, pattern: "^[^\\r\\n\\x00-\\x1f]+$" });
 const mode = Type.Union([Type.Literal("roundRobin"), Type.Literal("parallel")], { description: "run 必填：roundRobin 按成员顺序轮流发言；parallel 在并发上限内发言，全员本轮完成后才进入下一轮。" });
 const members = Type.Array(Type.Object({ agentId: id, role: Type.String({ minLength: 1, maxLength: 4000 }) }, { additionalProperties: false }), {
-  minItems: 1, maxItems: 50, description: "仅 create，必填：固定成员及职责。成员须属于当前父会话分支、版本兼容且未加入其他未关闭团队。create 不启动模型，也不等待成员就绪。",
+  minItems: 1, maxItems: 50, description: "仅 create，必填：当前分支中的固定成员及职责；成员须版本兼容且未加入其他未关闭团队。",
 });
 const run = {
-  instruction: Type.String({ ...text, description: "仅 run，必填：本次新批次的明确任务与交付要求；不恢复或重放旧批次。" }), mode,
+  instruction: Type.String({ ...text, description: "仅 run，必填：本批次的任务、约束与交付要求。" }), mode,
   rounds: Type.Optional(Type.Integer({ minimum: 1, maximum: 10, description: "仅 run：每位成员的轮数，默认 2。" })),
-  maxConcurrent: Type.Optional(Type.Integer({ minimum: 1, maximum: 50, description: "仅 run：roundRobin 默认且只允许 1；parallel 默认 min(2, 成员数)。不得超过成员数；已排队但未完成的请求也占用并发名额。" })),
-  timeoutSeconds: Type.Optional(Type.Integer({ minimum: 1, maximum: 86400, description: "仅 run：整批期限，默认 900 秒，包含所有轮次和等待。到期停止新安排和领取，子入口尽力中止未被人工接管的在途工作；pause 则允许在途工作收尾。" })),
+  maxConcurrent: Type.Optional(Type.Integer({ minimum: 1, maximum: 50, description: "仅 run：roundRobin 默认且只允许 1；parallel 默认 min(2, 成员数)。不得超过成员数；待处理和执行中的发言都计入上限。" })),
+  timeoutSeconds: Type.Optional(Type.Integer({ minimum: 1, maximum: 86400, description: "仅 run：整批期限，默认 900 秒，包含所有轮次和等待。到期停止安排并尝试中止尚未人工接管的工作，之后仍须核对实际状态；pause 则允许在途工作收尾。" })),
 };
 const page = {
   afterSeq: Type.Optional(Type.Integer({ minimum: 0, description: "仅 read：读取序号大于此值的消息，默认 0，不得超过 lastSeq。返回 nextAfterSeq 用于继续消息列表；单条续读使用 seq/offset，省略 afterSeq。先补完被截断的正文，再继续列表。" })),
@@ -27,7 +27,7 @@ const page = {
 const object = <T extends Record<string, TSchema>>(fields: T) => Type.Object(fields, { additionalProperties: false });
 export const teamParametersSchema = object({
   action: Type.Union(["create", "list", "status", "read", "run", "pause", "close"].map(v => Type.Literal(v)), {
-    description: "create 只接受并必填 name/brief/members；list 只接受 action；status/pause/close 只接受并必填 teamId；read 必填 teamId，可选 afterSeq/seq/offset/limit；run 必填 teamId/instruction/mode，可选 rounds/maxConcurrent/timeoutSeconds。禁止携带其他 action 的字段。run 要求所有成员存活、idle、当前代次团队接入就绪、无待处理私人输入，且团队未关闭、无运行批次或在途工作。pause 仅停止新安排和未领取请求；close 要求先暂停并等待在途工作结束，不停止成员会话。",
+    description: "create 必填 name/brief/members；list 只接受 action；status/pause/close 必填 teamId；read 必填 teamId，可选 afterSeq/seq/offset/limit；run 必填 teamId/instruction/mode，可选 rounds/maxConcurrent/timeoutSeconds。只传对应 action 的字段。run 前须确认所有成员存活、idle、可参与团队且无待处理私人输入，团队未关闭，也无运行批次或在途工作。close 前先暂停并等待在途工作结束。",
   }),
   teamId: Type.Optional(id), name: Type.Optional(name), brief: Type.Optional(text), members: Type.Optional(members),
   instruction: Type.Optional(run.instruction), mode: Type.Optional(mode), rounds: run.rounds, maxConcurrent: run.maxConcurrent, timeoutSeconds: run.timeoutSeconds, ...page,
@@ -59,10 +59,10 @@ export const teamPageSchema = object({ teamId: id, messages: Type.Array(message)
   nextAfterSeq: Type.Union([Type.Integer(), Type.Null()], { description: "后续消息列表的 afterSeq；null 只表示列表已到末尾，仍须检查每条消息的 nextOffset。指定 seq 时始终为 null。" }) });
 const ownedView = object({ teamId: id, name: Type.String(), brief: Type.String(), closed: Type.Boolean(), owned: Type.Literal(true),
   members: Type.Array(object({ agentId: id, role: Type.String(), name: Type.String(), state: Type.String() })),
-  lastSeq: Type.Integer(), activeCount: Type.Integer({ description: "所有批次中已领取、执行实例仍存活且尚无完成记录的请求数；paused 仍可能大于 0。" }),
+  lastSeq: Type.Integer(), activeCount: Type.Integer({ description: "各批次仍在途的请求数；paused 时也可能大于 0。" }),
   unresolved: Type.Array(object({ requestId: id, agentId: id, runId: id, round: Type.Integer(), active: Type.Boolean(),
-    state: Type.String({ description: "queued=运行批次中尚未领取；accepted=已领取且仍在途；uncertain=已领取但执行实例/代次不再匹配、无完成记录；cancelled=批次已停止且未领取，或周期取消；unpublished=已完成但尚未公开有效原文；mixed/interactive=含人工或私人工作，不自动公开；failed/interrupted=失败或中断。不能将 unresolved 当作成功或自动重试许可。" }), cycleId: Type.Optional(id) }), {
-    description: "所有批次中尚未确认完成且公开的请求，包含排队、在途、失败、结果不明和不宜公开的工作；不是仅列出运行中的请求。先核对原请求和业务结果，避免重复执行。",
+    state: Type.String({ description: "queued=待处理；accepted=在途；uncertain=结果未确认；cancelled=未执行或已取消；unpublished=已完成但结果尚未公开；mixed/interactive=含人工或私人工作，不自动公开；failed/interrupted=失败或中断。" }), cycleId: Type.Optional(id) }), {
+    description: "各批次尚未确认完成且公开的请求。先核对原请求和实际结果，再决定后续操作，避免重复执行。",
   }),
   run: Type.Optional(object({ runId: id, instruction: Type.String(), mode, state: Type.Union([Type.Literal("running"), Type.Literal("paused"), Type.Literal("finished")]),
     rounds: Type.Integer(), maxConcurrent: Type.Integer(), deadlineAt: Type.Number(), scheduled: Type.Integer(), published: Type.Integer(), reason: Type.Optional(Type.String()) })) });

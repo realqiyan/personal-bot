@@ -47,7 +47,7 @@ Pi 原生配置决定扩展加载范围，启动目录作为工作区根目录�
 
 Pi 的 `/pbot` 打开原生菜单，状态与长记录使用只读阅读页；dsh 使用独立工作台。见[界面设计](interaction-design.md)。
 
-`/pbot init` 可选地补建资料，已有文件保持不变。`/pbot status` 展示路径、版本和 Python 状态；模型通过每轮 pbot_environment 取得工作区、cwd、资源根目录和进程环境信息。
+`/pbot init` 可选地补建资料，已有文件保持不变。Pi 的新建根 AGENTS.md 在原生 `/reload` 或下次启动后加载，命令完成时提示这一点，不另行拼接或自动重载活动会话。`/pbot status` 展示路径、版本和完整 Python 状态；模型环境只保留工作区、资源根目录及 Python 状态与就绪目录。实际 cwd 由宿主提供，准备错误日志保留在状态入口。
 
 主 reload 保留子进程并重新关联，但暂停团队，不继续安排旧批次；退出或切换会话时清理子进程、取消环境准备并恢复本实例持有的环境变量。关闭操作幂等。子会话的分支归属、通知和恢复规则见[专家协作](agent-collaboration.md)。
 
@@ -57,13 +57,19 @@ dsh 只为原生 registry 中的根 Agent 建立协调者工作区，绑定其�
 
 | 资源 | 用途与加载方式 |
 | --- | --- |
-| resources/prompts/workspace.md | 主会话与专家的公共约定 |
-| resources/agents/、工作区 agents/ | coordinator、general-purpose 及同名工作区补充 |
-| resources/skills/ | 通过 resources_discover 提供；专家同时发现工作区技能 |
-| resources/references/ | 按需读取的操作参考 |
-| resources/templates/workspace-agents.md | 补建根资料入口的模板 |
+| resources/prompts/workspace.md | 主会话与专家的公共操作约定、目录用途、授权与结果核验 |
+| resources/agents/、工作区 agents/ | coordinator、general-purpose 职责及同名工作区补充 |
+| resources/prompts/team-member.md | 仅在专家处理团队任务时随团队目标与职责加载 |
+| resources/prompts/history-summary.md | 两种宿主的独立历史摘要调用，不带主/专家上下文 |
+| resources/skills/ | 原生技能目录只展示元数据，正文按需读取 |
+| resources/references/ | 按任务读取；普通计算与指标/回测分开 |
+| resources/templates/workspace-agents.md | 补建根资料入口的模板，不覆盖现有文件 |
 
-主会话通过 before_agent_start 增加提示词 section，同时保留 Pi 原生 AGENTS.md 加载。资源在使用时读取，缺失时报错；提示词更新后按宿主原生机制重载。dsh 使用原生 systemPrompt 与 FileSystemSkillProvider，发现包内技能及工作区 `.agents/skills`，不增加另一套工具或技能注册平台。
+Pi 主会话通过包清单发现技能，遵守原生 `--no-skills` 与包级资源过滤；专家按自己的 noSkills 选择发现包内及原工作区技能。before_agent_start 读取公共约定和角色补充，完整读取后更新 section；读取失败显式取消本轮，避免宿主只报告 hook 错误后继续。原生 AGENTS、技能元数据和提示模板由 Pi 自己加载、重载与去重；pbot 不另拼根 AGENTS，工具也不重复附加公共指南。
+
+dsh 专家通过原生 composeFrom 应用父会话 preset，再限制其工具。包内技能在 Host 层注册一次，项目/用户技能与更新监听交给原生 provider；公共约定和角色在 system-prompt/assemble 当次刷新，遵守宿主 complete persona 覆盖。团队简报随首个已接纳团队上下文提供，不放在先于 pre-step 求值的动态 system section。
+
+同一会话中不变的 section 由宿主沿用；这不代表后续模型请求不再携带有效系统提示。团队公共消息按结构化来源与序号去重，压缩后需要的原文通过 read 续取。目录用途常驻，维护方法、接入、计算和调度细节按需读取。具体入口与审查取舍见[模型上下文](model-context.md)。
 
 公共约定负责工作区与执行边界，角色负责职责与验收，技能提供专业方法与必要的本地操作约定，工具定义参数与结果语义。委派资料修改依据原任务授权及明确的文件责任，诊断环境问题不要求再次授权。工具按 action 校验必填与允许字段，返回具体参数错误；status 不读取报告正文。Pi 附件组装保留绝对来源及原生读取结果；dsh 使用原生文件存储与图片准入，Web 通用文件走原生 Session 上传凭证，命令图片使用原生编码图片输入。资料保存由模型按公共约定与维护技能处理，沉淀方法、口径与结论，可再次查询的数据按需获取。布局见[文件存储](file-storage.md)。
 

@@ -134,7 +134,7 @@ export default function subagent(pi: ExtensionAPI) {
   pi.registerTool({ ...teamMessageTool(teams, { check: ensure }, () => ({
     kind: "member", agentId: id, generation,
     ...(activeTeam && execution.current?.source === "parent" ? { requestId: activeTeam.request.requestId } : {}),
-  })), namespace: { name: "pbot", description: "团队公共通信，不提供管理或递归委派。" } });
+  })), namespace: { name: "pbot", description: "团队公共通信。" } });
   pi.on("resources_discover", async () => {
     if (d.options.noSkills) return {};
     const skillPaths = [join(resourceRoot, "skills")];
@@ -189,22 +189,30 @@ export default function subagent(pi: ExtensionAPI) {
     }
   });
   pi.on("before_agent_start", async (event, context) => {
-    ctx = context; ensure(); bindSession();
-    delete event.systemPromptOptions.sections.pbot_team;
-    requireThat(python, "子会话计算环境状态不可用。");
-    event.systemPromptOptions.sections.pbot_environment = JSON.stringify({
-      workspaceRoot: d.workspace, cwd: d.cwd, resourceRoot, python: python.status,
-    });
-    event.systemPromptOptions.sections.pbot_workspace = await readFile(join(resourceRoot, "prompts/workspace.md"), "utf8");
-    event.systemPromptOptions.sections.pbot_child = await agentText("general-purpose", d.workspace);
-    if (activeTeam && !execution.interactive && execution.current?.source !== "mixed") {
-      const link = teams.links().get(activeTeam.request.requestId);
-      requireThat(link, "团队关联不可读取。");
-      event.systemPromptOptions.sections.pbot_team = teamBrief(link);
-      const message = teamContext(link, context, link.request.throughSeq);
-      if (message) return { message };
+    ctx = context;
+    try {
+      ensure(); bindSession();
+      requireThat(python, "子会话计算环境状态不可用。");
+      const workspace = await readFile(join(resourceRoot, "prompts/workspace.md"), "utf8");
+      const role = await agentText("general-purpose", d.workspace);
+      let brief: string | undefined, message;
+      if (activeTeam && !execution.interactive && execution.current?.source !== "mixed") {
+        const link = teams.links().get(activeTeam.request.requestId);
+        requireThat(link, "团队关联不可读取。");
+        brief = teamBrief(link);
+        message = teamContext(link, context, link.request.throughSeq);
+      }
+      const { state, directory } = python.status;
+      Object.assign(event.systemPromptOptions.sections, {
+        pbot_environment: JSON.stringify({ workspaceRoot: d.workspace, resourceRoot, python: { state, directory } }),
+        pbot_workspace: workspace, pbot_child: role,
+      });
+      if (brief) event.systemPromptOptions.sections.pbot_team = brief;
+      else delete event.systemPromptOptions.sections.pbot_team;
+      return message ? { message } : undefined;
+    } catch (error) {
+      context.abort(); throw error;
     }
-    return;
   });
   pi.on("turn_end", (event, context) => {
     if (!activeTeam || execution.current?.source !== "parent" || event.outcome === "aborted") return;

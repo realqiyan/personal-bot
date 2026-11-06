@@ -25,6 +25,7 @@ export class DshAgentRuntime {
   #answer = "";
   #hasAnswer = false;
   #activeTeam: TeamLink | undefined;
+  #teamBriefed = false;
   #pendingPause: string | undefined;
   #pump: Promise<void> | undefined;
   #timer: ReturnType<typeof setInterval> | undefined;
@@ -98,12 +99,11 @@ export class DshAgentRuntime {
       requireThat(link, "团队关联不可读取。");
       const seen = this.#seen.get(link.team.teamId) ?? new Set<number>();
       const context = createTeamContext(link, seen);
-      if (!context) return decision;
-      return { ...decision, messages: [...decision.messages, createUserMessage({ content: [{ type: "text", text: context.content }],
-        source: { kind: "pbot-team-context", form: "relay", teamId: link.team.teamId, seqs: context.seqs } })] };
+      if (this.#teamBriefed && !context) return decision;
+      const text = [...(this.#teamBriefed ? [] : [teamBrief(link)]), ...(context ? [context.content] : [])].join("\n\n");
+      return { ...decision, messages: [...decision.messages, createUserMessage({ content: [{ type: "text", text }],
+        source: { kind: "pbot-team-context", form: "relay", teamId: link.team.teamId, seqs: context?.seqs ?? [] } })] };
     });
-    this.ctx.systemPrompt.section({ name: "pbot:team", order: 600, interpolate: false,
-      text: () => this.#activeTeam && !this.humanPending() && this.execution.current?.source === "parent" ? teamBrief(this.#activeTeam) : "" });
     this.execution.save({ state: "idle", activity: "空闲" });
     this.ctx.effect(() => () => this.stop());
   }
@@ -128,7 +128,7 @@ export class DshAgentRuntime {
   private async event(event: SessionEvent) {
     if (!this.current()) return;
     if (event.type === "turn/start") {
-      this.#turnEvents = []; this.#answer = ""; this.#hasAnswer = false;
+      this.#turnEvents = []; this.#answer = ""; this.#hasAnswer = false; this.#teamBriefed = false;
       this.execution.begin();
     }
     if (this.execution.current) this.#turnEvents.push(event);
@@ -152,6 +152,7 @@ export class DshAgentRuntime {
       if (event.data.source.kind === "user") this.execution.humanInput();
       if (event.data.source.kind === "pbot-team-context") {
         const { teamId, seqs } = event.data.source, seen = this.#seen.get(teamId) ?? new Set<number>();
+        if (this.#activeTeam?.team.teamId === teamId) this.#teamBriefed = true;
         for (const seq of seqs) seen.add(seq); this.#seen.set(teamId, seen);
       }
     }

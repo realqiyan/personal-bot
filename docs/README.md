@@ -6,6 +6,7 @@
 | --- | --- |
 | [架构原则](architecture-guidelines.md) | 模块划分、依赖和开发方法 |
 | [技术设计](technical-design.md) | 系统组成、生命周期与资源加载 |
+| [模型上下文](model-context.md) | 主会话、专家与摘要入口的内容、加载时机和验证边界 |
 | [界面设计](interaction-design.md) | Pi TUI 与 dsh GUI |
 | [dsh 使用](dsh.md) | 固定版本、原生 profile 安装、Web 管理与宿主差异 |
 | [工具与执行](capability-design.md) | CLI/MCP 接入、授权和结果核验 |

@@ -394,7 +394,7 @@ test("real idle Pi children do not call a model, and team use retains the origin
   const root = await realpath(await mkdtemp(join(tmpdir(), "pbot-idle-pi-"))), before = { ...process.env };
   // Isolate both Pi auth and the tmux server. No inherited provider credentials reach these processes.
   for (const key of Object.keys(process.env)) delete process.env[key];
-  Object.assign(process.env, { PATH: before.PATH, HOME: root, TERM: "xterm-256color",
+  Object.assign(process.env, { PATH: before.PATH, HOME: root, TERM: "xterm-256color", PI_OFFLINE: "1",
     PI_CODING_AGENT_DIR: join(root, "config"), TMUX_TMPDIR: root, XDG_DATA_HOME: join(root, "data") });
   await preparePythonFailure(root);
   const agents = new AgentService(root, join(root, "subagents"), new PiAgents()), teams = new TeamService(root, agents.files, agents.teamFiles);

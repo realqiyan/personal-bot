@@ -17,7 +17,8 @@ npm pack --dry-run
 | tests/installation/ | 真实子进程、Pi 原生配置、来源与资源过滤保留、过期计划、CLI 打包入口、无模型认证时的初始化分发与拦截 |
 | tests/smoke/ | 实际 tarball 加载、资料准备、独立 Python setup 脚本 |
 | tests/e2e/ | Pi SDK/RPC 命令与工具、确认、持久化、重启和 Bash 环境继承 |
-| tests/dsh/ | 真实 Agent/Session、代次与占用、附件、文件规则、团队、通知、双来源 history、原生 Remote、资源可见性与生命周期 |
+| tests/integration/ | Pi 首轮上下文、原生差量、技能禁用与包过滤、init 后的原生 reload、必需资料读取失败时取消 |
+| tests/dsh/ | 真实 Agent/Session、代次与占用、附件、文件规则、团队、通知、双来源 history、原生 Remote、preset 继承、资源可见性与生命周期 |
 | 历史并发 | 真实多进程与来源短锁，拒绝过期扫描和摘要覆盖，损坏来源隔离与独立取消 |
 | 专家协作 | 真实 tmux/Pi 进程、无任务待命、原 inbox、消息顺序、分支归属、通知领取和异常退出 |
 | 历史查询 | 真实 SDK 保存的问答、补充输入、工具过滤、分支隔离、四叉分组、原文与摘要搜索、正文分页、重载复用、空会话不误报、旧目录复制、跨目录读取、缺失原文时保留存档、旧路径清理、按会话 ID 重新关联与工具契约 |
@@ -44,6 +45,24 @@ Node 测试不下载第三方 Python 依赖；原生库集成验证见 [Python �
 实际 tarball 在隔离消费者目录通过 `scripts/check-consumer.mjs` 验证：独立 CLI 无需 Pi/dsh SDK，显式安装 Pi 1.5.0 后扩展加载无错误或包警告，四个工具、技能和 `/pbot init` 均通过，不发起模型请求。
 
 本轮未调用真实模型，也未重新执行 Linux、Node.js 22.19.0 或人工 TUI 验收。
+
+## 模型上下文审查（2026-11-07）
+
+本次针对基于 `1625a78` 的未发布工作区修改，覆盖 Pi/dsh 主会话、专家、团队任务及两种历史摘要入口，内容取舍与加载方式见[模型上下文](model-context.md)。macOS、Node.js 24.22.2、npm 11.19.1、Pi 1.5.0、dsh 0.2.2-rc.1 下，`npm run check`、`npm test`、`git diff --check` 均通过；135 项测试全部通过，无失败、取消或跳过，依赖边界为 137 个模块、558 条依赖。该总数包含当前工作区的安装与通知回归，不全是本次新增测试。
+
+- Pi 使用真实资源加载器和 `_prepareRun` 观察认证前的主会话、专家首轮及后续差量，核对原生 AGENTS、用户职责补充、工具声明、技能目录、精简环境和条件性团队内容。主会话 no-skills、包级 `skills: []` 过滤均生效；未变化的 section 不追加，角色修改在下次准备时可见。新建 AGENTS 在原生 reload 后加载，已有内容保持原样。
+- Pi 主会话与真实专家入口分别用不可读取的职责文件触发加载失败，实际 custom-message run 的原生 abort 信号已设置，未进入 provider 请求，tokens 为零。此处检查取消与调用时序，不以错误文案或唯一 stopReason 判断成功。
+- dsh 使用真实 preset、Agent/Session 和原生文件/技能工具，核对专家 create/resume 的 preset 继承、首轮 AGENTS 和工具可见性、角色当次刷新、原文保真，以及项目/用户/包技能的优先级、文件更新监听和卸载生命周期。complete persona 保留宿主覆盖规则；noSkills 隐藏模型技能目录和工具，用户显式技能手势保留原生行为。
+- dsh 团队首轮在实际 request/header 前收到共同目标、成员职责和公共原文；简报每次团队发言一次，公共序号按实际消费确认。回归覆盖无公共消息、准入拒绝后重新发言、后续批次去重及人工输入不追加团队内容。最终快照另保存主会话连续两次输入、普通专家、noSkills 专家和团队首轮；各请求在原生上下文组装后因缺少 provider adapter 失败，没有生成模型响应。
+- 两个历史摘要入口通过源码核对：只提供专用提示与本次历史文本，不提供工具或普通会话上下文。现有历史测试继续验证分组、分页、持久化和并发；没有通过替代模型证明摘要质量。
+
+首轮全量检查曾有一项真实 tmux/Pi 待命测试超时。隔离观察确认 Pi 联网元数据查询使子进程停留在 starting；在该离线 fixture 补齐其他原生进程测试已有的 `PI_OFFLINE=1` 后，单项与最终全量均通过。没有延长超时、修改生产启动规则或调整提示来迁就断言。
+
+正常执行 prepack 的 `npm pack --dry-run --json` 通过，共 269 个包条目；包含 CLI、dsh Host/Web、team-member、compute-finance 和本文引用的上下文设计文档，已删除的 tool-guidelines 不再进入包。未发布。
+
+证据目录：`/tmp/pbot-pi-context-audit-8UHhUu/` 保存 Pi 原始观察及最终六种加载场景；`/tmp/pbot-dsh-context-review-pn3D9O/` 保存修改前的 dsh 发现；`/var/folders/tg/_ll136tn58387kdsr5vxzzwr0000gn/T/pbot-dsh-final-context-3tSpqi/` 保存最终 dsh 原生请求和事件；`/var/folders/tg/_ll136tn58387kdsr5vxzzwr0000gn/T/pbot-context-review-RJEmho/` 保存修改前资源、Pi 汇总、待命诊断脚本及最终打包结果。临时文件可能被系统清理，行为回归保留在仓库测试中。
+
+本次使用临时工作区及隔离的用户、认证和 Python 故障目录，不使用个人凭据，不修改用户资料、历史或备份。本地结果只证明上下文的来源、内容保真、出现时机及去重，不证明模型理解、专业判断、实际 token/费用或成功的外部服务工作流。没有重新验收 Linux、Node.js 22.19.0、完整 Web/桌面或成功模型调用；前述旧版本与已发布提交的验收范围保持不变。
 
 ## 双宿主接入验收
 

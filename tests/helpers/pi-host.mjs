@@ -17,13 +17,13 @@ after(async () => {
   await rm(pythonDataHome, { recursive: true, force: true });
 });
 
-export async function host(t, { prepare, enabled = true, extensions = [] } = {}) {
+export async function host(t, { prepare, enabled = true, extensions = [], noSkills = false, noContextFiles = true, packageEntry = resolve(".") } = {}) {
   const temp = await realpath(await mkdtemp(join(tmpdir(), "pbot-pi-"))), root = join(temp, "workspace"), agentDir = join(temp, "agent");
   await mkdir(root); await mkdir(agentDir);
   await prepare?.(root);
-  const settingsManager = SettingsManager.inMemory({ packages: enabled ? [resolve(".")] : [], defaultTools: ["+codemode"] });
+  const settingsManager = SettingsManager.inMemory({ packages: enabled ? [packageEntry] : [], defaultTools: ["+codemode"] });
   let api;
-  const loader = new DefaultResourceLoader({ cwd: root, agentDir, settingsManager, noContextFiles: true,
+  const loader = new DefaultResourceLoader({ cwd: root, agentDir, settingsManager, noContextFiles, noSkills,
     extensionFactories: [createCodemodeExtension({ models: false }), pi => { api = pi; }, ...extensions] });
   await loader.reload();
   assert.equal(loader.getExtensions().errors.length, 0);

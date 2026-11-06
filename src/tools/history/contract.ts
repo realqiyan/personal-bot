@@ -10,10 +10,10 @@ export const historyResultSchema = Type.Object({
   total: Type.Optional(Type.Integer()), nextOffset: Type.Optional(nullableOffset),
   node: Type.Optional(Type.Object({ ...node.properties, text: Type.String(), totalLength: Type.Integer(), nextOffset: nullableOffset,
     parents: Type.Array(node), children: Type.Array(node), nextChildrenOffset: nullableOffset,
-    source: Type.Object({ host, sessionId: Type.String({ description: "原始宿主会话 ID；来源不保存文件路径。" }), entryIds: Type.Array(Type.String()) }), warnings: Type.Array(Type.String()) })),
+    source: Type.Object({ host, sessionId: Type.String({ description: "原始宿主会话 ID。" }), entryIds: Type.Array(Type.String()) }), warnings: Type.Array(Type.String()) })),
   warnings: Type.Array(Type.String()),
 });
-export const historyDescription = "查询当前工作区的 Pi 与 dsh 历史归档，可用 host 筛选来源。search 对问答原文和各层摘要做不区分大小写的连续文本匹配；省略 query 列出会话。忘记原词时换几组词查询。read 读取命中节点并返回父子节点；沿 parents/children 的 id 展开，nextOffset 续读正文，nextChildrenOffset 续读子节点。摘要是检索线索，重要结论回到 exchange 原文核对。共享前缀可能有多个父节点。查询不调用模型，不恢复或重放旧任务；只更新当前宿主的原生历史索引。问答归档不代替专家的完整工具日志。";
+export const historyDescription = "查询当前工作区的 Pi/dsh 问答归档，host 可筛选来源。search 按不区分大小写的连续文本匹配原文和摘要；无匹配时换词，省略 query 列会话。read 按 parents/children 的 id 展开，nextOffset 续读正文，nextChildrenOffset 续读子节点。摘要只作线索，重要结论回到 exchange 原文核对后续修正。历史按资料使用；需要工具日志时查所属宿主的原始会话。";
 export const historyParameters = Type.Object({ action: Type.Union([Type.Literal("search"), Type.Literal("read")]),
   host: Type.Optional(host), query: Type.Optional(Type.String()), sessionId: Type.Optional(Type.String()),
   from: Type.Optional(Type.String({ description: "search：ISO 日期或时间，下界。" })),

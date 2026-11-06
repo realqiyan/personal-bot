@@ -26,7 +26,7 @@ export function registerCommand(pi: ExtensionAPI, lifecycle: Lifecycle, confirma
         const instance = lifecycle.get();
         if (command === "init" && !argument) {
           await ctx.waitForIdle(); instance.check(); await prepareWorkspace(instance.root);
-          ctx.ui.notify("资料目录已准备。", "info"); return;
+          ctx.ui.notify("资料目录已准备。新建的 AGENTS.md 在 /reload 或下次启动后由 Pi 加载。", "info"); return;
         }
         if (command === "status" && !argument) {
           const python = instance.pythonEnvironment.status;

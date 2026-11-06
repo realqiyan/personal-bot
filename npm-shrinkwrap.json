@@ -19,6 +19,7 @@
         "@deepseek-ai/cordis": "4.1.0",
         "@deepseek-ai/dsh": "0.2.2-rc.1",
         "@deepseek-ai/dsh-agent": "0.2.2-rc.1",
+        "@deepseek-ai/dsh-agent-preset-registry": "0.2.2-rc.1",
         "@deepseek-ai/dsh-api-remotes": "0.2.2-rc.1",
         "@deepseek-ai/dsh-attachment": "0.2.2-rc.1",
         "@deepseek-ai/dsh-client-file-upload": "0.2.2-rc.1",
@@ -57,6 +58,7 @@
       "peerDependencies": {
         "@deepseek-ai/cordis": "~4.1.0",
         "@deepseek-ai/dsh-agent": "0.2.2-rc.1",
+        "@deepseek-ai/dsh-agent-preset-registry": "*",
         "@deepseek-ai/dsh-api-remotes": "0.2.2-rc.1",
         "@deepseek-ai/dsh-attachment": "0.2.2-rc.1",
         "@deepseek-ai/dsh-client-file-upload": "0.2.2-rc.1",
@@ -88,6 +90,9 @@
           "optional": true
         },
         "@deepseek-ai/dsh-agent": {
+          "optional": true
+        },
+        "@deepseek-ai/dsh-agent-preset-registry": {
           "optional": true
         },
         "@deepseek-ai/dsh-api-remotes": {

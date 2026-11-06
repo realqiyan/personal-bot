@@ -92,7 +92,7 @@ For an older integration package, check its source and scope with `pi list`, rev
 
 ## Optional workspace preparation
 
-Personal Bot works without initialization. Run `/pbot init` only if you want the standard material layout. It creates missing material directories and a missing root `AGENTS.md`; it does not overwrite files or start model tasks. Activation does not depend on confirmation or reload after initialization.
+Personal Bot works without initialization. Run `/pbot init` only if you want the standard material layout. It creates missing material directories and a missing root `AGENTS.md`; it does not overwrite files or start model tasks. In Pi, the new `AGENTS.md` enters native context after `/reload` or the next startup. The bundled directory guide is available from the first task.
 
 Keep goals, markets, preferences, and working agreements in ordinary documents. Ask the assistant to organize them as needed. For external tools, provide the CLI/MCP name, purpose, official documentation, or configuration location—not credential values.
 

@@ -49,7 +49,7 @@ python3 scripts/setup-python.py --check  # 只检查，不创建或安装
 
 ## 使用与验证
 
-setup 安装 numpy、pandas、TA-Lib、backtesting、scipy、statsmodels、matplotlib、scikit-learn、pyarrow、openpyxl、seaborn 和 Bokeh。按任务导入，参见[计算参考](../resources/references/compute.md)。市场规则、费用、成交时点和数据切分由具体研究确定，原生 Backtest 不自动提供 A 股 T+1、整手或涨跌停约束。
+setup 安装 numpy、pandas、TA-Lib、backtesting、scipy、statsmodels、matplotlib、scikit-learn、pyarrow、openpyxl、seaborn 和 Bokeh。按任务导入，环境与项目运行见[计算参考](../resources/references/compute.md)，需要技术指标或回测时再读[指标与回测](../resources/references/compute-finance.md)。市场规则、费用、成交时点和数据切分由具体研究确定，原生 Backtest 不自动提供 A 股 T+1、整手或涨跌停约束。
 
 激活后直接执行 `python scripts/analyze.py` 或 `python -m analysis.main`。工作目录、模块导入、参数和结果位置遵循项目约定。项目构建或测试明确要求另一环境时，按项目约定执行。pbot 不复制源码、不生成输入文件或计算记录、不管理研究进程的超时。Python 与 Bash 不是文件或网络沙箱，也不授予交易权限。
 

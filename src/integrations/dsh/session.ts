@@ -4,6 +4,7 @@ import { SessionId } from "@deepseek-ai/dsh-session";
 import { ReasoningEffortId } from "@deepseek-ai/dsh-llm";
 import type { SessionHeader } from "@deepseek-ai/dsh-session";
 import type {} from "@deepseek-ai/dsh-session-persistence";
+import type {} from "@deepseek-ai/dsh-agent-preset-registry";
 import type { AgentDescriptor } from "../../model/agent.js";
 import { requireThat } from "../../common/validation.js";
 
@@ -37,6 +38,7 @@ export async function openDshAgent(ctx: Context, d: AgentDescriptor, parent: Age
   signal.throwIfAborted();
   const compose: AgentSetup = async (agentCtx, agent) => {
     validateHeader(d, agent.session.header);
+    agentCtx.get("agentPresets")?.composeFrom(agentCtx, parent.ctx);
     if (resume) agent.inbox.clear();
     const commit = await setup(agentCtx, agent);
     await flushDshAgent(agent);

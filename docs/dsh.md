@@ -66,7 +66,9 @@ dsh --profile pbot
 
 省略初始任务与附件时，只创建待命专家。每个父会话最多 50 个存活或正在启动、释放的专家。dsh 专家是同进程中的独立原生 Agent/Session，无需 tmux，也不继承父聊天历史。
 
-模型默认继承父会话的原生选择。`thinking` 使用 dsh 的 reasoning effort ID；改变 provider 或 model 时，不自动带入另一模型的 effort。`tools` 使用当前原生工具名称，`noSkills` 控制技能；Pi 专属的 `noExtensions`、`noPromptTemplates`、`noContextFiles` 明确拒绝。
+模型默认继承父会话的原生选择。`thinking` 使用 dsh 的 reasoning effort ID；改变 provider 或 model 时，不自动带入另一模型的 effort。`tools` 使用当前原生工具名称，`noSkills` 关闭模型技能目录和 skill 工具，用户显式技能命令仍按宿主处理；Pi 专属的 `noExtensions`、`noPromptTemplates`、`noContextFiles` 明确拒绝。
+
+专家创建和恢复时应用父会话的原生 preset，保留其文件工具、AGENTS 和技能发现，再应用专家工具限制。包内技能由 Host 提供，项目和用户技能沿用原生优先级与更新监听。显式使用 complete persona 时，宿主可能覆盖 pbot 的公共约定与角色；选择这种 persona 时需自行维护完整行为要求，详见[模型上下文](model-context.md)。
 
 初始任务可以指定服务器文件路径。人工对话还可从本机选择文件与图片，单次最多 32 个附件；一次选择服务器路径或本机附件。通用文件使用原生上传与持久文件引用，PNG/JPEG/WebP/GIF 图片接受原生图像准入，数量和字节上限由宿主控制。路径不是“模型已经读过文件”的证据。
 

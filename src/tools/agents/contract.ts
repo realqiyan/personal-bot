@@ -1,6 +1,6 @@
 import { Type } from "typebox";
 
-export const agentDescription = "独立专家会话，不继承父聊天历史。start 完成启动后返回，不等待工作完成；未提供 message/prompts/files 时只启动待命会话，不调用模型。完成自动通知，无需轮询。团队占用期间不能私人 send。send 继续对话，rename 改名，status/list 查看状态，status 返回最近周期且不读取报告正文。read 非阻塞读取报告；读取已结束周期会领取该周期的完成通知（包括部分读取），后续不再重复通知。nextOffset 非空时以返回的 cycle.cycleId 固定周期续读。state 是执行状态，cycle.state 是工作结果，queued 仅表示入队。stop 停止并保留历史，resume 携新 message 恢复，不重放旧工作。独立复核须 start 新上下文。子会话使用原生 CLI/MCP，按委派范围工作，不递归委派。每个父会话最多 50 个存活子会话，空闲也计入。";
+export const agentDescription = "委派专家并继续对话。start 启动后即返回，完成自动通知，无需轮询；省略初始输入时待命。send 继续对话，团队占用期间不可私人 send。status 查看状态，read 读取报告；读取已结束周期即领取其通知，包括部分读取。续读固定 cycle.cycleId 并使用 nextOffset。state 表示执行状态，cycle.state 表示工作结果，queued 只表示入队。stop 保留历史，resume 携新 message 继续。每个父会话最多 50 个存活专家，空闲也计入。";
 
 const id = Type.String({ minLength: 1, maxLength: 128 });
 const message = Type.String({ minLength: 1, maxLength: 24000, description: "本次目标、交付要求、资料依据与约束。" });
@@ -8,12 +8,12 @@ const name = Type.String({ minLength: 1, maxLength: 64, pattern: "^[^\\r\\n\\x00
 export const agentStartOptions = {
   name: Type.Optional(name), message: Type.Optional(message),
   files: Type.Optional(Type.Array(Type.String({ minLength: 1 }), { maxItems: 32, description: "随初始消息读取的文件；相对路径基于原工作区根目录。" })),
-  prompts: Type.Optional(Type.Array(message, { maxItems: 32, description: "与 message 按顺序合并为同一初始消息，不是多个执行轮次。" })),
+  prompts: Type.Optional(Type.Array(message, { maxItems: 32, description: "与 message 按顺序合并为同一初始消息。" })),
   provider: Type.Optional(Type.String({ ...id, description: "Pi 模型提供方，默认继承主会话。" })),
-  model: Type.Optional(Type.String({ ...id, description: "子进程可用的 Pi 模型 ID，默认继承主会话。" })),
+  model: Type.Optional(Type.String({ ...id, description: "Pi 模型 ID，默认继承主会话。" })),
   thinking: Type.Optional(Type.Union([Type.Literal("off"), Type.Literal("minimal"), Type.Literal("low"), Type.Literal("medium"), Type.Literal("high"), Type.Literal("xhigh"), Type.Literal("max")], { description: "默认继承主会话思考级别。" })),
   cwd: Type.Optional(Type.String({ minLength: 1, description: "执行目录，相对原工作区根目录；省略时使用工作区根目录。" })),
-  tools: Type.Optional(Type.Array(id, { minItems: 1, description: "按 Pi 原生规则选择工具，省略时沿用原生默认工具；MCP 工具遵循原生暴露设置。不提供递归委派；这不是宿主隔离。" })),
+  tools: Type.Optional(Type.Array(id, { minItems: 1, description: "按 Pi 规则选择工具，省略时使用默认工具；MCP 工具按当前配置提供。" })),
   noExtensions: Type.Optional(Type.Boolean({ description: "默认 true，不发现其他扩展。" })),
   noSkills: Type.Optional(Type.Boolean({ description: "关闭技能发现，默认 false。" })),
   noPromptTemplates: Type.Optional(Type.Boolean({ description: "关闭提示模板发现，默认 false。" })),
@@ -52,7 +52,7 @@ export const agentViewSchema = Type.Object({ agentId: Type.String(), name: Type.
   activity: Type.String(), cycle: Type.Optional(cycle), error: Type.Optional(Type.String()),
   requestId: Type.Optional(Type.String()), messageStatus: Type.Optional(Type.Literal("queued", { description: "消息已入队，不代表模型已阅读或完成。" })),
   cycles: Type.Optional(Type.Array(Type.Object({ cycleId: Type.String(), state: Type.String() }), { description: "仅 read 返回：可读取的周期索引。" })),
-  report: Type.Optional(Type.String({ description: "仅 read 返回：选定周期的报告正文片段。已结束周期的读取结果持久化后领取该周期通知，即使本页未读完。" })),
+  report: Type.Optional(Type.String({ description: "仅 read 返回：选定周期的报告正文片段。" })),
   totalLength: Type.Optional(Type.Integer({ description: "仅 read 返回：完整报告的 UTF-16 字符数。" })),
   nextOffset: Type.Optional(Type.Union([Type.Integer(), Type.Null()], { description: "仅 read 返回：null 表示本报告已读完；否则以相同 agentId、cycle.cycleId 和此 offset 继续。" })),
 }, { additionalProperties: false });

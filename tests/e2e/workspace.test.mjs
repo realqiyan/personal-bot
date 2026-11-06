@@ -41,9 +41,11 @@ test("E2E: startup reports a damaged Python environment, preserves history and l
   assert.ok(pi.records.some(record => record.type === "extension_ui_request" && record.method === "notify" && record.notifyType === "warning"));
   await pi.command("/pbot status");
   const status = pi.records.findLast(record => record.type === "extension_ui_request" && record.method === "notify");
-  assert.deepEqual(JSON.parse(status.message), {
-    workspaceRoot: workspace.root, release: packageVersion, python: context.environment.python,
-  });
+  const details = JSON.parse(status.message);
+  assert.equal(details.workspaceRoot, workspace.root); assert.equal(details.release, packageVersion);
+  assert.equal(details.python.state, context.environment.python.state);
+  assert.equal(typeof details.python.error, "string");
+  assert.equal(Object.hasOwn(context.environment.python, "error"), false);
   await pi.command("/pbot python setup");
   assert.equal(await readFile(settingsPath, "utf8"), settings);
   assert.deepEqual(await readdir(workspace.pythonDirectory), ["keep"]);

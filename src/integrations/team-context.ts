@@ -1,5 +1,8 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import type { TeamLink, TeamMessage } from "../model/team.js";
 import { markdownBlock } from "../common/markdown.js";
+import { resourceRoot } from "../common/paths.js";
 
 type MessagePage = Pick<TeamMessage, "seq" | "author" | "text" | "replyTo" | "runId" | "source"> & {
   offset: number; totalLength: number; nextOffset: number | null;
@@ -30,7 +33,8 @@ export function teamBrief(link: TeamLink): string {
   return ["# 团队协作", "", "- 团队：" + link.team.name, "- `teamId`: `" + link.team.teamId + "`",
     "- 当前成员 `agentId`: `" + link.request.agentId + "`", "- `runId`: `" + link.run.runId + "`",
     "- 轮次：" + link.request.round + " / " + link.run.rounds, "", "## 共同目标", "", link.team.brief,
-    "", "## 成员职责", "", ...link.team.members.flatMap(member => ["### " + member.agentId, "", member.role, ""])].join("\n");
+    "", "## 成员职责", "", ...link.team.members.flatMap(member => ["### " + member.agentId, "", member.role, ""]),
+    readFileSync(join(resourceRoot, "prompts/team-member.md"), "utf8").trim()].join("\n");
 }
 
 export function createTeamContext(link: TeamLink, seen: ReadonlySet<number>, throughSeq = link.team.messages.length) {

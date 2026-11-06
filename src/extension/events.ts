@@ -25,19 +25,24 @@ export function registerEvents(pi: ExtensionAPI, lifecycle: Lifecycle, confirmat
       else throw error;
     }
   });
-  pi.on("resources_discover", () => lifecycle.active ? { skillPaths: [join(resourceRoot, "skills")] } : {});
   pi.on("before_agent_start", async (event, ctx) => {
     const instance = lifecycle.active;
     if (!instance) return;
     instance.cancelWork();
-    const role = await agentText("coordinator", instance.root);
-    const workspace = await readFile(join(resourceRoot, "prompts/workspace.md"), "utf8");
-    instance.check();
-    event.systemPromptOptions.sections.pbot_workspace = workspace;
-    event.systemPromptOptions.sections.pbot_environment = JSON.stringify({
-      workspaceRoot: instance.root, cwd: ctx.cwd, resourceRoot, python: instance.pythonEnvironment.status,
-    });
-    event.systemPromptOptions.sections.pbot = role;
+    try {
+      const role = await agentText("coordinator", instance.root);
+      const workspace = await readFile(join(resourceRoot, "prompts/workspace.md"), "utf8");
+      instance.check();
+      const { state, directory } = instance.pythonEnvironment.status;
+      Object.assign(event.systemPromptOptions.sections, {
+        pbot_workspace: workspace,
+        pbot_environment: JSON.stringify({ workspaceRoot: instance.root, resourceRoot, python: { state, directory } }),
+        pbot: role,
+      });
+    } catch (error) {
+      // Pi reports hook errors but continues preparation unless the run is explicitly aborted.
+      ctx.abort(); throw error;
+    }
   });
   pi.on("input", () => { lifecycle.active?.cancelWork(); });
   pi.on("agent_end", () => { lifecycle.active?.cancelWork(); });

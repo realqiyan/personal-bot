@@ -215,8 +215,12 @@ test("actual child entry uses native tools without provider state or recursive d
   t.after(() => { for (const [key, value] of Object.entries(previous)) { if (value === undefined) delete process.env[key]; else process.env[key] = value; } });
   const agentDir = join(root, "pi-config"); await mkdir(agentDir);
   const settingsManager = SettingsManager.inMemory();
+  let abortedAtStart = false, providerRequests = 0;
   const loader = new DefaultResourceLoader({ cwd, agentDir, settingsManager, noExtensions: true, noSkills: true, noContextFiles: true,
-    extensionFactories: [createMcpExtension(), createCodemodeExtension({ models: false }), createToolSearchExtension(), childEntry] });
+    extensionFactories: [createMcpExtension(), createCodemodeExtension({ models: false }), createToolSearchExtension(), childEntry, pi => {
+      pi.on("agent_start", (_event, ctx) => { abortedAtStart = ctx.signal?.aborted === true; });
+      pi.on("before_provider_request", () => { providerRequests++; });
+    }] });
   await loader.reload(); assert.deepEqual(loader.getExtensions().errors, []);
   const runtime = await ModelRuntime.create({ authPath: join(agentDir, "auth.json"), modelsPath: join(agentDir, "models.json") });
   const { session } = await createAgentSession({ cwd, agentDir, settingsManager, modelRuntime: runtime,
@@ -230,8 +234,8 @@ test("actual child entry uses native tools without provider state or recursive d
   assert.deepEqual(loader.getSkills().skills, []);
   const started = await session.extensionRunner.emitBeforeAgentStart({ messageType: "user", prompt: "" }, { cwd });
   const environment = JSON.parse(started.systemPromptOptions.sections.pbot_environment);
-  assert.equal(environment.workspaceRoot, root); assert.equal(environment.cwd, cwd); assert.equal(environment.resourceRoot, resourceRoot);
-  assert.equal(environment.python.state, "error"); assert.equal(typeof environment.python.error, "string");
+  assert.equal(environment.workspaceRoot, root); assert.equal(environment.resourceRoot, resourceRoot);
+  assert.deepEqual(environment.python, { state: "error" });
   const bash = session.agent.state.tools.find(t => t.name === "bash");
   const output = await bash.execute("native", { command: "printf 42" });
   assert.notEqual(output.isError, true);
@@ -239,6 +243,11 @@ test("actual child entry uses native tools without provider state or recursive d
   const denied = await session.extensionRunner.emitToolCall({ type: "tool_call", toolCallId: "recursive", toolName: "pbot_agent", input: { action: "list" } });
   assert.equal(denied.block, true);
   assert.equal((await session.extensionRunner.emit({ type: "session_before_switch", reason: "new" })).cancel, true);
+  await mkdir(join(root, "agents/general-purpose.md"));
+  await session.sendCustomMessage({ customType: "local-inspection", content: "Inspect unreadable role", display: false }, { triggerTurn: true });
+  assert.equal(abortedAtStart, true); assert.equal(providerRequests, 0);
+  assert.ok(errors.some(error => error.event === "before_agent_start"));
+  assert.equal(session.isIdle, true);
 });
 
 test("real SDK boundaries defer notifications on abort and persist completion delivery once", async t => {
