@@ -1,8 +1,11 @@
 import { Type } from "typebox";
+
+export const agentDescription = "独立专家会话，不继承父聊天历史。start 完成启动后返回，不等待工作完成；未提供 message/prompts/files 时只启动待命会话，不调用模型。完成自动通知，无需轮询。团队占用期间不能私人 send。send 继续对话，rename 改名，status/list 查看状态，status 返回最近周期且不读取报告正文。read 非阻塞读取报告；读取已结束周期会领取该周期的完成通知（包括部分读取），后续不再重复通知。nextOffset 非空时以返回的 cycle.cycleId 固定周期续读。state 是执行状态，cycle.state 是工作结果，queued 仅表示入队。stop 停止并保留历史，resume 携新 message 恢复，不重放旧工作。独立复核须 start 新上下文。子会话使用原生 CLI/MCP，按委派范围工作，不递归委派。每个父会话最多 50 个存活子会话，空闲也计入。";
+
 const id = Type.String({ minLength: 1, maxLength: 128 });
 const message = Type.String({ minLength: 1, maxLength: 24000, description: "本次目标、交付要求、资料依据与约束。" });
 const name = Type.String({ minLength: 1, maxLength: 64, pattern: "^[^\\r\\n\\x00-\\x1f]+$" });
-const options = {
+export const agentStartOptions = {
   name: Type.Optional(name), message: Type.Optional(message),
   files: Type.Optional(Type.Array(Type.String({ minLength: 1 }), { maxItems: 32, description: "随初始消息读取的文件；相对路径基于原工作区根目录。" })),
   prompts: Type.Optional(Type.Array(message, { maxItems: 32, description: "与 message 按顺序合并为同一初始消息，不是多个执行轮次。" })),
@@ -24,12 +27,12 @@ const page = {
 const delivery = Type.Optional(Type.Union([Type.Literal("steer"), Type.Literal("followUp")], { description: "send 默认 steer 补充当前工作；followUp 排到当前工作之后。" }));
 export const agentParametersSchema = Type.Object({
   action: Type.Union([Type.Literal("start"), Type.Literal("send"), Type.Literal("rename"), Type.Literal("status"), Type.Literal("list"), Type.Literal("read"), Type.Literal("stop"), Type.Literal("resume")], {
-    description: "start 仅接受启动选项，可省略 message/prompts/files 创建待命进程，禁止 agentId/delivery/分页字段；list 只接受 action；status/stop 只接受并必填 agentId；send 必填 agentId/message，仅可选 delivery；resume 必填 agentId/message；rename 必填 agentId/name；read 必填 agentId，仅可选 cycleId/offset/limit。禁止携带其他 action 的字段。",
+    description: "start 仅接受启动选项，可省略 message/prompts/files 创建待命会话，禁止 agentId/delivery/分页字段；list 只接受 action；status/stop 只接受并必填 agentId；send 必填 agentId/message，仅可选 delivery；resume 必填 agentId/message；rename 必填 agentId/name；read 必填 agentId，仅可选 cycleId/offset/limit。禁止携带其他 action 的字段。",
   }),
-  agentId: Type.Optional(id), ...options, ...page, delivery,
+  agentId: Type.Optional(id), ...agentStartOptions, ...page, delivery,
 }, { additionalProperties: false });
 export const agentActionSchema = Type.Union([
-  Type.Object({ action: Type.Literal("start"), ...options }, { additionalProperties: false }),
+  Type.Object({ action: Type.Literal("start"), ...agentStartOptions }, { additionalProperties: false }),
   Type.Object({ action: Type.Literal("send"), agentId: id, message, delivery }, { additionalProperties: false }),
   Type.Object({ action: Type.Literal("rename"), agentId: id, name }, { additionalProperties: false }),
   Type.Object({ action: Type.Literal("resume"), agentId: id, message }, { additionalProperties: false }),
@@ -45,7 +48,7 @@ const cycle = Type.Object({ cycleId: Type.String(), startedAt: Type.Number(), fi
 }, { additionalProperties: false });
 export const agentViewSchema = Type.Object({ agentId: Type.String(), name: Type.String(), cwd: Type.String(), createdAt: Type.Number(),
   owned: Type.Boolean({ description: "是否属于当前父会话分支；false 时须回到所属分支操作。" }),
-  state: Type.Union([Type.Literal("starting"), Type.Literal("busy"), Type.Literal("idle"), Type.Literal("stopping"), Type.Literal("stopped"), Type.Literal("error")], { description: "进程状态；idle 不代表上轮工作成功，结果见 cycle.state。" }),
+  state: Type.Union([Type.Literal("starting"), Type.Literal("busy"), Type.Literal("idle"), Type.Literal("stopping"), Type.Literal("stopped"), Type.Literal("error")], { description: "执行状态；idle 不代表上轮工作成功，结果见 cycle.state。" }),
   activity: Type.String(), cycle: Type.Optional(cycle), error: Type.Optional(Type.String()),
   requestId: Type.Optional(Type.String()), messageStatus: Type.Optional(Type.Literal("queued", { description: "消息已入队，不代表模型已阅读或完成。" })),
   cycles: Type.Optional(Type.Array(Type.Object({ cycleId: Type.String(), state: Type.String() }), { description: "仅 read 返回：可读取的周期索引。" })),

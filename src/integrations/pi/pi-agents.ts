@@ -4,7 +4,7 @@ import { existsSync, lstatSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { CURRENT_SESSION_VERSION, getAgentDir, getPackageDir, parseSessionEntries, SessionManager } from "@earendil-works/pi-coding-agent";
 import { requireThat } from "../../common/validation.js";
-import type { AgentDescriptor } from "../../model/agent.js";
+import type { AgentDescriptor, AgentSessionReference } from "../../model/agent.js";
 import type { AgentHost } from "../../services/agents/agent-service.js";
 
 export const agentDirectory = () => join(getAgentDir(), "pbot/subagents");
@@ -21,15 +21,24 @@ export function readAgentSession(d: AgentDescriptor, file: string, strict = fals
 }
 
 export class PiAgents implements AgentHost {
+  readonly kind = "pi";
+  private file(reference: AgentSessionReference) {
+    requireThat(reference.host === "pi", "不能接管其他宿主的会话。");
+    return reference.file;
+  }
   available() {
     requireThat(spawnSync("tmux", ["-V"], { encoding: "utf8" }).status === 0, "子会话需要 tmux。");
     requireThat(existsSync(join(getPackageDir(), "dist/cli.js")), "无法定位 Pi CLI。");
   }
   alive(id: string) { return spawnSync("tmux", ["has-session", "-t", "=" + tmuxName(id)], { stdio: "ignore" }).status === 0; }
-  kill(id: string) { spawnSync("tmux", ["kill-session", "-t", "=" + tmuxName(id)], { stdio: "ignore" }); }
-  validateSession(d: AgentDescriptor, file: string) { readAgentSession(d, file, true); }
-  launch(d: AgentDescriptor, directory: string, generation: string, sessionFile: string | null) {
-    if (sessionFile !== null) this.validateSession(d, sessionFile);
+  release(id: string, _generation: string) { spawnSync("tmux", ["kill-session", "-t", "=" + tmuxName(id)], { stdio: "ignore" }); }
+  validateSession(d: AgentDescriptor, reference: AgentSessionReference) {
+    const file = this.file(reference); if (file !== null) readAgentSession(d, file, true);
+  }
+  launch(d: AgentDescriptor, directory: string, generation: string, reference: AgentSessionReference, _resume: boolean, signal: AbortSignal) {
+    signal.throwIfAborted();
+    const sessionFile = this.file(reference);
+    this.validateSession(d, reference);
     const o = d.options;
     const entry = fileURLToPath(new URL("../../extension/subagent-entry.ts", import.meta.url));
     const compiled = fileURLToPath(new URL("../../extension/subagent-entry.js", import.meta.url));
@@ -53,7 +62,9 @@ export class PiAgents implements AgentHost {
       process.execPath, join(getPackageDir(), "dist/cli.js"), ...args], { encoding: "utf8" });
     requireThat(result.status === 0, result.stderr || "子会话启动失败。");
   }
-  report(d: AgentDescriptor, file: string, leaf: string) {
+  report(d: AgentDescriptor, reference: AgentSessionReference, leaf: string) {
+    const file = this.file(reference);
+    requireThat(file !== null, "完成记录缺少 Pi 原生会话文件引用。");
     const manager = readAgentSession(d, file);
     requireThat(manager.getEntry(leaf), "报告叶节点不存在。");
     const last = manager.getBranch(leaf).filter(e => e.type === "message" && e.message.role === "assistant").at(-1);

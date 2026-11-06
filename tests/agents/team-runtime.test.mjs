@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, readFile, rm, rename } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm, rename, realpath } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
@@ -120,7 +120,7 @@ test("main team tools use real SDK schemas, keep reads separate from notificatio
 });
 
 for (const hasCycle of [true, false]) test("actual child reload seals accepted team work without replay: cycle=" + hasCycle, async t => {
-  const root = await mkdtemp(join(tmpdir(), "pbot-team-reload-")), agents = new AgentFiles(join(root, "subagents"));
+  const root = await realpath(await mkdtemp(join(tmpdir(), "pbot-team-reload-"))), agents = new AgentFiles(join(root, "subagents"));
   const owner = { sessionId: "parent", leaf: null, branch: [] }, v = saved(agents, root, owner);
   const files = new TeamFiles(agents), service = new TeamService(root, agents, files);
   files.setReady(v.agentId, v.generation, true);

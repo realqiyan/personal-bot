@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
 import { fork } from "node:child_process";
-import { mkdtemp, mkdir, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, rm, realpath, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { preparePythonFailure, pythonExecutable } from "./python-home.mjs";
 
 export const packageRoot = fileURLToPath(new URL("../../", import.meta.url));
 
@@ -18,7 +19,7 @@ class PiProcess {
     this.child = fork(new URL("./pi-rpc-driver.mjs", import.meta.url), [root, agentDir, packagePath], {
       cwd: root, execArgv: [], silent: true,
       // Do not inherit API keys, user settings, extensions, or credential helpers.
-      env: { HOME: home, XDG_DATA_HOME: join(home, "data"), PATH: "/usr/bin:/bin", LANG: "C.UTF-8", PI_CODING_AGENT_DIR: agentDir },
+      env: { HOME: home, XDG_DATA_HOME: join(home, "data"), PATH: join(home, "bin") + ":/usr/bin:/bin", LANG: "C.UTF-8", PI_CODING_AGENT_DIR: agentDir },
     });
     this.child.stderr.setEncoding("utf8").on("data", text => { this.stderr = (this.stderr + text).slice(-16_000); });
     let buffer = "";
@@ -118,7 +119,7 @@ class PiProcess {
 }
 
 export async function rpcWorkspace(t) {
-  const temp = await mkdtemp(join(tmpdir(), "pbot-e2e-"));
+  const temp = await realpath(await mkdtemp(join(tmpdir(), "pbot-e2e-")));
   const root = join(temp, "workspace"), agentDir = join(temp, "agent"), home = join(temp, "home");
   const processes = [];
   t.after(async () => {
@@ -129,9 +130,10 @@ export async function rpcWorkspace(t) {
   });
   await Promise.all([root, agentDir, home].map(path => mkdir(path)));
   // A real invalid target exercises startup warnings without downloading dependencies.
-  await mkdir(join(home, "data/pbot/python/.venv"), { recursive: true });
+  const { directory: pythonDirectory } = await preparePythonFailure(home);
+  await mkdir(join(home, "bin")); await symlink(pythonExecutable, join(home, "bin/python3"));
   return {
-    root, temp,
+    root, temp, pythonDirectory,
     async start(packagePath = packageRoot) {
       const pi = new PiProcess(root, agentDir, home, packagePath);
       processes.push(pi);

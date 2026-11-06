@@ -24,8 +24,10 @@ export interface HistoryRecord {
   name: string;
   nodes: HistoryNode[];
 }
-export interface HistoryLocation { directory: string; file?: string }
+export type HistoryHost = "pi" | "dsh";
+export type HistoryLocation = { host?: "pi"; directory: string; file?: string } | { host: "dsh"; sessionId?: string };
 export interface HistorySource {
+  readonly host: HistoryHost;
   scan(location: HistoryLocation, signal?: AbortSignal): Promise<{ sessions: HistorySession[]; warnings: string[] }>;
 }
 export type HistorySummarizer = (text: string, signal: AbortSignal) => Promise<string>;

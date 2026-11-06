@@ -4,13 +4,13 @@ English | [简体中文](README.zh-CN.md)
 
 **A personal assistant connecting knowledge, research, and action.**
 
-Personal Bot is currently a workspace-scoped [Pi](https://pi.dev) extension for learning, project work, research, and decision support, including investment analysis and explicitly authorized operations.
+Personal Bot provides a workspace-scoped [Pi](https://pi.dev) extension and a native Web integration for a fixed dsh release. It supports learning, project work, research, decision support, investment analysis, and explicitly authorized operations. See the [dsh guide](docs/dsh.md) for its usage and acceptance limits.
 
 The model handles analysis, coordination, and native tools. Personal Bot adds workspace materials, specialist collaboration, and Python environment preparation. It does not create a second main agent or start tasks or trades automatically.
 
 ## Install
 
-The installer supports Linux and macOS. It requires Node.js 22.19+, npm, and Python 3.11+ with venv/ensurepip. Run in an interactive terminal:
+The Pi installer supports Linux and macOS. It requires Node.js 22.19+, npm, and Python 3.11+ with venv/ensurepip. Run in an interactive terminal:
 
 ```bash
 npx personal-bot@latest setup
@@ -68,6 +68,12 @@ pi
 
 Replace the example paths with your actual paths. A local installation loads the source directory directly, so keep that directory and its dependencies available.
 
+### Use with dsh
+
+The integration targets `@deepseek-ai/dsh@0.2.2-rc.1` and requires Node.js 24.9+. Build a tarball from the current source with normal `npm pack`, create a separate `pbot` Web profile, and install it with `dsh plugin --profile pbot add <tarball>`. Follow the [dsh guide](docs/dsh.md); `pbot setup` remains the Pi installer.
+
+The bare `/pbot` action opens workspace, specialist, team, and history management. Specialists use native Agent/Session instances in the server process. Refreshing a page does not stop accepted work. Both hosts query the saved history archives while each maintains its own source. Models, authentication, and MCP remain under native host configuration. Real model workflows and the latest Linux checks remain subject to the [validation record](docs/validation.md).
+
 ### Optional: Task Conductor
 
 For scheduled tasks, recurring workflows, or DAGs, install `task-conductor-plugin`. This integration package is distinct from the `task-conductor` service and is not required for Personal Bot. It requires Pi 1.4.0+ with native MCP support and npm.
@@ -92,10 +98,11 @@ Keep goals, markets, preferences, and working agreements in ordinary documents. 
 
 ## Daily use
 
-Describe the task directly: organize project materials, compare research findings, delegate an independent review, or run calculations. No fixed workflow is required.
+Describe the task directly: organize project materials, compare research findings, delegate an independent review, or run calculations. No fixed workflow is required. The command table and process details below describe Pi; see the [dsh guide](docs/dsh.md) for its Web interface and commands.
 
 | Command | Purpose |
 | --- | --- |
+| `/pbot` | Open the workspace menu |
 | `/pbot init` | Create missing material directories and root `AGENTS.md` |
 | `/pbot status` | Show workspace path, Personal Bot version, and Python environment status |
 | `/pbot history [text]` | Search historical exchanges and summaries; read originals and navigate their parents and children |
@@ -124,7 +131,7 @@ Personal Bot maintains no separate provider-call ledger or result wrapper. Nativ
 | `AGENTS.md` | Material navigation and working agreements |
 | `areas/`, `projects/` | Long-term goals, task definitions, conclusions, and deliverables |
 | `knowledge/` | Reusable concepts, methods, and analysis definitions |
-| `.pi/pbot/history/` | Saved exchanges, summaries, and node links that can travel with the workspace |
+| `.pi/pbot/history/`, `.dsh/pbot/history/` | Saved exchanges, summaries, and node links, maintained by source and queried together |
 | `providers/` | Provider guides, coverage gaps, and validation evidence |
 | `scratch/` | Temporary scripts, query and calculation data, downloads, and runtime environments |
 | `agents/`, `.agents/skills/` | Workspace additions to coordinator/general-purpose roles and workspace skills |
@@ -135,7 +142,7 @@ Personal Bot stores no private activation state in the workspace. Pi owns its co
 
 ## Updates and historical data
 
-Current release: **0.2.4**. Personal Bot maintains no workspace format, initialization state, or workspace upgrade mechanism. Update the plugin through Pi package management. For a local installation, update the source, run `npm ci --ignore-scripts` if dependencies changed, then reload or restart Pi.
+Current release: **0.2.4**. Personal Bot maintains no workspace format, initialization state, or workspace upgrade mechanism. Update the plugin through its native host package manager. For a local Pi installation, update the source, run `npm ci --ignore-scripts` if dependencies changed, then reload or restart Pi.
 
 Stop active sub-sessions before changing versions. Sub-session compatibility follows the minor version before 1.0 and the major version from 1.0 onward. Sessions from another compatibility line cannot be resumed directly.
 
@@ -158,7 +165,7 @@ npm test
 git diff --check
 ```
 
-`npm test` includes smoke and E2E tests and generates `dist/` for test imports and `lib/` for the installation CLI. Pi still loads the extension source directly. Inspect package contents with `npm pack --dry-run`. See [validation](docs/validation.md) for test groups and limits.
+Full development and acceptance for both hosts require Linux and Node.js 24.9+. `npm test` includes smoke and E2E tests and generates `dist/` for tests and `lib/` for the CLI and dsh Host/Web entries. Pi still loads the extension source directly. Inspect package contents with `npm pack --dry-run`. See [validation](docs/validation.md) for test groups and limits.
 
 The README is available in English and Simplified Chinese. Detailed design documents and bundled guides are currently primarily in Chinese.
 

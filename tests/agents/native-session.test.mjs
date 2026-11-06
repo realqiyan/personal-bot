@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, readFile, writeFile, rm, rename, symlink } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, writeFile, rm, rename, symlink, realpath } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
@@ -13,12 +13,13 @@ import { TeamService } from "../../dist/services/agents/team-service.js";
 import { PiAgents, tmuxName } from "../../dist/integrations/pi/pi-agents.js";
 import { packageVersion } from "../../dist/common/version.js";
 import childEntry from "../../dist/extension/subagent-entry.js";
+import { preparePythonFailure } from "../helpers/python-home.mjs";
 
 const owner = { sessionId: "parent", leaf: null, branch: [] };
 const options = { provider: "openai", model: "gpt-4.1", noSkills: true, noContextFiles: true, noPromptTemplates: true };
 
 async function isolated(t) {
-  const root = await mkdtemp(join(tmpdir(), "pbot-native-session-")), before = { ...process.env };
+  const root = await realpath(await mkdtemp(join(tmpdir(), "pbot-native-session-"))), before = { ...process.env };
   for (const key of Object.keys(process.env)) delete process.env[key];
   Object.assign(process.env, { PATH: before.PATH, HOME: root, TERM: "xterm-256color", PI_OFFLINE: "1",
     PI_CODING_AGENT_DIR: join(root, "config"), TMUX_TMPDIR: root, XDG_DATA_HOME: join(root, "data") });
@@ -30,18 +31,18 @@ async function isolated(t) {
       await rm(root, { recursive: true, force: true });
     }
   });
-  await mkdir(join(root, "data/pbot/python/.venv"), { recursive: true });
+  await preparePythonFailure(root);
   await mkdir(join(root, "config"), { recursive: true });
   return { root, agents, agentDir: join(root, "config") };
 }
 async function until(predicate) {
   const deadline = Date.now() + 18000;
-  while (!predicate() && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 50));
-  assert.ok(predicate(), "local child did not reach the expected state");
+  while (!(await predicate()) && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 50));
+  assert.ok(await predicate(), "local child did not reach the expected state");
 }
 async function stop(agents, id) {
   agents.stop(id, owner);
-  await until(() => { agents.refresh(owner); return !agents.host.alive(id); });
+  await until(async () => { await agents.refresh(owner); return !agents.host.alive(id); });
 }
 function saved(agents, cwd) {
   const agentId = randomUUID(), generation = randomUUID();
@@ -86,7 +87,7 @@ test("real CLI chooses native cwd directories and settings, clears stale tmux ov
     const cwd = join(root, "projects", scenario.name); await mkdir(cwd, { recursive: true });
     await writeFile(join(agentDir, "settings.json"), JSON.stringify(scenario.setting ? { sessionDir: scenario.setting } : {}));
     if (scenario.env) process.env.PI_CODING_AGENT_SESSION_DIR = scenario.env; else delete process.env.PI_CODING_AGENT_SESSION_DIR;
-    const child = agents.start({ ...options, cwd, noExtensions: false }, owner), native = await probe(agents, child);
+    const child = await agents.start({ ...options, cwd, noExtensions: false }, owner), native = await probe(agents, child);
     await until(() => agents.list(owner).find(v => v.agentId === child.agentId)?.state === "idle");
     const expected = scenario.expected ?? SessionManager.create(cwd).getSessionDir();
     assert.equal(native.cwd, cwd); assert.equal(native.id, child.agentId); assert.equal(dirname(native.file), expected);
@@ -98,7 +99,7 @@ test("real CLI chooses native cwd directories and settings, clears stale tmux ov
     await stop(agents, child.agentId);
     assert.deepEqual(agents.cycles(child.agentId, owner), []);
     // The explicit new request fails authentication, not session restoration. No provider is called.
-    const resumed = agents.resume(child.agentId, "New input after empty standby", owner), reopened = await probe(agents, resumed);
+    const resumed = await agents.resume(child.agentId, "New input after empty standby", owner), reopened = await probe(agents, resumed);
     assert.equal(reopened.id, child.agentId); assert.equal(dirname(reopened.file), expected);
     assert.notEqual(resumed.generation, child.generation);
     await until(() => !agents.host.alive(child.agentId));
@@ -110,7 +111,7 @@ test("real managed resume opens the bound native file and leaves saved model sel
   const { root, agents, agentDir } = await isolated(t);
   await probeExtension(agentDir);
   const cwd = join(root, "project"); await mkdir(cwd);
-  const child = agents.start({ ...options, cwd, noExtensions: false }, owner), first = await probe(agents, child);
+  const child = await agents.start({ ...options, cwd, noExtensions: false }, owner), first = await probe(agents, child);
   await stop(agents, child.agentId);
   // Restore a local user history through the actual SDK. No assistant response or provider is used.
   const manager = SessionManager.create(cwd, dirname(first.file), { id: child.agentId });
@@ -122,7 +123,7 @@ test("real managed resume opens the bound native file and leaves saved model sel
   const other = SessionManager.create(cwd, process.env.PI_CODING_AGENT_SESSION_DIR, { id: child.agentId });
   other.appendMessage({ role: "user", content: "A different file must not be selected", timestamp: 2 });
   const otherBefore = await readFile(other.getSessionFile(), "utf8");
-  const resumed = agents.resume(child.agentId, "Only this new request", owner), reopened = await probe(agents, resumed);
+  const resumed = await agents.resume(child.agentId, "Only this new request", owner), reopened = await probe(agents, resumed);
   assert.equal(reopened.file, manager.getSessionFile()); assert.equal(reopened.id, child.agentId);
   assert.deepEqual(reopened.users, ["Saved local context"]); assert.equal(reopened.thinking, "off");
   // Pi cannot restore an authenticated model here. It must not receive the original start model as an override.
@@ -137,12 +138,12 @@ test("real managed resume opens the bound native file and leaves saved model sel
 test("enter reopens empty and saved sessions idle without enqueuing or replaying work", { timeout: 60000 }, async t => {
   const { root, agents, agentDir } = await isolated(t);
   await probeExtension(agentDir);
-  const child = agents.start({ ...options, noExtensions: false }, owner);
+  const child = await agents.start({ ...options, noExtensions: false }, owner);
   const first = await probe(agents, child);
   await until(() => agents.list(owner).find(v => v.agentId === child.agentId)?.state === "idle");
-  assert.equal(agents.enter(child.agentId, owner).generation, child.generation);
+  assert.equal((await agents.enter(child.agentId, owner)).generation, child.generation);
   await stop(agents, child.agentId);
-  const empty = agents.enter(child.agentId, owner);
+  const empty = await agents.enter(child.agentId, owner);
   await probe(agents, empty);
   await until(() => agents.list(owner).find(v => v.agentId === child.agentId)?.state === "idle");
   assert.notEqual(empty.generation, child.generation);
@@ -156,7 +157,7 @@ test("enter reopens empty and saved sessions idle without enqueuing or replaying
   agents.files.bindSession(child.agentId, manager.getSessionFile());
   agents.files.enqueue(child.agentId, "Old work must not run", "steer");
   const messages = agents.files.messages(child.agentId);
-  const reopened = agents.enter(child.agentId, owner), native = await probe(agents, reopened);
+  const reopened = await agents.enter(child.agentId, owner), native = await probe(agents, reopened);
   await until(() => agents.list(owner).find(v => v.agentId === child.agentId)?.state === "idle");
   await new Promise(resolve => setTimeout(resolve, 750));
   assert.equal(agents.host.alive(child.agentId), true);
@@ -189,13 +190,30 @@ test("missing, invalid or foreign native files reject resume before generation o
     if (kind === "symlink") { await rename(path, path + ".target"); await symlink(path + ".target", path); }
     agents.files.bindSession(d.agentId, path);
     const before = ["empty", "invalid", "malformed-tail", "legacy-version", "foreign-id", "foreign-cwd", "symlink"].includes(kind) ? await readFile(path, "utf8") : null;
-    assert.throws(() => agents.resume(d.agentId, "Must not enqueue", owner));
-    assert.throws(() => agents.enter(d.agentId, owner));
+    await assert.rejects(() => agents.resume(d.agentId, "Must not enqueue", owner));
+    await assert.rejects(() => agents.enter(d.agentId, owner));
     assert.equal(agents.files.read(d.agentId, "launch.json", launch).generation, d.generation);
     assert.deepEqual(agents.files.messages(d.agentId), []); assert.equal(agents.host.alive(d.agentId), false);
     if (before !== null) assert.equal(await readFile(path, "utf8"), before);
     assert.throws(() => agents.files.bindSession(d.agentId, join(root, "replacement.jsonl")));
   }
+});
+
+test("stop during native resume validation cancels admission without replacing generation or queuing input", async t => {
+  const { root, agents } = await isolated(t), d = saved(agents, root);
+  const manager = SessionManager.create(root, undefined, { id: d.agentId });
+  manager.appendMessage({ role: "user", content: "Saved local context", timestamp: 1 });
+  agents.files.bindSession(d.agentId, manager.getSessionFile());
+  const reopening = agents.resume(d.agentId, "Must not be accepted after stop", owner);
+  assert.equal(agents.status(d.agentId, owner).state, "starting");
+  // The real native read has returned, but admission awaits it outside the file lock.
+  agents.files.control(() => assert.equal(agents.files.read(d.agentId, "launch.json", launch).generation, d.generation));
+  assert.throws(() => agents.send(d.agentId, "Cannot enter the old generation", "steer", owner));
+  agents.stop(d.agentId, owner);
+  await assert.rejects(reopening);
+  assert.equal(agents.files.read(d.agentId, "launch.json", launch).generation, d.generation);
+  assert.deepEqual(agents.files.messages(d.agentId), []);
+  assert.equal(agents.host.alive(d.agentId), false);
 });
 
 test("fixed-leaf reports are read-only and a missing transcript cannot become an empty success", async t => {
@@ -211,11 +229,11 @@ test("fixed-leaf reports are read-only and a missing transcript cannot become an
   const completed = { cycleId: randomUUID(), generation: d.generation, startedAt: 1, finishedAt: 2, state: "completed", leaf, source: "parent", requestIds: [] };
   agents.files.write(d.agentId, "completions/" + completed.cycleId + ".json", completed, cycle, true);
   const before = await readFile(file, "utf8");
-  assert.equal(agents.read(d.agentId, owner).report, "Original report");
-  assert.equal(agents.completions(owner)[0].report, "Original report");
+  assert.equal((await agents.read(d.agentId, owner)).report, "Original report");
+  assert.equal((await agents.completions(owner))[0].report, "Original report");
   assert.equal(await readFile(file, "utf8"), before);
   assert.equal((await SessionManager.list(root)).find(s => s.id === d.agentId)?.path, file);
-  await rm(file); assert.throws(() => agents.read(d.agentId, owner)); assert.throws(() => agents.completions(owner));
+  await rm(file); await assert.rejects(() => agents.read(d.agentId, owner)); await assert.rejects(() => agents.completions(owner));
 });
 
 for (const mode of ["input", "binding-io", "missing-on-load"]) test("native child binds before input and rejects uncertain references: " + mode, async t => {
@@ -248,7 +266,7 @@ for (const mode of ["input", "binding-io", "missing-on-load"]) test("native chil
     } else {
       await assert.rejects(session.prompt("No credentials: input may not reach a model"));
       assert.equal(agents.files.session(d.agentId), manager.getSessionFile());
-      assert.throws(() => agents.resume(d.agentId, "Cannot replace an uncertain conversation", owner));
+      await assert.rejects(() => agents.resume(d.agentId, "Cannot replace an uncertain conversation", owner));
       assert.equal(agents.files.read(d.agentId, "launch.json", launch).generation, d.generation);
     }
     assert.equal(starts, 0); assert.equal(existsSync(manager.getSessionFile()), false);
@@ -271,14 +289,14 @@ test("old layouts remain untouched and cannot block new agents or trigger automa
   const legacy = join(agents.files.directory(d.agentId), "session.jsonl"); await writeFile(legacy, "Historical user data\n");
   const paths = [legacy, join(agents.files.directory(d.agentId), "descriptor.json"), join(agents.files.directory(d.agentId), "launch.json"), join(agents.teamFiles.root, team.teamId, "team.json")];
   const before = await Promise.all(paths.map(path => readFile(path, "utf8")));
-  assert.deepEqual(agents.list(owner), []); assert.deepEqual(agents.completions(owner), []);
-  assert.throws(() => agents.resume(d.agentId, "Do not migrate", owner));
+  assert.deepEqual(agents.list(owner), []); assert.deepEqual(await agents.completions(owner), []);
+  await assert.rejects(() => agents.resume(d.agentId, "Do not migrate", owner));
   teams.recover(owner); assert.deepEqual(teams.list(owner, []), []); assert.deepEqual(teams.advance(owner, [], []), []);
   const current = saved(agents, root); assert.deepEqual(agents.list(owner).map(v => v.agentId), [current.agentId]);
   assert.deepEqual(await Promise.all(paths.map(path => readFile(path, "utf8"))), before);
   assert.equal(existsSync(join(agents.files.directory(d.agentId), "session-ref.json")), false);
   // A missing reference in the current line is also an error, not permission to create a blank session.
   await rm(join(agents.files.directory(current.agentId), "session-ref.json"));
-  assert.throws(() => agents.resume(current.agentId, "Do not recreate", owner));
+  await assert.rejects(() => agents.resume(current.agentId, "Do not recreate", owner));
   assert.equal(spawnSync("tmux", ["has-session", "-t", "=" + tmuxName(current.agentId)], { stdio: "ignore" }).status, 1);
 });

@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { resourceRoot } from "../../common/paths.js";
-import { requireThat } from "../../common/validation.js";
+import { resourceRoot } from "../common/paths.js";
+import { requireThat } from "../common/validation.js";
 
 export async function agentText(agent: "coordinator" | "general-purpose", root: string) {
   requireThat(agent === "coordinator" || agent === "general-purpose", "未知职责。");

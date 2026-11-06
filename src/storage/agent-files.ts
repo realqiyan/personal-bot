@@ -5,7 +5,7 @@ import { canonical, object } from "../common/json.js";
 import { requireThat } from "../common/validation.js";
 import { readJsonFile, writeJsonFile } from "./atomic-json.js";
 import { fileId, privateDirectory } from "./file-access.js";
-import type { AgentDescriptor, AgentLaunch, AgentMessage, AgentStatus, AgentCycle, AgentSessionRef } from "../model/agent.js";
+import type { AgentDescriptor, AgentLaunch, AgentMessage, AgentStatus, AgentCycle, AgentSessionRef, AgentSessionReference } from "../model/agent.js";
 
 const text = (v: unknown): v is string => typeof v === "string" && v.length > 0;
 const number = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
@@ -17,6 +17,11 @@ export function descriptor(v: unknown): AgentDescriptor {
 export function sessionRef(v: unknown): AgentSessionRef {
   requireThat(object(v) && (v.file === null || (text(v.file) && isAbsolute(v.file) && !v.file.includes("\0"))), "子会话引用无效。");
   return v as unknown as AgentSessionRef;
+}
+function dshSessionRef(v: unknown): Extract<AgentSessionReference, { host: "dsh" }> {
+  requireThat(object(v) && v.host === "dsh" && text(v.sessionId), "dsh 原生会话引用无效。");
+  fileId(v.sessionId as string);
+  return v as unknown as Extract<AgentSessionReference, { host: "dsh" }>;
 }
 export function launch(v: unknown): AgentLaunch {
   requireThat(object(v) && text(v.generation) && text(v.name) && Number.isSafeInteger(v.sequence) && typeof v.stop === "boolean" && number(v.startedAt), "子会话启动状态无效。");
@@ -41,7 +46,7 @@ export function status(v: unknown): AgentStatus {
 }
 export class AgentFiles {
   #failure: unknown;
-  constructor(readonly root: string) {}
+  constructor(readonly root: string, readonly host: AgentSessionReference["host"] = "pi") {}
   check() { if (this.#failure) throw this.#failure; }
   fail(error: unknown) { this.#failure = error; }
   directory(id: string) { return join(this.root, fileId(id)); }
@@ -63,7 +68,8 @@ export class AgentFiles {
     for (const dir of ["inbox", "completions"]) privateDirectory(this.directory(value.agentId), dir);
     this.write(value.agentId, "descriptor.json", value, descriptor, true);
     this.write(value.agentId, "launch.json", run, launch, true);
-    this.write(value.agentId, "session-ref.json", { file: null }, sessionRef, true);
+    if (this.host === "pi") this.write(value.agentId, "session-ref.json", { file: null }, sessionRef, true);
+    else this.write(value.agentId, "native-session.json", { host: "dsh", sessionId: value.agentId }, dshSessionRef, true);
   }
   list() {
     if (!existsSync(this.root)) return [];
@@ -79,7 +85,14 @@ export class AgentFiles {
     return readdirSync(join(this.directory(id), "completions")).filter(n => n.endsWith(".json"))
       .map(n => this.read(id, "completions/" + n, cycle)).sort((a, b) => (a.finishedAt ?? 0) - (b.finishedAt ?? 0));
   }
+  reference(id: string): AgentSessionReference {
+    if (this.host === "pi") return { host: "pi", file: this.session(id) };
+    const ref = this.read(id, "native-session.json", dshSessionRef);
+    requireThat(ref.sessionId === id, "dsh 原生会话身份不匹配。");
+    return ref;
+  }
   session(id: string): string | null {
+    requireThat(this.host === "pi", "该宿主不使用 Pi 会话文件引用。");
     const ref = this.optional(id, "session-ref.json", sessionRef);
     requireThat(ref, "缺少原生会话引用；不导入旧记录，请重新 start。");
     return ref.file;
@@ -98,7 +111,7 @@ export class AgentFiles {
     try { mkdirSync(path, { mode: 0o700 }); }
     catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
-      throw Object.assign(new Error("子会话控制正在进行；稍后重试。崩溃遗留的 .control 需停止相关 Pi 后手动移除。"), { code: "PBOT_CONTROL_BUSY" });
+      throw Object.assign(new Error("子会话控制正在进行；稍后重试。崩溃遗留的 .control 需停止相关执行实例后手动移除。"), { code: "PBOT_CONTROL_BUSY" });
     }
     try { return work(); } finally { rmSync(path, { recursive: true }); }
   }

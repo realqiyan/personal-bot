@@ -1,11 +1,11 @@
 # 技术设计
 
-Personal Bot 是按工作区加载的 Pi 扩展。模型负责分析、协调和工具使用；扩展负责资料准备、专家会话和共享 Python 环境。安装与命令见[项目 README](../README.md)。
+Personal Bot 提供按工作区加载的 Pi 扩展和固定版 dsh Host/Web 接入。模型负责分析、协调和工具使用；扩展负责资料准备、专家会话和共享 Python 环境。安装与命令见[项目 README](../README.md)。
 
 ## 模块与依赖
 
 ```text
-Pi 命令、工具与事件
+Pi / dsh 命令、工具、事件与原生 Remote
          ↓
  tools / extension / ui
          ↓
@@ -16,38 +16,42 @@ Pi 命令、工具与事件
           integrations
 ```
 
-src/pbot.ts 装配扩展依赖并注册入口。src/extension/setup-cli.ts 装配独立安装命令；`pbot setup` 通过原生 npm/Pi 准备一个工作区，再启动 Pi 执行 `/pbot init`。安装器的顺序、来源保留与失败恢复由 services/installation 管理，接入层调用实际宿主的包管理接口，不创建模型会话。详见[安装与升级](installation-design.md)。
+src/pbot.ts 装配 Pi 入口，src/dsh.ts 装配 dsh Host，src/ui/dsh/index.ts 装配 Web 客户端；共享业务服务，不引入通用 Host 平台。src/extension/setup-cli.ts 装配独立安装命令；`pbot setup` 通过原生 npm/Pi 准备一个工作区，再启动 Pi 执行 `/pbot init`。安装器的顺序、来源保留与失败恢复由 services/installation 管理，接入层调用实际宿主的包管理接口，不创建模型会话。详见[安装与升级](installation-design.md)。
 
 | 目录 | 责任 |
 | --- | --- |
 | src/tools/ | 输入、输出、schema、执行适配和工具列表 |
 | src/services/ | 业务规则、状态变更和操作顺序，按 agents、workspace 聚合 |
 | src/model/ | 数据类 |
-| src/integrations/ | Pi 会话、Python 环境激活与进程执行 |
+| src/integrations/ | Pi/dsh 原生会话、Python 环境激活与进程执行 |
 | src/storage/ | 原子 JSON、子会话与团队文件 |
 | src/extension/ | 命令、事件和资源生命周期 |
 | src/ui/ | 确认队列、对话框和专家展示 |
 | src/common/ | JSON、校验、文件、包路径和版本辅助逻辑 |
 | resources/ | 角色、技能、提示词、模板和参考资料 |
 
-服务不依赖 Pi SDK、工具或 UI。共享进程执行可直接使用，其他宿主能力通过窄接口传入。接入层可引用服务类型；命令和工具通过服务执行状态变更。数据类在进入 JSON、存储和工具结果前转为普通数据。
+服务不依赖 Pi/dsh SDK、工具或 UI。共享进程执行可直接使用，其他宿主能力通过窄接口传入。接入层可引用服务类型；命令和工具通过服务执行状态变更。数据类在进入 JSON、存储和工具结果前转为普通数据。
 
 | 主体 | 管理内容 |
 | --- | --- |
 | prepareWorkspace | 补建资料目录与根 AGENTS.md |
 | PythonEnvironmentService | venv 准备、依赖检查、状态与取消等待 |
-| AgentService | 子进程、inbox、周期与交付资格；拒绝向被团队占用的成员发送私人任务 |
+| AgentService / AgentRun | 原生专家实例、启动预约、代次、inbox、领取/进入/消费/完成与交付资格；拒绝向被团队占用的成员发送私人任务 |
 | TeamService | 固定成员、公共消息、有限轮次、团队占用与暂停规则 |
-| HistoryService | 原生会话的问答索引、四叉摘要、全文查询与串行摘要队列 |
-| WorkspaceInstance | 工作区资源及环境激活的生命周期 |
+| HistoryService | 双来源问答索引、四叉摘要、查询、来源写锁与过期提交拒绝 |
+| WorkspaceInstance / DshWorkspaces | 各宿主工作区及资源生命周期；dsh 按父会话装配，并按工作区共享历史整理 |
 
 ## 加载与关闭
 
 Pi 原生配置决定扩展加载范围，启动目录作为工作区根目录。session_start 创建实例、提供工具与技能，并准备共享 Python 环境。加载本身不开展模型任务。
 
+Pi 的 `/pbot` 打开原生菜单，状态与长记录使用只读阅读页；dsh 使用独立工作台。见[界面设计](interaction-design.md)。
+
 `/pbot init` 可选地补建资料，已有文件保持不变。`/pbot status` 展示路径、版本和 Python 状态；模型通过每轮 pbot_environment 取得工作区、cwd、资源根目录和进程环境信息。
 
 主 reload 保留子进程并重新关联，但暂停团队，不继续安排旧批次；退出或切换会话时清理子进程、取消环境准备并恢复本实例持有的环境变量。关闭操作幂等。子会话的分支归属、通知和恢复规则见[专家协作](agent-collaboration.md)。
+
+dsh 只为原生 registry 中的根 Agent 建立协调者工作区，绑定其原始 cwd。专家使用同进程独立 Agent/Session；组件或所属父 Agent 关闭时取消预约、暂停安排并等待自己拥有的执行资源释放。打开页面、轮询、重连不恢复专家或启动模型，已接纳工作不归浏览器生命周期所有。原生存在但由其他实例持有的专家不能替换或假称已释放。
 
 ## 资源加载
 
@@ -59,13 +63,15 @@ Pi 原生配置决定扩展加载范围，启动目录作为工作区根目录�
 | resources/references/ | 按需读取的操作参考 |
 | resources/templates/workspace-agents.md | 补建根资料入口的模板 |
 
-主会话通过 before_agent_start 增加提示词 section，同时保留 Pi 原生 AGENTS.md 加载。资源在使用时读取，缺失时报错；提示词更新后通过 /reload 或重启加载。
+主会话通过 before_agent_start 增加提示词 section，同时保留 Pi 原生 AGENTS.md 加载。资源在使用时读取，缺失时报错；提示词更新后按宿主原生机制重载。dsh 使用原生 systemPrompt 与 FileSystemSkillProvider，发现包内技能及工作区 `.agents/skills`，不增加另一套工具或技能注册平台。
 
-公共约定负责工作区与执行边界，角色负责职责与验收，技能提供专业方法与必要的本地操作约定，工具定义参数与结果语义。委派资料修改依据原任务授权及明确的文件责任，诊断环境问题不要求再次授权。工具按 action 校验必填与允许字段，返回具体参数错误；status 不读取报告正文。附件组装由 integrations/pi/agent-input 保留绝对来源及 Pi 原生读取结果。资料保存由模型按公共约定与维护技能处理，沉淀方法、口径与结论，可再次查询的数据按需获取。布局见[文件存储](file-storage.md)。
+公共约定负责工作区与执行边界，角色负责职责与验收，技能提供专业方法与必要的本地操作约定，工具定义参数与结果语义。委派资料修改依据原任务授权及明确的文件责任，诊断环境问题不要求再次授权。工具按 action 校验必填与允许字段，返回具体参数错误；status 不读取报告正文。Pi 附件组装保留绝对来源及原生读取结果；dsh 使用原生文件存储与图片准入，Web 通用文件走原生 Session 上传凭证，命令图片使用原生编码图片输入。资料保存由模型按公共约定与维护技能处理，沉淀方法、口径与结论，可再次查询的数据按需获取。布局见[文件存储](file-storage.md)。
 
 ## 历史查询
 
-历史服务只读提取原生会话，按分支将连续问答每四个节点逐层汇总，问答、摘要、父子关系与原文引用保存在工作区 .pi/pbot/history/。原生 session ID 关联会话，来源只保存会话 ID 与消息 ID；文件路径由 Pi 接入层在扫描时取得，不写入存档。原生文件缺失时保留已存档内容，支持随工作区复制。pbot_history 与 /pbot history 调用同一服务。加载和查询只收录；agent_settled 后使用当前模型串行补齐摘要，复用实例取消信号让新输入优先。实现与限制见[历史对话](history.md)。
+Pi 维护 `.pi/pbot/history/`，dsh 维护 `.dsh/pbot/history/`；两者共同查询既有归档，只收录和整理自己的原生来源。来源保存 host、会话 ID 与消息位置，不保存原生路径。Pi 保留既有 ID、摘要与旧归档处理，dsh 使用独立根 ID，不跨来源写入。
+
+扫描与模型调用在短写锁外，提交时重读，拒绝过期原文或摘要覆盖。查询不调用模型；正常主交互结束后才在空闲阶段整理，新人工输入优先取消。dsh 使用原生 LLM 路由，不创建额外 Agent，也不写主聊天。原生会话缺失时保留现成归档，单个来源损坏不阻断另一来源。实现与限制见[历史对话](history.md)。
 
 ## 原生子会话存储
 
@@ -77,13 +83,21 @@ PiAgents 使用 `--session-id <agentId>` 启动新的原生会话，让 Pi 按�
 
 会话文件移出控制目录改变恢复契约，因此版本为 0.2.0，旧兼容线不进入当前列表或后台调度；不导入、迁移或删除旧记录。既有控制字段、团队调度及完成叶节点关联保持不变。
 
+dsh 的 `native-session.json` 只保存原生 Session ID，不把它写入 Pi 路径字段。先持久化父会话，再创建并持久化空专家；冷读、恢复校验和固定 `dsh:<turn/end seq>` 报告均使用公开 Session API。恢复保留原生模型选择，清除旧 inbox，只接纳新代次的新请求。双方不接管对方的会话。
+
 ## 团队接入
 
 团队采用独立 team.json，不改动旧 AgentMessage、AgentCycle 等持久结构。TeamService 接收普通成员状态与完成记录，安排 roundRobin 或 parallel 轮次；AgentService 再校验并写入原 inbox。父侧原扫描器收集固定叶节点报告并公开原文，不调用主模型转述，不另建执行器或事件总线。
 
-团队关联先保存，再发布输入。跨文件窗口采用保守恢复：不自动重发旧请求，只补交付可核对的完成记录。主/子工具显式注册，子入口只有公共 read/post。Pi 的上下文注入和通知边界分别位于 subagent-entry、agent-events 与 integrations/pi/team-context，服务不持有 Pi ctx。
+团队关联先保存，再发布输入。跨文件窗口采用保守恢复：不自动重发旧请求，只补交付可核对的完成记录。主/子工具显式注册，子入口只有公共 read/post。Pi 的上下文注入和通知边界分别位于 subagent-entry、agent-events 与 integrations/pi/team-context，服务不持有宿主 ctx。dsh 在原生 pre-step 安全边界注入团队上下文，以持久事件区分领取、进入、消费与正常最终答复；团队投递先取得原生 maintenance 准入，不能把公开 idle 当作独占许可。
 
 模型可读的团队任务、背景、公共原文和批次通知使用 Markdown；公共消息 read 复用同一原文渲染。主 agent 收到的独立子会话结果通知，以及 agent/team 工具的列表、状态和报告文本也使用 Markdown。common/markdown 提供字段与原文区块渲染，tools/result 只为这些工具显式选择 Markdown 文本。上下文预算计入实际 Markdown、原文围栏与分页字段。工具 structuredContent、原生 custom message 的去重 details 和控制文件继续使用原有结构化字段，运行时不解析 Markdown 来识别团队或请求。
+
+## dsh 人工管理
+
+原生 `/pbot` 命令与模型工具调用同一业务动作。四个共享 Remote 描述符提供 snapshot、expert、team、history 查询，Host 注册，Client 原生 `$mount`；不增加 HTTP 服务。查询核对已加载的根父会话及领域归属；完整专家记录只读分页，不代替模型 read 领取通知。
+
+Web 拥有草稿、上传和查询；接纳后的命令归服务端。命令不重复记录私人输入正文，人工对话要求团队暂停成功后才进入 inbox。原生工具成功读取或上下文实际消费才确认通知；PTC 内层 read 还要求根调用成功，页面读取不确认。
 
 ## Python 环境
 
@@ -91,14 +105,14 @@ PiAgents 使用 `--session-id <agentId>` 启动新的原生会话，让 Pi 按�
 
 共享锁串行化跨进程 setup，同一服务合并重叠请求。失败或取消时保留环境并报告状态，其他扩展功能继续可用；可通过 `/pbot python setup` 重试。
 
-WorkspaceInstance 在当前进程激活 PATH、VIRTUAL_ENV 和 Python 路径变量，供主会话与专家的 Bash 继承。关闭时恢复仍由本实例持有的变量。环境更新会影响其他工作区，更新前应停止相关脚本。
+各宿主装配在当前进程激活 PATH、VIRTUAL_ENV 和 Python 路径变量，供主会话与专家的 Bash 继承；同一 dsh 进程内的工作区共用准备与激活生命周期。关闭时恢复仍由本实例持有的变量。环境更新会影响其他工作区，更新前应停止相关脚本。
 
 计算通过原生 Bash 和第三方库 API 执行，使用项目自身的目录、输入和输出约定。路径、安装条件与许可见 [Python 说明](../python/README.md)。
 
 ## 工具与分发
 
-工具提供 outputSchema，由 Pi 纳入 pbot namespace；codemode 按工具契约组合调用。原生 CLI/MCP 与可选 Task Conductor 的接入和授权见[工具与执行](capability-design.md)。
+Pi 将工具纳入 pbot namespace，codemode 按契约组合；dsh 注册原生工具，并在固定版可表达的 schema 之外继续校验完整领域契约。原生 CLI/MCP 与可选 Task Conductor 的接入和授权见[工具与执行](capability-design.md)。
 
-扩展以 TypeScript 源码分发，由 Pi 加载；dist 仅供测试导入。安装 CLI 使用现有 TypeScript 工具链单独生成 lib，由 bin/pbot.mjs 启动，消费者无需编译或预装 Pi。宿主 peer 标记 optional，避免 npx 自动安装 Pi；安装检查子进程在发现真实宿主后使用该宿主的 SDK 读取配置和切换来源声明。发布版本以 package.json 为准，包内组件共用该版本。子会话兼容线在 1.0 前按次版本、1.0 起按主版本判断，跨线会话不能直接恢复。
+扩展以 TypeScript 源码分发，由 Pi 加载；dist 仅供测试导入。安装 CLI 使用现有 TypeScript 工具链单独生成 lib，由 bin/pbot.mjs 启动，消费者无需编译或预装 Pi。dsh Host 与 Web 也编译到 lib，客户端由原生包根 Loader 发现；Pi 的入口仍由包清单明确指向 src。宿主 SDK 均为 optional peer，不捆绑另一份运行时；TypeBox 是共享契约所需的包自身运行时依赖。Pi/CLI 保持 Node.js 22.19+，dsh 与完整开发使用 Node.js 24.9+。安装检查子进程在发现真实宿主后使用该宿主的 SDK 读取配置和切换来源声明。发布版本以 package.json 为准，包内组件共用该版本。子会话兼容线在 1.0 前按次版本、1.0 起按主版本判断，跨线会话不能直接恢复。
 
 开发验证见[验证](validation.md)，分发流程见[npm 发布](release.md)。

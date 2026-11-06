@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, rename, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, rename, rm, realpath } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
@@ -17,8 +17,9 @@ import { agentBoard } from "../../dist/ui/agent-display.js";
 import { loadThemeFromPath } from "../../node_modules/@earendil-works/pi-coding-agent/dist/modes/interactive/theme/theme.js";
 import { visibleWidth } from "@earendil-works/pi-tui";
 import { host } from "../helpers/pi-host.mjs";
+import { preparePythonFailure } from "../helpers/python-home.mjs";
 
-async function temp(t) { const p = await mkdtemp(join(tmpdir(), "pbot-agents-")); t.after(() => rm(p, { recursive: true, force: true })); return p; }
+async function temp(t) { const p = await realpath(await mkdtemp(join(tmpdir(), "pbot-agents-"))); t.after(() => rm(p, { recursive: true, force: true })); return p; }
 function saved(files, workspace, owner, options = {}) {
   const agentId = randomUUID(), generation = randomUUID();
   files.create({ agentId, release: packageVersion, workspace, cwd: options.cwd ?? workspace, parentSessionId: owner.sessionId,
@@ -55,20 +56,21 @@ test("stopped history remains readable, enforces branch ownership and never resu
   const complete = { cycleId: randomUUID(), generation, startedAt: 1, finishedAt: 2, state: "completed", leaf: manager.getLeafId(), requestIds: [], source: "interactive" };
   service.files.write(agentId, "completions/" + complete.cycleId + ".json", complete, cycle, true);
   service.files.write(agentId, "status.json", { generation, state: "idle", activity: "idle", updatedAt: 2, cycle: complete }, status);
-  assert.equal(service.read(agentId, owner).report, "Historical answer");
+  assert.equal((await service.read(agentId, owner)).report, "Historical answer");
   assert.equal(service.list(owner)[0].state, "stopped");
   assert.throws(() => service.send(agentId, "new", "steer", owner));
-  assert.throws(() => service.read(agentId, { ...owner, branch: [] }));
-  assert.throws(() => service.read(agentId, { ...owner, sessionId: "fork" }));
+  await assert.rejects(() => service.read(agentId, { ...owner, branch: [] }));
+  await assert.rejects(() => service.read(agentId, { ...owner, sessionId: "fork" }));
   service.rename(agentId, "renamed", owner); assert.equal(service.list(owner)[0].name, "renamed");
   service.stop(agentId, owner); service.stop(agentId, owner);
-  assert.equal(service.read(agentId, owner).report, "Historical answer");
+  assert.equal((await service.read(agentId, owner)).report, "Historical answer");
   await service.close(owner);
 });
 
 test("a real tmux Pi process with an unavailable model exits without a fake model or replay", { timeout: 30000 }, async t => {
   assert.equal(spawnSync("tmux", ["-V"]).status, 0, "tmux is required for process acceptance");
-  const root = await mkdtemp(join(tmpdir(), "pbot-agent-process-")), before = { ...process.env };
+  const root = await realpath(await mkdtemp(join(tmpdir(), "pbot-agent-process-"))), before = { ...process.env };
+  await preparePythonFailure(root);
   for (const key of Object.keys(process.env)) delete process.env[key];
   Object.assign(process.env, { PATH: before.PATH, HOME: root, TERM: "xterm-256color", PI_OFFLINE: "1",
     PI_CODING_AGENT_DIR: join(root, "config"), TMUX_TMPDIR: root, XDG_DATA_HOME: before.XDG_DATA_HOME });
@@ -80,15 +82,15 @@ test("a real tmux Pi process with an unavailable model exits without a fake mode
       await rm(root, { recursive: true, force: true });
     }
   });
-  const result = service.start({ message: "No model request", provider: "not-configured", model: "not-configured", noExtensions: true,
+  const result = await service.start({ message: "No model request", provider: "not-configured", model: "not-configured", noExtensions: true,
     noSkills: true, noContextFiles: true, noPromptTemplates: true }, owner);
   const deadline = Date.now() + 15000;
   while (service.host.alive(result.agentId) && Date.now() < deadline) await new Promise(r => setTimeout(r, 100));
   assert.equal(service.host.alive(result.agentId), false);
-  assert.equal(service.completions(owner)[0].cycle.state, "interrupted");
+  assert.equal((await service.completions(owner))[0].cycle.state, "interrupted");
   assert.equal(service.files.messages(result.agentId).length, 1);
   const previousGeneration = result.generation;
-  const resumed = service.resume(result.agentId, "Explicit new request", owner);
+  const resumed = await service.resume(result.agentId, "Explicit new request", owner);
   assert.notEqual(resumed.generation, previousGeneration);
   assert.equal(service.files.completions(result.agentId).find(c => c.generation === previousGeneration)?.state, "interrupted");
   assert.equal(service.files.messages(result.agentId).filter(m => m.generation === resumed.generation).length, 1);
@@ -96,6 +98,7 @@ test("a real tmux Pi process with an unavailable model exits without a fake mode
 
 test("agent tool exposes control and report data without replaying launch context or storage identities", { timeout: 30000 }, async t => {
   const directory = await temp(t), before = { ...process.env };
+  await preparePythonFailure(directory);
   for (const key of Object.keys(process.env)) delete process.env[key];
   Object.assign(process.env, { PATH: before.PATH, HOME: directory, TERM: "xterm-256color", PI_OFFLINE: "1",
     PI_CODING_AGENT_DIR: join(directory, "config"), TMUX_TMPDIR: directory, XDG_DATA_HOME: before.XDG_DATA_HOME });

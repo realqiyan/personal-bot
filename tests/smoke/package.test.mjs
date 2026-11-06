@@ -5,6 +5,7 @@ import { mkdir, readFile, readdir, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { packageRoot, rpcWorkspace } from "../helpers/pi-rpc.mjs";
+import { pythonExecutable } from "../helpers/python-home.mjs";
 
 const exec = promisify(execFile);
 
@@ -50,9 +51,10 @@ test("smoke: packed sources load tools and the standalone setup script without d
   const [{ filename }] = JSON.parse(stdout);
   await exec("tar", ["-xzf", join(temp, filename), "-C", temp], { timeout: 10_000 });
   const packed = join(temp, "package");
-  const plan = await exec("/usr/bin/python3", ["-I", "-B", join(packed, "scripts/setup-python.py"), "--check"],
+  const plan = await exec(pythonExecutable, ["-I", "-B", join(packed, "scripts/setup-python.py"), "--check"],
     { env: { HOME: temp, XDG_DATA_HOME: join(temp, "empty-data") } });
-  assert.equal(JSON.parse(plan.stdout).python, join(temp, "empty-data/pbot/python/.venv/bin/python"));
+  assert.equal(JSON.parse(plan.stdout).python, join(temp, process.platform === "darwin"
+    ? "Library/Application Support/pbot/python/.venv/bin/python" : "empty-data/pbot/python/.venv/bin/python"));
   await assert.rejects(readdir(join(temp, "empty-data")), { code: "ENOENT" });
   assert.deepEqual(await readdir(workspace.root), []);
   // Supply the already installed locked dependencies; do not download or install packages.

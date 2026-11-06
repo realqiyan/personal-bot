@@ -1,25 +1,25 @@
 import { readFile, stat } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { existsSync, realpathSync } from "node:fs";
-import { randomUUID } from "node:crypto";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { AgentFiles, descriptor, launch, status, cycle } from "../storage/agent-files.js";
+import { AgentFiles, descriptor, launch } from "../storage/agent-files.js";
+import { AgentRun } from "../services/agents/agent-run.js";
 import { TeamFiles } from "../storage/team-files.js";
 import { TeamService } from "../services/agents/team-service.js";
 import { teamMessageTool } from "../tools/teams/tool.js";
-import { teamBrief, teamContext } from "../integrations/pi/team-context.js";
+import { teamContext } from "../integrations/pi/team-context.js";
+import { teamBrief } from "../integrations/team-context.js";
 import { readAgentSession } from "../integrations/pi/pi-agents.js";
 import type { TeamLink } from "../model/team.js";
 import { PythonEnvironmentService } from "../services/workspace/python-environment-service.js";
 import { activatePython } from "../integrations/python-activation.js";
 import { authorizeMutation } from "../services/workspace/workspace-files.js";
-import { agentText } from "../integrations/pi/agent-resources.js";
+import { agentText } from "../integrations/agent-resources.js";
 import { agentInput } from "../integrations/pi/agent-input.js";
 import { agentFileTools } from "../integrations/pi/agent-tools.js";
 import { resourceRoot } from "../common/paths.js";
 import { requireThat } from "../common/validation.js";
 import { packageVersion, releaseLine } from "../common/version.js";
-import type { AgentCycle, AgentStatus } from "../model/agent.js";
 
 /** Explicit child composition; never installs main commands or approval capabilities. */
 export default function subagent(pi: ExtensionAPI) {
@@ -36,19 +36,10 @@ export default function subagent(pi: ExtensionAPI) {
   let ready = false, disposed = false;
   let ctx: ExtensionContext | undefined, timer: ReturnType<typeof setInterval> | undefined;
   let python: PythonEnvironmentService | undefined, restorePython: (() => void) | undefined;
-  let processing = false, closing = false, current: AgentCycle | undefined, startLeaf: string | null = null;
-  let queuedRequests: string[] = [], interactive = false;
-  const accepted = new Set<string>();
-  const saved = files.optional(id, "status.json", status);
-  let snapshot: AgentStatus = { generation, state: "starting", activity: "启动", updatedAt: Date.now() };
-  if (saved?.generation === generation) for (const requestId of saved.accepted ?? []) accepted.add(requestId);
+  let processing = false, closing = false, startLeaf: string | null = null;
+  const execution = new AgentRun(files, id, generation);
   let lastActivity = 0;
-  const save = (patch: Partial<AgentStatus>) => {
-    snapshot = { ...snapshot, ...patch, updatedAt: Date.now() };
-    if (current) snapshot.cycle = structuredClone(current);
-    snapshot.accepted = [...accepted];
-    files.write(id, "status.json", snapshot, status);
-  };
+  const save = execution.save.bind(execution);
   const ensure = () => {
     lifetime.signal.throwIfAborted(); files.check();
     const run = files.read(id, "launch.json", launch);
@@ -66,18 +57,16 @@ export default function subagent(pi: ExtensionAPI) {
     catch (error) { if ((error as NodeJS.ErrnoException).code !== "PBOT_CONTROL_BUSY") throw error; }
   };
   const finish = (aborted: boolean) => {
-    if (!ctx || !current) return;
+    if (!ctx || !execution.current) return;
     const branch = ctx.sessionManager.getBranch();
     const at = startLeaf === null ? -1 : branch.findIndex(e => e.id === startLeaf);
     const last = branch.slice(at + 1).filter(e => e.type === "message" && e.message.role === "assistant").at(-1);
     const assistant = last?.type === "message" && last.message.role === "assistant" ? last.message : undefined;
     const text = assistant?.content.filter(p => p.type === "text").map(p => p.text).join("\n") ?? "";
-    current = { ...current, finishedAt: Date.now(), leaf: assistant ? ctx.sessionManager.getLeafId() : null,
-      state: aborted ? "cancelled" : assistant?.stopReason === "stop" && text.trim() ? "completed" : "failed",
-      ...(!assistant || assistant.stopReason !== "stop" ? { error: assistant?.errorMessage ?? "没有有效最终回答。" } : {}) };
-    files.write(id, "completions/" + current.cycleId + ".json", current, cycle, true);
-    save({ state: "idle", activity: current.state });
-    current = undefined; activeTeam = undefined;
+    execution.finish({ position: assistant ? ctx.sessionManager.getLeafId() : null, answer: text,
+      state: aborted ? "cancelled" : assistant?.stopReason === "stop" ? "completed" : "failed",
+      ...(!assistant || assistant.stopReason !== "stop" ? { error: assistant?.errorMessage ?? "没有有效最终回答。" } : {}) });
+    activeTeam = undefined;
   };
   const shutdown = async () => {
     if (closing) return;
@@ -105,33 +94,31 @@ export default function subagent(pi: ExtensionAPI) {
       if (activeTeam) {
         if (Date.now() >= activeTeam.run.deadlineAt) {
           pauseTeam("已到期限");
-          if (!interactive && current?.source !== "mixed") {
+          if (!execution.interactive && execution.current?.source !== "mixed") {
             ctx.abort();
-            if (!current && ctx.isIdle()) await shutdown();
+            if (!execution.current && ctx.isIdle()) await shutdown();
           }
         }
         return;
       }
       const links = teams.links();
       for (const request of files.messages(id)) {
-        if (request.generation !== generation || accepted.has(request.requestId)) continue;
+        if (request.generation !== generation || execution.accepted(request.requestId)) continue;
         const link = links.get(request.requestId);
         if (link && (link.team.closed || link.run.state !== "running" || link.run.deadlineAt <= Date.now())) continue;
-        if (link && (!ctx.isIdle() || ctx.hasPendingMessages() || current || interactive || queuedRequests.length)) break;
+        if (link && (!ctx.isIdle() || ctx.hasPendingMessages() || execution.current || execution.interactive || execution.pending)) break;
         const content = await agentInput(d.cwd, request, lifetime.signal);
         requireThat(ctx.model, "子会话没有可用模型。");
         requireThat(ctx.modelRegistry.hasConfiguredAuth(ctx.model) || await ctx.modelRegistry.getProviderAuth(ctx.model.provider), "子会话模型未认证，请配置原生 Pi 认证后显式恢复。");
         ensure();
         const accept = () => {
           bindSession();
-          accepted.add(request.requestId);
           pi.appendEntry("pbot.agent-input", { requestId: request.requestId, generation });
-          if (current) { current.requestIds.push(request.requestId); if (current.source === "interactive") current.source = "mixed"; }
-          else queuedRequests.push(request.requestId);
-          save({ state: "busy", activity: "消息已接收" });
+          execution.claim(request.requestId);
+          execution.consume(request.requestId);
         };
         if (link) {
-          if (!ctx.isIdle() || ctx.hasPendingMessages() || current || interactive || queuedRequests.length) break;
+          if (!ctx.isIdle() || ctx.hasPendingMessages() || execution.current || execution.interactive || execution.pending) break;
           activeTeam = teams.claim(id, generation, request.requestId, accept);
           if (!activeTeam) continue;
         } else accept();
@@ -146,7 +133,7 @@ export default function subagent(pi: ExtensionAPI) {
   };
   pi.registerTool({ ...teamMessageTool(teams, { check: ensure }, () => ({
     kind: "member", agentId: id, generation,
-    ...(activeTeam && current?.source === "parent" ? { requestId: activeTeam.request.requestId } : {}),
+    ...(activeTeam && execution.current?.source === "parent" ? { requestId: activeTeam.request.requestId } : {}),
   })), namespace: { name: "pbot", description: "团队公共通信，不提供管理或递归委派。" } });
   pi.on("resources_discover", async () => {
     if (d.options.noSkills) return {};
@@ -171,22 +158,12 @@ export default function subagent(pi: ExtensionAPI) {
         (previous === null || previous === file), "子会话身份、工作目录或文件不匹配。");
       // Native setup-only sessions have a path but no file. Do not manufacture a conversation to persist it.
       if (previous !== null || existsSync(file)) { readAgentSession(d, file, true); bindSession(); }
+      const receipts: { requestId: string; generation: string }[] = [];
       for (const entry of ctx.sessionManager.getEntries()) if (entry.type === "custom" && entry.customType === "pbot.agent-input") {
-        const receipt = entry.data as { requestId?: string }; if (receipt.requestId) accepted.add(receipt.requestId);
+        const receipt = entry.data as { requestId?: string; generation?: string };
+        if (typeof receipt.requestId === "string" && typeof receipt.generation === "string") receipts.push({ requestId: receipt.requestId, generation: receipt.generation });
       }
-      if (saved?.generation === generation && saved.cycle?.state === "running") {
-        const interrupted: AgentCycle = { ...saved.cycle, state: "interrupted", finishedAt: Date.now() };
-        if (!files.completions(id).some(c => c.cycleId === interrupted.cycleId)) files.write(id, "completions/" + interrupted.cycleId + ".json", interrupted, cycle, true);
-      }
-      // A receipt without a cycle is uncertain, not permission to replay after reload.
-      for (const link of teams.links().values()) {
-        const q = link.request;
-        if (q.agentId !== id || q.generation !== generation || !accepted.has(q.requestId) ||
-          files.completions(id).some(c => c.generation === generation && c.requestIds.includes(q.requestId))) continue;
-        const interrupted: AgentCycle = { cycleId: q.requestId, generation, startedAt: files.read(id, "launch.json", launch).startedAt,
-          finishedAt: Date.now(), state: "interrupted", leaf: null, requestIds: [q.requestId], source: "parent", error: "领取后执行结果不明；未重跑。" };
-        files.write(id, "completions/" + interrupted.cycleId + ".json", interrupted, cycle, true);
-      }
+      execution.recover(receipts);
       const active = pi.getActiveTools();
       for (const tool of agentFileTools(d.cwd, lifetime.signal, async (path, change, cancel) => {
         ensure();
@@ -220,7 +197,7 @@ export default function subagent(pi: ExtensionAPI) {
     });
     event.systemPromptOptions.sections.pbot_workspace = await readFile(join(resourceRoot, "prompts/workspace.md"), "utf8");
     event.systemPromptOptions.sections.pbot_child = await agentText("general-purpose", d.workspace);
-    if (activeTeam && !interactive && current?.source !== "mixed") {
+    if (activeTeam && !execution.interactive && execution.current?.source !== "mixed") {
       const link = teams.links().get(activeTeam.request.requestId);
       requireThat(link, "团队关联不可读取。");
       event.systemPromptOptions.sections.pbot_team = teamBrief(link);
@@ -230,7 +207,7 @@ export default function subagent(pi: ExtensionAPI) {
     return;
   });
   pi.on("turn_end", (event, context) => {
-    if (!activeTeam || current?.source !== "parent" || event.outcome === "aborted") return;
+    if (!activeTeam || execution.current?.source !== "parent" || event.outcome === "aborted") return;
     const link = teams.links().get(activeTeam.request.requestId);
     if (!link) return;
     const message = teamContext(link, context);
@@ -246,34 +223,28 @@ export default function subagent(pi: ExtensionAPI) {
       return { action: "handled" };
     }
     if (event.source !== "extension") {
-      if (current) current.source = current.source === "parent" ? "mixed" : current.source;
-      else interactive = true;
-      save({ state: "busy", activity: "人工输入" });
+      execution.humanInput();
       pauseTeam("成员由人工接管");
     }
     return;
   });
   pi.on("agent_start", (_event, context) => {
     ctx = context;
-    if (current) { save({ state: "busy", activity: "继续思考" }); return; }
-    startLeaf = ctx.sessionManager.getLeafId();
-    current = { cycleId: randomUUID(), generation, startedAt: Date.now(), state: "running", leaf: null,
-      requestIds: queuedRequests, source: interactive ? queuedRequests.length ? "mixed" : "interactive" : "parent" };
-    queuedRequests = []; interactive = false;
-    save({ state: "busy", activity: "思考" });
+    if (!execution.current) startLeaf = ctx.sessionManager.getLeafId();
+    execution.begin();
   });
   pi.on("tool_call", event => {
     try {
       ensure();
       requireThat(event.toolName !== "pbot_agent" && event.toolName !== "pbot_team", "子会话禁止管理和委派。");
-      if (activeTeam && current?.source === "parent" && Date.now() >= activeTeam.run.deadlineAt) {
+      if (activeTeam && execution.current?.source === "parent" && Date.now() >= activeTeam.run.deadlineAt) {
         ctx?.abort(); throw new Error("团队请求已到期限。");
       }
       save({ state: "busy", activity: event.toolName });
     } catch (error) { return { block: true, reason: String(error) }; }
     return;
   });
-  pi.on("message_update", () => { if (current && Date.now() - lastActivity > 1000) { lastActivity = Date.now(); save({ state: "busy", activity: "回答" }); } });
+  pi.on("message_update", () => { if (execution.current && Date.now() - lastActivity > 1000) { lastActivity = Date.now(); save({ state: "busy", activity: "回答" }); } });
   pi.on("agent_settled", (event, context) => { ctx = context; finish(event.aborted); });
   pi.on("session_before_switch", () => ({ cancel: true }));
   pi.on("session_before_fork", () => ({ cancel: true }));
@@ -285,8 +256,8 @@ export default function subagent(pi: ExtensionAPI) {
     try {
       teams.files.setReady(id, generation, false); ready = false;
       pauseTeam("子会话关闭或重新载入");
-      if (current) finish(true);
-      if (event.reason !== "reload" && snapshot.state !== "error") save({ state: "stopped", activity: "已停止" });
+      if (execution.current) finish(true);
+      if (event.reason !== "reload" && execution.state !== "error") save({ state: "stopped", activity: "已停止" });
     } finally {
       try { await python?.close(); } finally { restorePython?.(); teams.dispose(); ctx = undefined; }
     }

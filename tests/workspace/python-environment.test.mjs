@@ -1,21 +1,24 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFile, spawn } from "node:child_process";
-import { access, mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile, realpath } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join, resolve, dirname } from "node:path";
 import { promisify } from "node:util";
 import { createBashTool } from "@earendil-works/pi-coding-agent";
 import { PythonEnvironmentService } from "../../dist/services/workspace/python-environment-service.js";
 import { activatePython } from "../../dist/integrations/python-activation.js";
 
 const exec = promisify(execFile);
-const script = resolve("scripts/setup-python.py"), python = "/usr/bin/python3";
+const script = resolve("scripts/setup-python.py"), python = "python3";
+const userDirectory = environment => process.platform === "darwin"
+  ? join(environment.HOME, "Library/Application Support/pbot/python/.venv")
+  : join(environment.XDG_DATA_HOME, "pbot/python/.venv");
 
 async function fixture(t) {
-  const root = await mkdtemp(join(tmpdir(), "pbot shared python "));
-  const environment = { HOME: root, PATH: "/usr/bin:/bin", XDG_DATA_HOME: join(root, "data") };
-  const directory = join(environment.XDG_DATA_HOME, "pbot/python/.venv");
+  const root = await realpath(await mkdtemp(join(tmpdir(), "pbot shared python ")));
+  const environment = { HOME: root, PATH: process.env.PATH, XDG_DATA_HOME: join(root, "data") };
+  const directory = userDirectory(environment);
   t.after(() => rm(root, { recursive: true, force: true }));
   return { root, directory, environment };
 }
@@ -44,7 +47,8 @@ test("read-only checks resolve one user environment without creating it", async 
   assert.ok(proposed.required["ta-lib"]);
   assert.deepEqual(await readdir(root), []);
   for (const data of ["", "relative"]) {
-    assert.equal((await check({ ...environment, XDG_DATA_HOME: data })).directory, join(root, ".local/share/pbot/python/.venv"));
+    assert.equal((await check({ ...environment, XDG_DATA_HOME: data })).directory,
+      process.platform === "darwin" ? directory : join(root, ".local/share/pbot/python/.venv"));
   }
 });
 
@@ -54,10 +58,11 @@ test("setup preserves unrelated files and rejects a symlink environment", async 
   await writeFile(join(directory, "notes"), "keep");
   await assert.rejects(exec(python, ["-I", "-B", script], { env: environment }));
   assert.equal(await readFile(join(directory, "notes"), "utf8"), "keep");
-  const aliasData = join(root, "alias-data");
-  await mkdir(join(aliasData, "pbot/python"), { recursive: true });
-  await symlink(directory, join(aliasData, "pbot/python/.venv"));
-  await assert.rejects(check({ ...environment, XDG_DATA_HOME: aliasData }));
+  const alias = { ...environment, HOME: join(root, "alias-home"), XDG_DATA_HOME: join(root, "alias-data") };
+  const aliasDirectory = userDirectory(alias);
+  await mkdir(dirname(aliasDirectory), { recursive: true });
+  await symlink(directory, aliasDirectory);
+  await assert.rejects(check(alias));
   assert.equal(await readFile(join(directory, "notes"), "utf8"), "keep");
 });
 

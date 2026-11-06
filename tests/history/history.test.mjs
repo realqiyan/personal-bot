@@ -131,7 +131,7 @@ test("workspace archives retain summaries across old-store import, copying, miss
   await copied.refresh({ ...location, file: relocated });
   assert.equal(copied.search().total, 1);
   assert.equal(copied.read(summary.id).text, needle + " updated");
-  assert.deepEqual(copied.read(summary.id).source, { sessionId: manager.getSessionId(), entryIds: summary.entryIds });
+  assert.deepEqual(copied.read(summary.id).source, { host: "pi", sessionId: manager.getSessionId(), entryIds: summary.entryIds });
   assert.equal(copiedFiles.list().length, 1);
   assert.equal(await readFile(file, "utf8"), original);
 });

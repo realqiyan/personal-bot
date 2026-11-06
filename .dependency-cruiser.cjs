@@ -1,4 +1,4 @@
-const host = "(?:^|/)node_modules/(?:@earendil-works/pi-(?:coding-agent|ai|tui|mcp)|typebox)(?:/|$)";
+const host = "(?:^|/)node_modules/(?:@earendil-works/pi-(?:coding-agent|ai|tui|mcp)|@deepseek-ai/(?:cordis|dsh[^/]*)|react|typebox)(?:/|$)";
 
 module.exports = {
   forbidden: [
@@ -24,8 +24,12 @@ module.exports = {
       to: { path: "^src/(?:services|tools|integrations|extension|ui)/|^src/pbot\\.ts$|" + host } },
     { name: "ui-does-not-decide-business", severity: "error", from: { path: "^src/ui/" },
       to: { path: "^src/(?:services|tools|storage|integrations|extension)/|^src/pbot\\.ts$" } },
+    { name: "pi-does-not-load-dsh", severity: "error", from: { path: "^src/(?:pbot\\.ts|integrations/pi/)" },
+      to: { path: "^src/(?:dsh\\.ts|(?:integrations|extension|ui)/dsh/)|node_modules/@deepseek-ai/" } },
+    { name: "dsh-does-not-load-pi", severity: "error", from: { path: "^src/(?:dsh\\.ts|(?:integrations|extension|ui)/dsh/)" },
+      to: { path: "^src/(?:pbot\\.ts|integrations/pi/)|node_modules/@earendil-works/" } },
     { name: "composition-is-not-a-dependency", severity: "error", from: { path: "^src/" },
-      to: { path: "^src/pbot\\.ts$" } },
+      to: { path: "^src/(?:pbot|dsh)\\.ts$" } },
   ],
   options: {
     doNotFollow: { path: "node_modules" },

@@ -1,22 +1,24 @@
 import assert from "node:assert/strict";
 import { after } from "node:test";
-import { mkdtemp, rm, mkdir } from "node:fs/promises";
+import { mkdtemp, rm, mkdir, realpath } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { createAgentSession, createCodemodeExtension, DefaultResourceLoader, ModelRuntime, SessionManager, SettingsManager } from "@earendil-works/pi-coding-agent";
 
-// Exercise a real damaged shared environment: no network or user-environment writes in Node tests.
-const previousDataHome = process.env.XDG_DATA_HOME;
-const pythonDataHome = await mkdtemp(join(tmpdir(), "pbot-python-host-"));
-await mkdir(join(pythonDataHome, "pbot/python/.venv"), { recursive: true });
-process.env.XDG_DATA_HOME = pythonDataHome;
+import { preparePythonFailure } from "./python-home.mjs";
+
+// Exercise a real damaged shared environment on the current platform, with an isolated user home.
+const previousDataHome = process.env.XDG_DATA_HOME, previousHome = process.env.HOME;
+const pythonDataHome = await realpath(await mkdtemp(join(tmpdir(), "pbot-python-host-")));
+Object.assign(process.env, (await preparePythonFailure(pythonDataHome)).environment);
 after(async () => {
   if (previousDataHome === undefined) delete process.env.XDG_DATA_HOME; else process.env.XDG_DATA_HOME = previousDataHome;
+  if (previousHome === undefined) delete process.env.HOME; else process.env.HOME = previousHome;
   await rm(pythonDataHome, { recursive: true, force: true });
 });
 
 export async function host(t, { prepare, enabled = true, extensions = [] } = {}) {
-  const temp = await mkdtemp(join(tmpdir(), "pbot-pi-")), root = join(temp, "workspace"), agentDir = join(temp, "agent");
+  const temp = await realpath(await mkdtemp(join(tmpdir(), "pbot-pi-"))), root = join(temp, "workspace"), agentDir = join(temp, "agent");
   await mkdir(root); await mkdir(agentDir);
   await prepare?.(root);
   const settingsManager = SettingsManager.inMemory({ packages: enabled ? [resolve(".")] : [], defaultTools: ["+codemode"] });

@@ -1,61 +1,25 @@
-import type { Static } from "typebox";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import type { AgentService } from "../../services/agents/agent-service.js";
 import { agentOwner } from "../../integrations/pi/agent-context.js";
-import type { AgentOptions, AgentView } from "../../model/agent.js";
 import type { CallAccess } from "../access.js";
 import { requireThat, schema } from "../../common/validation.js";
-import { markdownResult } from "../result.js";
-import { agentActionSchema, agentParametersSchema, agentResultSchema, agentViewSchema } from "./contract.js";
-
-type AgentOutput = Static<typeof agentViewSchema>;
-function agentOutput(view: AgentView & Partial<AgentOutput>): AgentOutput {
-  const c = view.cycle;
-  return {
-    agentId: view.agentId, name: view.name, cwd: view.cwd, createdAt: view.createdAt,
-    owned: view.owned, state: view.state, activity: view.activity,
-    ...(c ? { cycle: { cycleId: c.cycleId, startedAt: c.startedAt, state: c.state, requestIds: c.requestIds, source: c.source,
-      ...(c.finishedAt === undefined ? {} : { finishedAt: c.finishedAt }), ...(c.error === undefined ? {} : { error: c.error }) } } : {}),
-    ...(view.error === undefined ? {} : { error: view.error }),
-    ...(view.requestId === undefined ? {} : { requestId: view.requestId }),
-    ...(view.messageStatus === undefined ? {} : { messageStatus: view.messageStatus }),
-    ...(view.cycles === undefined ? {} : { cycles: view.cycles }),
-    ...(view.report === undefined ? {} : { report: view.report }),
-    ...(view.totalLength === undefined ? {} : { totalLength: view.totalLength }),
-    ...(view.nextOffset === undefined ? {} : { nextOffset: view.nextOffset }),
-  };
-}
+import { executeAgent } from "./actions.js";
+import { agentDescription, agentActionSchema, agentParametersSchema, agentResultSchema } from "./contract.js";
 
 export function agentTool(service: AgentService, access: CallAccess) {
   const validators = new Map(agentActionSchema.anyOf.map(action => [action.properties.action.const, schema(action)]));
   return defineTool({ name: "pbot_agent", label: "子会话",
-    description: "独立 Pi 子会话，不继承父聊天历史。start 立即返回；未提供 message/prompts/files 时只启动待命进程，不调用模型。完成自动通知，无需轮询。团队占用期间不能私人 send。send 继续对话，rename 改名，status/list 查看状态，status 返回最近周期且不读取报告正文。read 非阻塞读取报告；读取已结束周期会领取该周期的完成通知（包括部分读取），后续不再重复通知。nextOffset 非空时以返回的 cycle.cycleId 固定周期续读。state 是进程状态，cycle.state 是工作结果，queued 仅表示入队。stop 停止并保留历史，resume 携新 message 恢复，不重放旧工作。独立复核须 start 新上下文。子会话使用原生 CLI/MCP，按委派范围工作，不递归委派。每个父会话最多 50 个存活子会话，空闲也计入。",
+    description: agentDescription,
     parameters: agentParametersSchema, outputSchema: agentResultSchema,
     async execute(_id, args, signal, _update, ctx) {
       access.check(); signal?.throwIfAborted();
       const valid = validators.get(args.action);
       requireThat(valid, "未知的子会话 action：" + args.action);
       requireThat(valid(args), "子会话 " + args.action + " 参数无效：" + JSON.stringify(valid.errors));
-      const input = args as Static<typeof agentParametersSchema>, owner = agentOwner(ctx);
-      let value: AgentView & Partial<AgentOutput>;
-      switch (input.action) {
-        case "start": {
-          const { action: _action, ...supplied } = input;
-          value = service.start({ provider: ctx.model?.provider, model: ctx.model?.id, thinking: ctx.thinkingLevel, ...supplied } as AgentOptions, owner); break;
-        }
-        case "list": return markdownResult({ agents: service.list(owner).map(agentOutput) }, "子会话列表");
-        case "send": value = service.send(input.agentId!, input.message!, input.delivery ?? "steer", owner); break;
-        case "rename": value = service.rename(input.agentId!, input.name!, owner); break;
-        case "resume": value = service.resume(input.agentId!, input.message!, owner); break;
-        case "stop": value = service.stop(input.agentId!, owner); break;
-        case "status": value = service.status(input.agentId!, owner); break;
-        case "read": {
-          const page = service.read(input.agentId!, owner, input.cycleId, input.offset, input.limit);
-          const data = agentOutput(page), output = markdownResult(data, "子会话报告");
-          return { ...output, details: { ...data, ...(page.cycle && page.cycle.state !== "running" ? { agentReadKeys: [page.agentId + ":" + page.cycle.cycleId] } : {}) } };
-        }
-      }
-      return markdownResult(agentOutput(value), "子会话状态");
+      return executeAgent(service, args, agentOwner(ctx), {
+        ...(ctx.model ? { provider: ctx.model.provider, model: ctx.model.id } : {}),
+        ...(ctx.thinkingLevel ? { thinking: ctx.thinkingLevel } : {}),
+      });
     },
   });
 }

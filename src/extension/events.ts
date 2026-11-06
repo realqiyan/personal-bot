@@ -4,7 +4,7 @@ import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { resourceRoot } from "../common/paths.js";
-import { agentText } from "../integrations/pi/agent-resources.js";
+import { agentText } from "../integrations/agent-resources.js";
 import type { Confirmations } from "../ui/confirmation.js";
 import type { Lifecycle } from "./lifecycle.js";
 
@@ -12,12 +12,14 @@ export function registerEvents(pi: ExtensionAPI, lifecycle: Lifecycle, confirmat
   pi.on("session_start", async (_event, ctx) => {
     try {
       await lifecycle.open(ctx.cwd);
-      ctx.ui.notify("正在准备共享 Python 环境；首次安装可能需要数分钟。", "info");
+      if (ctx.mode === "tui") ctx.ui.setStatus("pbot-python", "Python 准备中");
+      else ctx.ui.notify("正在准备共享 Python 环境；首次安装可能需要数分钟。", "info");
       try { await lifecycle.get().preparePython(); }
       catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        if (ctx.hasUI) ctx.ui.notify(message, "warning"); else console.error(message);
-      }
+        if (ctx.mode === "tui") ctx.ui.notify("Python 未就绪；/pbot status 查看详情。", "warning");
+        else if (ctx.hasUI) ctx.ui.notify(message, "warning"); else console.error(message);
+      } finally { if (ctx.mode === "tui") ctx.ui.setStatus("pbot-python", undefined); }
     } catch (error) {
       if (ctx.hasUI) ctx.ui.notify(error instanceof Error ? error.message : "pbot 启动失败。", "error");
       else throw error;

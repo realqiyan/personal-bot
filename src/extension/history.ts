@@ -1,6 +1,8 @@
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { historyLocation, historySummarizer } from "../integrations/pi/history.js";
 import type { Lifecycle, WorkspaceInstance } from "./lifecycle.js";
+import { readPage } from "../ui/pi/reader.js";
+import { choose } from "../ui/pi/menu.js";
 
 export function registerHistoryEvents(pi: ExtensionAPI, lifecycle: Lifecycle) {
   pi.on("session_start", async (_event, ctx) => {
@@ -25,8 +27,8 @@ export function registerHistoryEvents(pi: ExtensionAPI, lifecycle: Lifecycle) {
   });
 }
 
-const label = (node: { kind: string; from: string; ready: boolean; preview: string }) =>
-  `${node.from.slice(0, 16)} · ${node.kind === "session" ? "会话" : node.kind === "summary" ? "摘要" : "问答"}${node.ready ? "" : "（待整理）"} · ${node.preview}`;
+const label = (node: { host: string; kind: string; from: string; ready: boolean; preview: string }) =>
+  `${node.host} · ${node.from.slice(0, 10)} · ${node.kind === "session" ? "会话" : node.kind === "summary" ? "摘要" : "问答"}${node.ready ? "" : "（待整理）"} · ${node.preview.replace(/\s+/g, " ").slice(0, 48)}`;
 
 export async function showHistory(instance: WorkspaceInstance, ctx: ExtensionCommandContext, query: string) {
   await instance.history.refresh(historyLocation(ctx), instance.signal(ctx.signal));
@@ -37,35 +39,36 @@ export async function showHistory(instance: WorkspaceInstance, ctx: ExtensionCom
   for (;;) {
     instance.check();
     const result = service.search({ query, offset });
-    const choices = result.matches.map((node, index) => `${index + 1}. ${label(node)} · ${node.snippet.replace(/\s+/g, " ").slice(0, 80)}`);
-    const more = "下一页", search = "重新搜索", back = "返回";
-    const selected = await ctx.ui.select(`历史：${query || "最近会话"}（${result.total}）`, [...choices, ...(result.nextOffset === null ? [] : [more]), search, back]);
+    const choices = result.matches.map((node, index) => `${index + 1}. ${label(node)}`);
+    const more = "下一页", previous = "上一页", search = "搜索", back = "返回";
+    const selected = await choose(ctx, `历史 · ${query || "最近会话"} · ${result.total} 项`, [...choices, ...(offset ? [previous] : []), ...(result.nextOffset === null ? [] : [more]), search, back]);
     if (!selected || selected === back) return;
     if (selected === more) { offset = result.nextOffset!; continue; }
+    if (selected === previous) { offset = Math.max(0, offset - 20); continue; }
     if (selected === search) {
       const value = await ctx.ui.input("全文搜索（留空列出会话）", query);
       if (value !== undefined) { query = value; offset = 0; }
       continue;
     }
-    let id = result.matches[choices.indexOf(selected)]!.id, textOffset = 0, childrenOffset = 0;
+    let current = result.matches[choices.indexOf(selected)]!, id = current.id, source = current.host, textOffset = 0, childrenOffset = 0;
     for (;;) {
       instance.check();
-      const node = service.read(id, textOffset, 12000, childrenOffset);
-      const body = "查看正文", nextText = "后续正文", nextChildren = "后续子节点", first = "回到本节点开头";
+      const node = service.read(id, textOffset, 12000, childrenOffset, source);
+      const body = "正文", nextText = "后续正文", nextChildren = "更多下级", first = "回到开头";
       const links = [...node.parents.map(parent => ({ ...parent, direction: "↑" })), ...node.children.map(child => ({ ...child, direction: "↓" }))];
       const names = links.map((value, index) => `${index + 1}. ${value.direction} ${label(value)}`);
-      const action = await ctx.ui.select(label(node), [body, ...names, ...(node.nextOffset === null ? [] : [nextText]),
+      const action = await choose(ctx, label(node), [body, ...names, ...(node.nextOffset === null ? [] : [nextText]),
         ...(node.nextChildrenOffset === null ? [] : [nextChildren]), ...(textOffset || childrenOffset ? [first] : []), back]);
       if (!action || action === back) break;
       if (action === body || action === nextText) {
         if (action === nextText) textOffset = node.nextOffset!;
-        const page = service.read(id, textOffset, 12000, childrenOffset);
-        await ctx.ui.editor(`历史正文 ${textOffset}/${page.totalLength}（修改不保存）`, page.text || "摘要尚未生成，可以展开下层节点。");
+        const page = service.read(id, textOffset, 12000, childrenOffset, source);
+        await readPage(ctx, `历史正文 · ${textOffset + 1}–${textOffset + page.text.length}/${page.totalLength}`, page.text || "摘要待整理，请展开下级记录。");
         continue;
       }
       if (action === nextChildren) { childrenOffset = node.nextChildrenOffset!; continue; }
       if (action === first) { textOffset = 0; childrenOffset = 0; continue; }
-      id = links[names.indexOf(action)]!.id; textOffset = 0; childrenOffset = 0;
+      const link = links[names.indexOf(action)]!; id = link.id; source = link.host; textOffset = 0; childrenOffset = 0;
     }
   }
 }

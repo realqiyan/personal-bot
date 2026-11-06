@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, readFile, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm, realpath } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
@@ -17,6 +17,7 @@ import { teamParametersSchema, teamActionSchema, teamMessageActionSchema } from 
 import { schema } from "../../dist/common/validation.js";
 import { packageVersion } from "../../dist/common/version.js";
 import { host } from "../helpers/pi-host.mjs";
+import { preparePythonFailure } from "../helpers/python-home.mjs";
 
 const owner = { sessionId: "parent", leaf: "anchor", branch: ["anchor"] };
 const actor = { kind: "coordinator", owner };
@@ -24,7 +25,7 @@ const exec = promisify(execFile);
 
 // Plain domain inputs and restored local execution records; no model/provider implementation.
 async function fixture(t, count = 3, options = {}) {
-  const root = await mkdtemp(join(tmpdir(), "pbot-team-"));
+  const root = await realpath(await mkdtemp(join(tmpdir(), "pbot-team-")));
   t.after(() => rm(root, { recursive: true, force: true }));
   const agents = new AgentFiles(join(root, "subagents")), files = new TeamFiles(agents), service = new TeamService(root, agents, files), views = [];
   for (let n = 0; n < count; n++) {
@@ -60,7 +61,7 @@ async function fixture(t, count = 3, options = {}) {
     agents.write(q.agentId, "completions/" + c.cycleId + ".json", c, cycle, true);
     agents.write(q.agentId, "status.json", { ...saved, state: "idle", cycle: c }, status);
     Object.assign(views.find(v => v.agentId === q.agentId), { state: "idle", cycle: c });
-    const result = { agentId: q.agentId, name: views.find(v => v.agentId === q.agentId).name, cycle: c, report: new PiAgents().report(views.find(v => v.agentId === q.agentId), manager.getSessionFile(), c.leaf) };
+    const result = { agentId: q.agentId, name: views.find(v => v.agentId === q.agentId).name, cycle: c, report: new PiAgents().report(views.find(v => v.agentId === q.agentId), { host: "pi", file: manager.getSessionFile() }, c.leaf) };
     completions.push(result); return result;
   };
   return { root, agents, files, service, views, input, team, completions, queue, claim, finish,
@@ -185,12 +186,13 @@ test("a stopped peer blocks remaining claims before the next parent scan", async
 test("resume seals receipt-only crashes before changing generation and never reclassifies them as unclaimed", { timeout: 20000 }, async t => {
   const f = await fixture(t, 1, { provider: "not-configured", model: "not-configured", noSkills: true, noContextFiles: true });
   const before = { ...process.env }, socketRoot = await mkdtemp(join(tmpdir(), "pbot-receipt-tmux-"));
+  await preparePythonFailure(f.root);
   for (const key of Object.keys(process.env)) delete process.env[key];
   Object.assign(process.env, { PATH: before.PATH, HOME: f.root, TERM: "xterm-256color", PI_OFFLINE: "1",
     PI_CODING_AGENT_DIR: join(f.root, "isolated-config"), TMUX_TMPDIR: socketRoot, XDG_DATA_HOME: before.XDG_DATA_HOME });
   const agents = new AgentService(f.root, f.agents.root, new PiAgents()), id = f.views[0].agentId;
   t.after(async () => {
-    if (agents.host.alive(id)) agents.host.kill(id);
+    await agents.close(owner);
     spawnSync("tmux", ["kill-server"], { stdio: "ignore" });
     for (const key of Object.keys(process.env)) delete process.env[key]; Object.assign(process.env, before);
     await rm(socketRoot, { recursive: true, force: true });
@@ -205,7 +207,7 @@ test("resume seals receipt-only crashes before changing generation and never rec
   });
   f.service.pause(f.team.teamId, owner);
   assert.equal(f.service.status(f.team.teamId, owner, agents.list(owner)).unresolved[0].state, "uncertain");
-  const resumed = agents.resume(id, "Only this new instruction", owner);
+  const resumed = await agents.resume(id, "Only this new instruction", owner);
   assert.notEqual(resumed.generation, q.generation);
   const ended = agents.files.completions(id).find(c => c.requestIds.includes(q.requestId));
   assert.equal(ended.state, "interrupted"); assert.equal(ended.generation, q.generation);
@@ -389,12 +391,12 @@ test("native custom context persists without a model turn and rebuilds deduplica
 });
 
 test("real idle Pi children do not call a model, and team use retains the original inbox", { timeout: 45000 }, async t => {
-  const root = await mkdtemp(join(tmpdir(), "pbot-idle-pi-")), before = { ...process.env };
+  const root = await realpath(await mkdtemp(join(tmpdir(), "pbot-idle-pi-"))), before = { ...process.env };
   // Isolate both Pi auth and the tmux server. No inherited provider credentials reach these processes.
   for (const key of Object.keys(process.env)) delete process.env[key];
   Object.assign(process.env, { PATH: before.PATH, HOME: root, TERM: "xterm-256color",
     PI_CODING_AGENT_DIR: join(root, "config"), TMUX_TMPDIR: root, XDG_DATA_HOME: join(root, "data") });
-  await mkdir(join(root, "data/pbot/python/.venv"), { recursive: true });
+  await preparePythonFailure(root);
   const agents = new AgentService(root, join(root, "subagents"), new PiAgents()), teams = new TeamService(root, agents.files, agents.teamFiles);
   t.after(async () => {
     try { await agents.close(owner); } finally {
@@ -403,8 +405,8 @@ test("real idle Pi children do not call a model, and team use retains the origin
       await rm(root, { recursive: true, force: true });
     }
   });
-  const children = [0, 1].map(n => agents.start({ name: "idle-" + n, provider: "openai", model: "gpt-4.1",
-    noSkills: true, noContextFiles: true, noPromptTemplates: true }, owner));
+  const children = await Promise.all([0, 1].map(n => agents.start({ name: "idle-" + n, provider: "openai", model: "gpt-4.1",
+    noSkills: true, noContextFiles: true, noPromptTemplates: true }, owner)));
   let deadline = Date.now() + 20000;
   while (Date.now() < deadline && !agents.list(owner).every(v => v.state === "idle" && agents.teamFiles.ready(v.agentId)?.ready)) await new Promise(r => setTimeout(r, 100));
   assert.ok(agents.list(owner).every(v => v.state === "idle"), JSON.stringify(agents.list(owner)));
@@ -423,15 +425,15 @@ test("real idle Pi children do not call a model, and team use retains the origin
   for (const input of inputs) agents.enqueueTeam(input, owner);
   deadline = Date.now() + 10000;
   while (Date.now() < deadline && (teams.files.read(team.teamId).runs[0].state === "running" || agents.list(owner).some(v => v.alive && v.state !== "idle"))) await new Promise(r => setTimeout(r, 100));
-  teams.advance(owner, agents.list(owner), agents.completions(owner));
+  teams.advance(owner, agents.list(owner), await agents.completions(owner));
   assert.equal(teams.status(team.teamId, owner, agents.list(owner)).run.state, "paused");
   assert.ok(children.some(v => !agents.host.alive(v.agentId)));
   assert.ok(agents.list(owner).every(v => !v.alive || v.state === "idle"));
   for (const q of inputs) assert.equal(agents.files.messages(q.agentId)[0].requestId, q.requestId);
   // A distinct idle process can stop without inventing a failed task.
-  const empty = agents.start({ provider: "openai", model: "gpt-4.1", noSkills: true, noContextFiles: true }, owner);
+  const empty = await agents.start({ provider: "openai", model: "gpt-4.1", noSkills: true, noContextFiles: true }, owner);
   agents.stop(empty.agentId, owner);
   deadline = Date.now() + 8000;
-  while (agents.host.alive(empty.agentId) && Date.now() < deadline) { agents.refresh(owner); await new Promise(r => setTimeout(r, 100)); }
+  while (agents.host.alive(empty.agentId) && Date.now() < deadline) { await agents.refresh(owner); await new Promise(r => setTimeout(r, 100)); }
   assert.deepEqual(agents.cycles(empty.agentId, owner), []);
 });

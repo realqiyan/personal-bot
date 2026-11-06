@@ -46,7 +46,8 @@ test("E2E: startup reports a damaged Python environment, preserves history and l
   });
   await pi.command("/pbot python setup");
   assert.equal(await readFile(settingsPath, "utf8"), settings);
-  assert.deepEqual(await readdir(join(workspace.temp, "home/data/pbot/python/.venv")), []);
+  assert.deepEqual(await readdir(workspace.pythonDirectory), ["keep"]);
+  assert.equal(await readFile(join(workspace.pythonDirectory, "keep"), "utf8"), "unrelated data");
   // The removed interpreter-binding command cannot alter existing settings.
   await pi.command("/pbot python /usr/bin/python3");
   const requests = pi.records.filter(record => record.type === "extension_ui_request" && record.method === "confirm").length;

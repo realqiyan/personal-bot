@@ -6,23 +6,30 @@ import { requireThat } from "../../common/validation.js";
 import { AgentFiles, descriptor, launch, status, cycle } from "../../storage/agent-files.js";
 import { TeamFiles } from "../../storage/team-files.js";
 import type { TeamAgent, TeamInput } from "../../model/team.js";
-import type { AgentOwner, AgentOptions, AgentDescriptor, AgentCycle, AgentCompletion } from "../../model/agent.js";
+import type { AgentOwner, AgentOptions, AgentDescriptor, AgentCycle, AgentCompletion, AgentSessionReference } from "../../model/agent.js";
 
 export interface AgentHost {
+  readonly kind: AgentSessionReference["host"];
   available(): void;
   alive(id: string): boolean;
-  validateSession(value: AgentDescriptor, file: string): void;
-  launch(value: AgentDescriptor, directory: string, generation: string, sessionFile: string | null): void;
-  kill(id: string): void;
-  report(value: AgentDescriptor, file: string, leaf: string): string;
+  validateSession(value: AgentDescriptor, reference: AgentSessionReference): void | Promise<void>;
+  launch(value: AgentDescriptor, directory: string, generation: string, reference: AgentSessionReference, resume: boolean, signal: AbortSignal): void | Promise<void>;
+  release(id: string, generation: string): void | Promise<void>;
+  report(value: AgentDescriptor, reference: AgentSessionReference, leaf: string): string | Promise<string>;
 }
 export class AgentService {
   readonly files: AgentFiles;
   readonly teamFiles: TeamFiles;
   #closed = false;
+  #preserve = false;
+  readonly #starting = new Map<string, { generation: string; controller: AbortController; stage: "validate" | "launch" }>();
+  readonly #launches = new Set<Promise<unknown>>();
+  #closing: Promise<void> | undefined;
+  readonly #releasing = new Map<string, Promise<void>>();
   constructor(readonly root: string, directory: string, readonly host: AgentHost) {
-    this.files = new AgentFiles(directory); this.teamFiles = new TeamFiles(this.files);
+    this.files = new AgentFiles(directory, host.kind); this.teamFiles = new TeamFiles(this.files);
   }
+  private alive(id: string) { return this.#starting.has(id) || this.#releasing.has(id) || this.host.alive(id); }
   private check() { requireThat(!this.#closed, "子会话服务已关闭。"); }
   private owned(d: AgentDescriptor, owner: AgentOwner) {
     return d.workspace === this.root && d.parentSessionId === owner.sessionId && (d.parentLeaf === null || owner.branch.includes(d.parentLeaf));
@@ -42,18 +49,19 @@ export class AgentService {
     const run = this.files.read(d.agentId, "launch.json", launch);
     const saved = this.files.optional(d.agentId, "status.json", status);
     const current = saved?.generation === run.generation ? saved : undefined;
-    const alive = this.host.alive(d.agentId);
+    const alive = this.alive(d.agentId), pending = this.#starting.get(d.agentId);
+    const starting = pending && !pending.controller.signal.aborted;
     return { ...d, name: run.name, generation: run.generation, owned: this.owned(d, owner), alive,
-      state: alive ? run.stop ? "stopping" : current?.state ?? "starting" : current?.state === "error" ? "error" : "stopped",
-      activity: alive ? current?.activity ?? "启动" : current?.error ?? "已停止",
+      state: alive ? starting ? "starting" : run.stop || pending?.controller.signal.aborted ? "stopping" : current?.state ?? "starting" : current?.state === "error" ? "error" : "stopped",
+      activity: starting ? "启动" : alive ? current?.activity ?? "启动" : current?.error ?? "已停止",
       ...(current?.cycle ? { cycle: current.cycle } : {}), ...(current?.error ? { error: current.error } : {}) };
   }
-  start(options: AgentOptions, owner: AgentOwner) {
+  async start(options: AgentOptions, owner: AgentOwner) {
     this.check(); this.host.available();
     options = Object.fromEntries(Object.entries(options).filter(([, v]) => v !== undefined));
-    requireThat(options.provider && options.model, "请选择可在子进程使用的模型。");
-    return this.files.control(() => {
-      requireThat(this.list(owner).filter(v => this.host.alive(v.agentId)).length < 50, "最多 50 个存活子会话；请先停止一个空闲会话。");
+    requireThat(options.provider && options.model, "请选择可在专家会话使用的模型。");
+    const prepared = this.files.control(() => {
+      requireThat(this.list(owner).filter(v => v.alive).length < 50, "最多 50 个存活或启动中子会话；请先停止一个空闲会话。");
       const agentId = randomUUID();
       const cwd = realpathSync(resolve(this.root, options.cwd ?? "."));
       const files = (options.files ?? []).map(p => realpathSync(resolve(this.root, p)));
@@ -63,18 +71,38 @@ export class AgentService {
       this.files.create(d, run);
       const initial = [options.message, ...(options.prompts ?? [])].filter(Boolean).join("\n\n");
       const request = initial || files.length ? this.files.enqueue(agentId, initial, "steer", files) : undefined;
-      try { this.host.launch(d, this.files.directory(agentId), run.generation, this.files.session(agentId)); }
-      catch (error) {
-        this.files.write(agentId, "status.json", { generation: run.generation, state: "error", activity: "启动失败", updatedAt: Date.now(), error: String(error) }, status);
-        throw error;
-      }
-      return { ...this.view(d, owner), ...(request ? { requestId: request.requestId, messageStatus: "queued" as const } : {}) };
+      this.#starting.set(agentId, { generation: run.generation, controller: new AbortController(), stage: "launch" });
+      return { d, run, request };
     });
+    await this.launch(prepared.d, prepared.run.generation);
+    return { ...this.view(prepared.d, owner), ...(prepared.request ? { requestId: prepared.request.requestId, messageStatus: "queued" as const } : {}) };
+  }
+  private async launch(d: AgentDescriptor, generation: string, resume = false) {
+    const pending = this.#starting.get(d.agentId);
+    requireThat(pending?.generation === generation, "启动预约已失效。");
+    const operation = (async () => {
+      try {
+        await this.host.launch(d, this.files.directory(d.agentId), generation, this.files.reference(d.agentId), resume, pending.controller.signal);
+        requireThat(!this.#closed || this.#preserve, "子会话服务已关闭。"); pending.controller.signal.throwIfAborted();
+        const run = this.files.read(d.agentId, "launch.json", launch);
+        requireThat(run.generation === generation && !run.stop, "子会话启动已取消或代次变化。");
+      } catch (error) {
+        const run = this.files.read(d.agentId, "launch.json", launch);
+        if (run.generation === generation) {
+          if (this.host.alive(d.agentId)) await this.release(d.agentId);
+          this.files.write(d.agentId, "status.json", { generation, state: run.stop ? "stopped" : "error",
+            activity: run.stop ? "已停止" : "启动失败", updatedAt: Date.now(), ...(run.stop ? {} : { error: String(error) }) }, status);
+        }
+        throw error;
+      } finally { if (this.#starting.get(d.agentId) === pending) this.#starting.delete(d.agentId); }
+    })();
+    this.#launches.add(operation);
+    try { await operation; } finally { this.#launches.delete(operation); }
   }
   send(id: string, text: string, delivery: "steer" | "followUp", owner: AgentOwner) {
     const d = this.get(id, owner);
     return this.files.control(() => {
-      requireThat(this.host.alive(id) && !this.files.read(id, "launch.json", launch).stop, "子会话已停止，请显式 resume。");
+      requireThat(this.alive(id) && this.#starting.get(id)?.stage !== "validate" && !this.files.read(id, "launch.json", launch).stop, "子会话已停止或仍在恢复校验，请等待显式恢复完成。");
       this.assertPrivate(id);
       const request = this.files.enqueue(id, text, delivery);
       return { ...this.view(d, owner), requestId: request.requestId, messageStatus: "queued" as const };
@@ -118,10 +146,11 @@ export class AgentService {
   }
   private requestStop(id: string) {
     this.files.control(() => { const run = this.files.read(id, "launch.json", launch); run.stop = true; this.files.write(id, "launch.json", run, launch); });
+    this.#starting.get(id)?.controller.abort();
   }
-  enter(id: string, owner: AgentOwner) {
+  async enter(id: string, owner: AgentOwner) {
     const d = this.get(id, owner);
-    if (this.host.alive(id)) {
+    if (this.alive(id)) {
       requireThat(!this.files.read(id, "launch.json", launch).stop, "子会话正在停止，请稍后进入。");
       return this.view(d, owner);
     }
@@ -130,28 +159,45 @@ export class AgentService {
   resume(id: string, text: string, owner: AgentOwner) {
     return this.restart(id, owner, text);
   }
-  private restart(id: string, owner: AgentOwner, text?: string) {
+  private async restart(id: string, owner: AgentOwner, text?: string) {
     const d = this.get(id, owner); this.host.available();
-    return this.files.control(() => {
-      requireThat(!this.host.alive(id), "子会话仍在运行。");
+    const reserved = this.files.control(() => {
+      requireThat(!this.alive(id), "子会话仍在运行。");
       this.assertPrivate(id);
-      requireThat(this.list(owner).filter(v => this.host.alive(v.agentId)).length < 50, "最多 50 个存活子会话。");
-      const sessionFile = this.files.session(id);
-      if (sessionFile !== null) this.host.validateSession(d, sessionFile);
-      const previous = this.files.read(id, "launch.json", launch);
-      // The old process is gone: seal its interruption before replacing its generation.
-      for (const ended of this.cycles(id, owner)) {
-        if (ended.generation === previous.generation && !this.files.completions(id).some(c => c.cycleId === ended.cycleId)) {
-          this.files.write(id, "completions/" + ended.cycleId + ".json", ended, cycle, true);
-        }
-      }
-      this.#stopping.delete(id);
-      const run = { ...previous, generation: randomUUID(), sequence: 0, stop: false, startedAt: Date.now() };
-      this.files.write(id, "launch.json", run, launch);
-      const request = text === undefined ? undefined : this.files.enqueue(id, text, "steer");
-      this.host.launch(d, this.files.directory(id), run.generation, sessionFile);
-      return { ...this.view(d, owner), ...(request ? { requestId: request.requestId, messageStatus: "queued" as const } : {}) };
+      requireThat(this.list(owner).filter(v => v.alive).length < 50, "最多 50 个存活或启动中子会话。");
+      const previous = this.files.read(id, "launch.json", launch), interrupted = this.cycles(id, owner);
+      const pending = { generation: previous.generation, controller: new AbortController(), stage: "validate" as "validate" | "launch" };
+      this.#starting.set(id, pending);
+      return { previous, interrupted, pending };
     });
+    const operation = (async () => {
+      await this.host.validateSession(d, this.files.reference(id));
+      requireThat(!this.#closed || this.#preserve, "子会话服务已关闭。"); reserved.pending.controller.signal.throwIfAborted();
+      const prepared = this.files.control(() => {
+        requireThat(!this.host.alive(id) && this.files.read(id, "launch.json", launch).generation === reserved.previous.generation, "子会话已由其他操作恢复。");
+        this.assertPrivate(id);
+        // Only the generation known to be stopped before validation can be sealed.
+        for (const ended of reserved.interrupted) {
+          if (ended.generation === reserved.previous.generation && !this.files.completions(id).some(c => c.cycleId === ended.cycleId)) {
+            this.files.write(id, "completions/" + ended.cycleId + ".json", ended, cycle, true);
+          }
+        }
+        this.#stopping.delete(id);
+        const run = { ...reserved.previous, generation: randomUUID(), sequence: 0, stop: false, startedAt: Date.now() };
+        this.files.write(id, "launch.json", run, launch);
+        const request = text === undefined ? undefined : this.files.enqueue(id, text, "steer");
+        reserved.pending.generation = run.generation;
+        reserved.pending.stage = "launch";
+        return { run, request };
+      });
+      await this.launch(d, prepared.run.generation, true);
+      return { ...this.view(d, owner), ...(prepared.request ? { requestId: prepared.request.requestId, messageStatus: "queued" as const } : {}) };
+    })();
+    this.#launches.add(operation);
+    try { return await operation; } finally {
+      this.#launches.delete(operation);
+      if (this.#starting.get(id) === reserved.pending) this.#starting.delete(id);
+    }
   }
   cycles(id: string, owner: AgentOwner): AgentCycle[] {
     const d = this.get(id, owner), view = this.view(d, owner), values = this.files.completions(id);
@@ -175,49 +221,66 @@ export class AgentService {
     const d = this.get(id, owner), latest = this.cycles(id, owner).at(-1);
     return { ...this.view(d, owner), ...(latest ? { cycle: latest } : {}) };
   }
-  read(id: string, owner: AgentOwner, cycleId?: string, offset = 0, limit = 16000) {
+  async read(id: string, owner: AgentOwner, cycleId?: string, offset = 0, limit = 16000) {
     const d = this.get(id, owner), cycles = this.cycles(id, owner);
     const c = cycleId ? cycles.find(v => v.cycleId === cycleId) : cycles.at(-1);
     requireThat(!cycleId || c, "周期不存在。");
-    const report = c ? this.report(d, c) : "";
+    const report = c ? await this.report(d, c) : "";
+    this.check();
     requireThat(offset <= report.length, "分页位置超出报告。");
     return { ...this.view(d, owner), ...(c ? { cycle: c } : {}), cycles: cycles.map(v => ({ cycleId: v.cycleId, state: v.state })),
       report: report.slice(offset, offset + limit), totalLength: report.length, nextOffset: offset + limit < report.length ? offset + limit : null };
   }
-  completions(owner: AgentOwner): AgentCompletion[] {
-    return this.list(owner).filter(v => v.owned).flatMap(v => this.cycles(v.agentId, owner).filter(c => c.state !== "running").map(c =>
-      ({ agentId: v.agentId, name: v.name, cycle: c, report: this.report(v, c) })));
+  async completions(owner: AgentOwner): Promise<AgentCompletion[]> {
+    const values = await Promise.all(this.list(owner).filter(v => v.owned).flatMap(v => this.cycles(v.agentId, owner).filter(c => c.state !== "running").map(async c =>
+      ({ agentId: v.agentId, name: v.name, cycle: c, report: await this.report(v, c) }))));
+    this.check(); return values;
   }
   private report(d: AgentDescriptor, c: AgentCycle) {
     if (c.leaf === null) return "";
-    const file = this.files.session(d.agentId);
-    requireThat(file !== null, "完成记录缺少原生会话文件引用。");
-    return this.host.report(d, file, c.leaf);
+    return this.host.report(d, this.files.reference(d.agentId), c.leaf);
+  }
+  private release(id: string) {
+    let pending = this.#releasing.get(id);
+    if (!pending) {
+      const generation = this.files.read(id, "launch.json", launch).generation;
+      pending = Promise.resolve().then(async () => {
+        if (this.files.read(id, "launch.json", launch).generation === generation) await this.host.release(id, generation);
+      }).finally(() => this.#releasing.delete(id));
+      this.#releasing.set(id, pending);
+    }
+    return pending;
   }
   /** Called by the parent scanner; stop remains nonblocking to the model. */
-  refresh(owner: AgentOwner) {
+  async refresh(owner: AgentOwner) {
+    const releases: Promise<void>[] = [];
     for (const d of this.records(owner)) {
       const run = this.files.read(d.agentId, "launch.json", launch);
-      // A stopped request gets its own grace deadline without modifying child status.
       if (!run.stop) this.#stopping.delete(d.agentId);
-      if (run.stop && this.host.alive(d.agentId)) {
+      if (run.stop && this.alive(d.agentId)) {
+        this.#starting.get(d.agentId)?.controller.abort();
         const since = this.#stopping.get(d.agentId) ?? Date.now(); this.#stopping.set(d.agentId, since);
-        if (Date.now() - since > 5000) this.host.kill(d.agentId);
+        if (Date.now() - since > 5000) releases.push(this.release(d.agentId));
       }
     }
+    await Promise.all(releases);
   }
   readonly #stopping = new Map<string, number>();
-  async close(owner?: AgentOwner, preserve = false) {
+  close(owner?: AgentOwner, preserve = false) {
+    return this.#closing ??= this.dispose(owner, preserve);
+  }
+  private async dispose(owner?: AgentOwner, preserve = false) {
     if (this.#closed) return;
-    if (!preserve && owner) {
-      const ids = this.list(owner).filter(v => this.host.alive(v.agentId)).map(v => v.agentId);
-      const errors: unknown[] = [];
-      for (const id of ids) { try { this.requestStop(id); } catch (error) { errors.push(error); } }
-      const deadline = Date.now() + 5000;
-      while (ids.some(id => this.host.alive(id)) && Date.now() < deadline) await new Promise(r => setTimeout(r, 100));
-      for (const id of ids) if (this.host.alive(id)) this.host.kill(id);
-      if (errors.length) { this.#closed = true; throw new AggregateError(errors, "停止记录未能保存；已清理子进程。"); }
-    }
-    this.#closed = true;
+    const ids = !preserve && owner ? this.list(owner).filter(v => v.alive).map(v => v.agentId) : [];
+    this.#closed = true; this.#preserve = preserve;
+    const errors: unknown[] = [];
+    for (const id of ids) { try { this.requestStop(id); } catch (error) { errors.push(error); } }
+    if (!preserve) for (const pending of this.#starting.values()) pending.controller.abort();
+    const deadline = Date.now() + 5000;
+    while (ids.some(id => this.alive(id)) && Date.now() < deadline) await new Promise(r => setTimeout(r, 100));
+    const released = await Promise.allSettled(ids.filter(id => this.host.alive(id)).map(id => this.release(id)));
+    for (const value of released) if (value.status === "rejected") errors.push(value.reason);
+    await Promise.allSettled([...this.#launches]);
+    if (errors.length) throw new AggregateError(errors, "停止或释放专家失败；请核对仍存活的执行资源。");
   }
 }

@@ -4,13 +4,13 @@
 
 **个人助手，连接知识、研究与行动。**
 
-当前基于 Pi 实现，提供按工作区加载的扩展，用于学习、项目推进、研究与决策支持，也支持投资分析与已授权业务。
+提供 Pi 工作区扩展和固定版 dsh 原生 Web 接入，用于学习、项目推进、研究与决策支持，也支持投资分析与已授权业务。dsh 的使用和当前验收范围见[专门说明](docs/dsh.md)。
 
 定位为可信模型驱动的个人助手。模型负责分析、协调与原生工具使用；pbot 提供资料入口、专家协作和 Python 环境准备。不另建主 Agent，不自动开展任务或交易。
 
 ## 安装
 
-安装器支持 Linux 和 macOS，需要 Node.js 22.19+、npm、Python 3.11+ 及 venv/ensurepip。在终端运行：
+下面的安装器面向 Pi，支持 Linux 和 macOS，需要 Node.js 22.19+、npm、Python 3.11+ 及 venv/ensurepip。在终端运行：
 
 ```bash
 npx personal-bot@latest setup
@@ -66,6 +66,12 @@ pi
 
 将示例路径换成实际路径。本地安装直接加载来源目录，请保留源码和依赖。不要同时加载源码与 npm 两个来源。
 
+### 使用 dsh
+
+dsh 接入固定为 `@deepseek-ai/dsh@0.2.2-rc.1`，使用 Node.js 24.9+。从当前源码正常 `npm pack` 后，按[dsh 使用说明](docs/dsh.md)建立独立 `pbot` Web profile，并通过 `dsh plugin --profile pbot add <tarball>` 安装。`pbot setup` 不配置 dsh。
+
+Web 的裸 `/pbot` 打开工作区、专家、团队和历史管理页。专家使用同进程的原生 Agent/Session；页面刷新不停止已接纳工作。两种宿主共同读取历史归档，各自维护自己的来源，模型、认证和 MCP 配置分别由原生宿主管理。真实模型与最新 Linux 验收仍见[验证记录](docs/validation.md)。
+
 ### 可选安装 Task Conductor
 
 需要周期任务、重复流程或 DAG 时，安装接入包 `task-conductor-plugin`。它不是服务包 `task-conductor`，也不是启用 pbot 的前提。该接入方式需要 Pi 1.4.0+ 的原生 MCP 和 npm。
@@ -90,10 +96,11 @@ pi install --local npm:task-conductor-plugin
 
 ## 日常使用
 
-直接向助手说明任务，例如整理项目资料、比较研究结论、委派独立复核或运行计算。无需手动编排固定流程。
+直接向助手说明任务，例如整理项目资料、比较研究结论、委派独立复核或运行计算。无需手动编排固定流程。以下命令表与进程说明面向 Pi；dsh 的命令和 Web 操作见[专门说明](docs/dsh.md)。
 
 | 命令 | 用途 |
 | --- | --- |
+| `/pbot` | 打开工作区菜单 |
 | `/pbot init` | 可选地补建资料目录和缺失的根 `AGENTS.md` |
 | `/pbot status` | 查看工作区路径、Personal Bot 版本和 Python 环境状态 |
 | `/pbot history [关键词]` | 搜索历史问答与分层摘要，查看原文和上下层节点 |
@@ -122,7 +129,7 @@ pi install --local npm:task-conductor-plugin
 | `AGENTS.md` | 资料导航与工作约定 |
 | `areas/`、`projects/` | 长期目标、任务定义、结论与交付物 |
 | `knowledge/` | 可复用的概念、方法与口径 |
-| `.pi/pbot/history/` | 可随工作区分享的问答原文、摘要与节点关系 |
+| `.pi/pbot/history/`、`.dsh/pbot/history/` | 按来源保存、可共同查询的问答原文、摘要与节点关系 |
 | `providers/` | 提供方手册、覆盖缺口与验证依据 |
 | `scratch/` | 临时脚本、查询与计算数据、下载及运行环境 |
 | `agents/`、`.agents/skills/` | coordinator/general-purpose 职责补充与工作区技能 |
@@ -133,7 +140,7 @@ Personal Bot 不在工作区内保存私有启用状态。Pi 配置仍由 Pi 管
 
 ## 更新与历史数据
 
-当前版本为 **0.2.4**。不维护工作区格式、初始化状态或升级机制。插件更新使用 Pi 原生包管理；本地安装则更新来源源码，依赖变化后执行 `npm ci --ignore-scripts`，再重载或重启 Pi。更换版本前先停止活动子会话；不同兼容线的子会话不能直接恢复。
+当前版本为 **0.2.4**。不维护工作区格式、初始化状态或升级机制。插件更新使用对应宿主的原生包管理；Pi 本地安装则更新来源源码，依赖变化后执行 `npm ci --ignore-scripts`，再重载或重启 Pi。更换版本前先停止活动子会话；不同兼容线的子会话不能直接恢复。
 
 子会话 JSONL 由 Pi 保存在原生 sessions 目录或原生配置指定的位置；`pbot/subagents/` 只保存控制记录与会话引用，团队公共记录保存在 `pbot/teams/`。0.2.0 不兼容旧会话位置，不迁移或删除 0.1.x 历史；旧记录不进入当前列表或后台调度。先在旧版停止活动成员，更新后重新创建 agent。共享 Python 环境使用用户级 `pbot/python/.venv`，具体系统路径见 [Python 说明](python/README.md)。不自动导入其他应用的会话、配置或环境，也不修改其数据。MCP 连接与 CLI 环境按原生方式显式配置；用户资料、历史证据和备份原样保留。
 
@@ -154,7 +161,7 @@ npm test
 git diff --check
 ```
 
-`npm test` 包含冒烟和 E2E 测试，并生成测试用 `dist/` 与发布用 CLI `lib/`；Pi 扩展运行时仍直接加载源码。包内容可用 `npm pack --dry-run` 检查。测试分组与限制见[验证](docs/validation.md)。
+双宿主完整开发与验收使用 Linux、Node.js 24.9+。`npm test` 包含冒烟和 E2E 测试，并生成测试用 `dist/` 及 CLI、dsh Host/Web 的 `lib/`；Pi 扩展运行时仍直接加载源码。包内容可用 `npm pack --dry-run` 检查。测试分组与限制见[验证](docs/validation.md)。
 
 - [开发文档索引](docs/README.md)：架构、工具、专家协作、存储与验证。
 - [npm 发布](docs/release.md)：配置、授权、发布与安装验收。

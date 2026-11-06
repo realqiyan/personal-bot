@@ -1,8 +1,10 @@
 # npx 安装与升级设计
 
+本页的独立 `pbot setup` 面向 Pi。dsh 固定版使用原生 Web profile 与插件安装流程，见[dsh 使用说明](dsh.md)；不增加配置同步、安装登记或工作区升级机制。
+
 状态：方案已确认并实现。命令需使用包含该实现的发布包；当前源码可先执行 `npm run build:cli`，再运行 `node bin/pbot.mjs setup`。验证结果与剩余验收见[验证](validation.md)。
 
-目标是在 Linux 和 macOS 上，通过一个交互式入口安装或升级 Pi、为一个工作区安装 Personal Bot 和选定的配套插件，再启动 Pi 执行 `/pbot init`。Personal Bot 的运行主体仍是 Pi 扩展；安装命令只负责环境准备和启动。
+目标是在 Linux 和 macOS 上，通过一个交互式入口安装或升级 Pi、为一个工作区安装 Personal Bot 和选定的配套插件，再启动 Pi 执行 `/pbot init`。这里的安装路径服务于 Pi 扩展；安装命令只负责环境准备和启动。
 
 ## 命令与分发
 

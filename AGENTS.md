@@ -2,13 +2,14 @@
 
 ## Structure
 
-Personal Bot connects knowledge, research, and action. It is implemented as a workspace-scoped Pi extension package with a standalone installation CLI.
+Personal Bot connects knowledge, research, and action. It provides a workspace-scoped Pi extension, a fixed-version dsh Host/Web integration, and a standalone Pi installation CLI.
 
-- `src/pbot.ts`: dependency assembly and registration.
+- `src/pbot.ts`: Pi dependency assembly and registration.
+- `src/dsh.ts`: dsh Host assembly; `src/ui/dsh/index.ts` is the native Web entry.
 - `src/tools/`: complete tool contracts, execution adapters, and explicit tool lists.
 - `src/services/`: business rules, state changes, and operation order.
 - `src/model/`: data-only business classes; no business behavior or Pi types.
-- `src/integrations/`: Pi sessions, Python environment activation, and process execution.
+- `src/integrations/`: native Pi/dsh sessions, Python environment activation, and process execution.
 - `src/storage/`: atomic JSON and subagent file storage.
 - `src/extension/`: commands, events, activation, and resource lifetime.
 - `src/ui/`: confirmation queue, dialogs, and agent display.
@@ -30,7 +31,7 @@ Release versions use `MAJOR.MINOR.PATCH` from `package.json`; bundled components
 
 ## Commands
 
-Use Linux with Node.js 22.19 or later. Computation requires Python 3.11+.
+Use Linux with Node.js 24.9 or later for dual-host development and complete acceptance. Pi consumers and the standalone CLI retain Node.js 22.19+. dsh is fixed at 0.2.2-rc.1 and requires Node.js 24.9+. Computation requires Python 3.11+.
 
 - `npm ci --ignore-scripts`: install locked dependencies.
 - `npm run check`: check TypeScript and dependency boundaries without emitting files.
@@ -45,9 +46,9 @@ Pi loads the source extension with jiti. The standalone CLI uses prebuilt lib fi
 ## Development Principles
 
 - Use the simplest solution that meets an established requirement.
-- Prefer Pi tools, UI, resource discovery, configuration, and sessions over custom equivalents.
+- Prefer each host’s native tools, UI, resource discovery, configuration, and sessions over custom equivalents. Keep Pi and dsh native configuration and session ownership separate; share business services and materials.
 - Define roles in documents and professional methods in skills.
-- Keep business decisions separate from host integration. Services receive plain data and narrow capabilities, not complete Pi contexts.
+- Keep business decisions separate from host integration. Services receive plain data and narrow capabilities, not complete host contexts.
 - Keep tool inputs, outputs, schemas, and execution adapters together. Commands and tools call the same services.
 - Keep state changes in their owning services. Bind tools to one workspace instance and reject stale calls after close.
 - Keep each module focused. Do not add unused interfaces or forwarding layers.

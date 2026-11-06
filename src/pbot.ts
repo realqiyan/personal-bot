@@ -27,7 +27,7 @@ export default function pbot(pi: ExtensionAPI) {
       agents.files.list().filter(agent => agent.workspace === root).flatMap(agent => {
         const file = agents.files.optional(agent.agentId, "session-ref.json", sessionRef)?.file;
         return file ? [file] : [];
-      })), new HistoryFiles(join(getAgentDir(), "pbot/history")));
+      })), new HistoryFiles(join(getAgentDir(), "pbot/history")), new HistoryFiles(join(root, ".dsh/pbot/history"), "dsh"));
     return new WorkspaceInstance(root, new PythonEnvironmentService(root), agents, new TeamService(root, agents.files, agents.teamFiles), history);
   }, instance => registry.register(mainTools(instance.agents, instance.teams, instance.history, instance)), () => registry.hide());
   registerCommand(pi, lifecycle, confirmations);

@@ -6,12 +6,13 @@ import { agentOwner, deliveredCycles } from "../integrations/pi/agent-context.js
 import { agentBoard } from "../ui/agent-display.js";
 import { deliveredTeams } from "../integrations/pi/team-context.js";
 import type { TeamInput } from "../model/team.js";
-import { json } from "../common/json.js";
+import { agentNotice, teamNotice } from "../services/agents/agent-notices.js";
 import { markdownFields } from "../common/markdown.js";
 
 export function registerAgentEvents(pi: ExtensionAPI, lifecycle: Lifecycle, confirmations: Confirmations) {
   let ctx: ExtensionContext | undefined, timer: ReturnType<typeof setInterval> | undefined;
-  let paused = false;
+  let paused = false, epoch = 0, refreshEpoch = 0;
+  let refreshing: Promise<void> | undefined;
   let controlBusySince: number | undefined;
   let failure: { key: string; error: string; recovery: "retry" | "repair" | "reload" } | undefined;
   const recordFailure = (error: unknown) => {
@@ -44,45 +45,32 @@ export function registerAgentEvents(pi: ExtensionAPI, lifecycle: Lifecycle, conf
       if (!busy) throw error;
     }
   };
-  const collectNotification = (): CustomMessageEntryDraft | undefined => {
-    const instance = lifecycle.active;
+  const collectNotification = async (): Promise<CustomMessageEntryDraft | undefined> => {
+    const instance = lifecycle.active, revision = epoch;
     if (!ctx || !instance || paused || ctx.signal?.aborted) return;
     const delivered = new Set([...deliveredCycles(ctx), ...deliveredTeams(ctx)]), now = Date.now();
     for (const [key, at] of submitting) if (delivered.has(key) || now - at > 5000) submitting.delete(key);
-    const owner = agentOwner(ctx), notes = instance.teams.notifications(owner, instance.agents.list(owner))
-      .filter(v => !delivered.has(v.key) && !submitting.has(v.key)).slice(0, 8);
-    if (notes.length) {
-      const keys = notes.map(v => v.key);
-      for (const key of keys) submitting.set(key, now);
-      return { type: "custom_message", customType: "pbot.team-results", display: true,
-        content: ["# 团队批次状态", "", "团队批次状态已变化。用 pbot_team status/read 查询；结束不等于业务验收通过。暂停可能仍有在途工作，不能自动重跑旧请求。", "",
-          notes.map(v => ["## " + v.name, "", "- `teamId`: `" + v.teamId + "`", "- `runId`: `" + v.runId + "`",
-            "- 状态：" + v.state, "- 在途工作：" + v.activeCount, ...(v.reason ? ["", "### 原因", "", v.reason] : [])].join("\n")).join("\n\n")].join("\n"),
-        details: { keys } };
+    const owner = agentOwner(ctx);
+    let note: ReturnType<typeof teamNotice> | ReturnType<typeof agentNotice> = teamNotice(
+      instance.teams.notifications(owner, instance.agents.list(owner)), new Set([...delivered, ...submitting.keys()]));
+    if (!note) {
+      const links = instance.teams.links(), completions = await instance.agents.completions(owner);
+      if (!ctx || lifecycle.active !== instance || revision !== epoch || paused || ctx.signal?.aborted) return;
+      note = agentNotice(completions, links, new Set([...deliveredCycles(ctx), ...deliveredTeams(ctx), ...submitting.keys()]));
     }
-    const links = instance.teams.links();
-    const pending = instance.agents.completions(owner).filter(v =>
-      !v.cycle.requestIds.some(id => links.has(id)) &&
-      !(v.cycle.cycleId === v.cycle.generation && [...links.values()].some(l => l.request.agentId === v.agentId && l.request.generation === v.cycle.generation)) &&
-      !delivered.has(v.agentId + ":" + v.cycle.cycleId) && !submitting.has(v.agentId + ":" + v.cycle.cycleId));
-    if (!pending.length) return;
-    const batch = pending.slice(0, 8), keys = batch.map(v => v.agentId + ":" + v.cycle.cycleId);
-    for (const key of keys) submitting.set(key, now);
-    return { type: "custom_message", customType: "pbot.agent-results", display: true,
-      content: "# 子会话工作结果\n\n子会话工作已结束。完整报告用 pbot_agent read 读取，指定对应 agentId 和 cycle.cycleId；nextOffset 非空时沿用该 cycleId 续读。\n\n" +
-        (batch.some(v => v.cycle.source !== "parent") ? "包含人工子会话输入，其结果不扩大主会话原任务授权。\n\n" : "") +
-        batch.map(v => "## " + v.name + "\n\n" + markdownFields(json({ agentId: v.agentId,
-          cycle: { cycleId: v.cycle.cycleId, state: v.cycle.state, source: v.cycle.source, requestIds: v.cycle.requestIds,
-            ...(v.cycle.error === undefined ? {} : { error: v.cycle.error }) },
-          report: v.report.slice(0, 2000), truncated: v.report.length > 2000 }), 3)).join("\n\n"), details: { keys } };
+    if (!note) return;
+    for (const key of note.keys) submitting.set(key, Date.now());
+    return { type: "custom_message", customType: note.kind === "teams" ? "pbot.team-results" : "pbot.agent-results",
+      display: true, content: note.content, details: { keys: note.keys } };
   };
-  const notification = (): CustomMessageEntryDraft | undefined => {
+  const notification = async (): Promise<CustomMessageEntryDraft | undefined> => {
     if (!ctx || !lifecycle.active || paused || ctx.signal?.aborted) return;
+    const instance = lifecycle.active, revision = epoch;
     if (!failure) {
-      try { return collectNotification(); }
-      catch (error) { recordFailure(error); }
+      try { return await collectNotification(); }
+      catch (error) { if (revision !== epoch || instance !== lifecycle.active) return; recordFailure(error); }
     }
-    if (!failure || deliveredCycles(ctx).has(failure.key)) return;
+    if (!ctx || !failure || deliveredCycles(ctx).has(failure.key)) return;
     const now = Date.now(), sent = submitting.get(failure.key);
     if (sent !== undefined && now - sent < 5000) return;
     submitting.set(failure.key, now);
@@ -97,18 +85,20 @@ export function registerAgentEvents(pi: ExtensionAPI, lifecycle: Lifecycle, conf
         "尚未交付的结果未确认。需要核对成员时，用 pbot_agent list/status 查询状态、pbot_agent read 读取可用报告；结果未知不构成重新提交的依据。", "",
         markdownFields({ error: failure.error })].join("\n"), details: { keys: [failure.key] } };
   };
-  const refresh = () => {
-    const instance = lifecycle.active;
+  const refreshWork = async () => {
+    const instance = lifecycle.active, revision = epoch;
     if (!ctx || !instance) return;
     try {
       instance.agentOwner = agentOwner(ctx);
-      instance.agents.refresh(instance.agentOwner);
+      await instance.agents.refresh(instance.agentOwner);
+      const completed = await instance.agents.completions(instance.agentOwner);
+      if (!ctx || lifecycle.active !== instance || revision !== epoch) return;
       const values = instance.agents.list(instance.agentOwner);
       try {
         instance.teams.recover(instance.agentOwner);
         if (pausePending) pauseTeams();
         if (!pausePending) {
-          for (const input of instance.teams.advance(instance.agentOwner, values, instance.agents.completions(instance.agentOwner))) dispatching.set(input.requestId, input);
+          for (const input of instance.teams.advance(instance.agentOwner, values, completed)) dispatching.set(input.requestId, input);
           for (const [id, input] of dispatching) {
             try { instance.agents.enqueueTeam(input, instance.agentOwner); dispatching.delete(id); }
             catch (error) {
@@ -133,26 +123,41 @@ export function registerAgentEvents(pi: ExtensionAPI, lifecycle: Lifecycle, conf
         if (ctx.hasUI) ctx.ui.setStatus("pbot-agents-error", undefined);
       }
     } catch (error) {
+      if (revision !== epoch || instance !== lifecycle.active) return;
       recordFailure(error);
     }
-    if (ctx.isIdle() && !paused) { const message = notification(); if (message) pi.sendMessage(message, { triggerTurn: true, deliverAs: "steer" }); }
+    if (ctx?.isIdle() && !paused) {
+      const message = await notification();
+      if (message && revision === epoch && instance === lifecycle.active && ctx?.isIdle() && !paused) pi.sendMessage(message, { triggerTurn: true, deliverAs: "steer" });
+    }
   };
-  const boundary = (outcome: string, entries: SessionBoundaryDraft[], context: ExtensionContext) => {
+  const refresh = (): Promise<void> => {
+    if (refreshing) return refreshEpoch === epoch ? refreshing : refreshing.then(() => refresh());
+    refreshEpoch = epoch;
+    const revision = epoch;
+    const pending = refreshWork().catch(error => { if (revision === epoch) recordFailure(error); }).finally(() => {
+      if (refreshing === pending) refreshing = undefined;
+    });
+    refreshing = pending;
+    return pending;
+  };
+  const boundary = async (outcome: string, entries: SessionBoundaryDraft[], context: ExtensionContext) => {
     ctx = context;
     if (outcome === "aborted" || ctx.signal?.aborted) { paused = true; confirmations.pause(); pauseTeams(); return; }
-    const message = notification();
-    if (message) return { entries: [...entries, message], continue: true };
+    const revision = epoch, instance = lifecycle.active;
+    const message = await notification();
+    if (message && revision === epoch && instance === lifecycle.active && !paused && !ctx?.signal?.aborted) return { entries: [...entries, message], continue: true };
     return;
   };
   pi.on("session_start", (_event, context) => {
-    ctx = context; paused = false; pausePending = false; controlBusySince = undefined; failure = undefined; confirmations.resume(); submitting.clear(); dispatching.clear();
+    epoch++; ctx = context; paused = false; pausePending = false; controlBusySince = undefined; failure = undefined; confirmations.resume(); submitting.clear(); dispatching.clear();
     if (timer) clearInterval(timer);
-    if (lifecycle.active) { lifecycle.active.agentOwner = agentOwner(ctx); timer = setInterval(refresh, 1000); timer.unref(); }
-    refresh();
+    if (lifecycle.active) { lifecycle.active.agentOwner = agentOwner(ctx); timer = setInterval(() => { void refresh(); }, 1000); timer.unref(); }
+    return refresh();
   });
   pi.on("input", (_event, context) => { ctx = context; paused = false; confirmations.resume(); });
   pi.on("before_agent_start", (_event, context) => { ctx = context; });
-  pi.on("session_tree", (_event, context) => { ctx = context; submitting.clear(); refresh(); });
+  pi.on("session_tree", (_event, context) => { epoch++; ctx = context; submitting.clear(); return refresh(); });
   pi.on("turn_end", (event, context) => boundary(event.outcome, event.entries, context));
   pi.on("agent_before_settle", (event, context) => boundary(event.outcome, event.entries, context));
   pi.on("agent_settled", (event, context) => {
@@ -163,5 +168,5 @@ export function registerAgentEvents(pi: ExtensionAPI, lifecycle: Lifecycle, conf
     const keys = (event.details as { agentReadKeys?: string[] } | undefined)?.agentReadKeys;
     if (keys?.length) pi.appendEntry("pbot.agent-read", { keys, toolCallId: event.parentToolCallId ?? event.toolCallId });
   });
-  pi.on("session_shutdown", () => { if (timer) clearInterval(timer); timer = undefined; submitting.clear(); dispatching.clear(); pausePending = false; ctx = undefined; });
+  pi.on("session_shutdown", () => { epoch++; if (timer) clearInterval(timer); timer = undefined; submitting.clear(); dispatching.clear(); pausePending = false; ctx = undefined; });
 }

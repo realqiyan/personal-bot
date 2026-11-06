@@ -4,12 +4,12 @@
 
 ## 自动准备与激活
 
-Pi 加载 Personal Bot 或原生 `/reload` 后自动执行 setup，无需另行确认或指定路径：
+Pi 加载 Personal Bot、原生 `/reload`，或 dsh 加载 pbot Host 组件时自动执行 setup，无需另行确认或指定路径。同一系统用户的两种宿主共用该环境：
 
 1. 共享 venv 不存在时创建，不使用系统 site-packages。
 2. 按 `requirements.lock` 补齐或对齐依赖，允许升级或降级；已匹配时不重新安装。
 3. 检查依赖关系、全部预装库导入和简单 TA-Lib 计算。
-4. 成功后将 venv 的 `bin` 放到当前 Pi 进程 PATH 前端，设置 `VIRTUAL_ENV`，移除 `PYTHONHOME`、`PYTHONPATH` 并禁用用户 site-packages。主会话与专家的原生 Bash 继承该环境。
+4. 成功后将 venv 的 `bin` 放到当前宿主进程 PATH 前端，设置 `VIRTUAL_ENV`，移除 `PYTHONHOME`、`PYTHONPATH` 并禁用用户 site-packages。主会话与专家的原生 Bash 继承该环境。
 
 | 系统 | 共享环境 |
 | --- | --- |
@@ -18,7 +18,7 @@ Pi 加载 Personal Bot 或原生 `/reload` 后自动执行 setup，无需另行�
 
 首次准备从当前 PATH 选择 python3，无该命令时使用 python；需要 Python 3.11+ 和 venv/ensurepip。系统 Python 只用于创建独立 venv，不在系统环境中安装依赖。现有环境不自动替换基础解释器，也不删除额外安装的包。
 
-首次安装可能需要数分钟和网络。环境准备不依赖 `/pbot init` 或工作区资料；不需要 Personal Bot 时应通过 Pi 原生配置取消加载该扩展。`/pbot status` 显示环境状态。工作区关闭、重载或会话替换时恢复本扩展修改的进程环境变量，不覆盖期间其他代码对变量的新修改。外部终端和 shell 配置不变。
+首次安装可能需要数分钟和网络。环境准备不依赖 `/pbot init` 或工作区资料；不需要 Personal Bot 时通过所属宿主的原生配置取消加载。`/pbot status` 显示环境状态。所属激活生命周期关闭时恢复本扩展修改的进程环境变量；dsh 按整个 pbot 组件共享激活，不随某个浏览器页面或单个工作区关闭而恢复，不覆盖期间其他代码对变量的新修改。外部终端和 shell 配置不变。
 
 ## 失败与手工重试
 
@@ -45,7 +45,7 @@ python3 scripts/setup-python.py
 python3 scripts/setup-python.py --check  # 只检查，不创建或安装
 ```
 
-脚本不接受解释器或目标路径参数。独立脚本不能激活其父终端；自动激活由 pbot 完成。不修改工作区设置、脚本、历史运行记录或结果。准备脚本支持 Linux/macOS；插件其他宿主依赖仍须满足，未完成 macOS 实机验收。
+脚本不接受解释器或目标路径参数。独立脚本不能激活其父终端；自动激活由 pbot 完成。不修改工作区设置、脚本、历史运行记录或结果。准备脚本支持 Linux/macOS；插件其他宿主依赖仍须满足。dsh 桌面应用从登录 Shell 读取环境，Python 3.11+ 必须在该环境的 PATH 中可见。
 
 ## 使用与验证
 
@@ -60,10 +60,10 @@ python -m pip check
 python -B -m unittest discover -s python/tests -v
 ```
 
-Node 测试使用真实本地文件、进程、临时 venv 与 Pi 原生 Bash，验证检查、错误、取消和激活恢复；不下载依赖。完整安装与库测试使用准备好的真实环境，不能以损坏环境的启动测试替代成功安装验收。Python 集成测试验证原生库配合与文件往返，不证明市场规则或策略有效；真实模型行为与 macOS 运行仍需独立验收。
+Node 测试使用真实本地文件、进程、临时 venv 与 Pi/dsh 原生 Bash，验证检查、错误、取消和激活恢复；不下载依赖。完整安装与库测试使用准备好的真实环境，不能以损坏环境的启动测试替代成功安装验收。Python 集成测试验证原生库配合与文件往返，不证明市场规则或策略有效；macOS 的 dsh 桌面应用已在临时 HOME 中完成真实依赖安装、就绪激活、pip check 与 5 项原生库测试；真实模型使用这些库的行为仍需验收。
 
 依赖版本独立于插件版本。更新锁文件须检查最低 Python 3.11 与目标环境的兼容性，不只按开发机选择最新版。
 
 ## 依赖许可
 
-[TA-Lib Python](https://github.com/TA-Lib/ta-lib-python) 使用 BSD-2-Clause，[TA-Lib 底层库](https://github.com/TA-Lib/ta-lib) 使用 BSD-3-Clause。[backtesting.py](https://github.com/kernc/backtesting.py) 0.6.6 使用 AGPL-3.0。具体版本见 requirements.lock。本包保留 private=true；对外发布前须核对依赖许可与分发义务。
+[TA-Lib Python](https://github.com/TA-Lib/ta-lib-python) 使用 BSD-2-Clause，[TA-Lib 底层库](https://github.com/TA-Lib/ta-lib) 使用 BSD-3-Clause。[backtesting.py](https://github.com/kernc/backtesting.py) 0.6.6 使用 AGPL-3.0。具体版本见 requirements.lock。共享环境按锁文件安装依赖，发布包不捆绑第三方 wheel；依赖的使用与再分发须遵循各自许可。

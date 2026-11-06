@@ -4,6 +4,7 @@ import { parseSessionEntries, SessionManager, type ExtensionContext, type Sessio
 import type { HistoryExchange, HistoryLocation, HistorySession, HistorySource, HistorySummarizer } from "../../model/history.js";
 import { requireThat } from "../../common/validation.js";
 import { resourceRoot } from "../../common/paths.js";
+import { reduceHistorySummary } from "../history-summary.js";
 
 function text(content: unknown): string {
   if (typeof content === "string") return content;
@@ -51,8 +52,10 @@ export const historyLocation = (ctx: ExtensionContext): HistoryLocation => {
   return { directory: ctx.sessionManager.getSessionDir(), ...(file ? { file } : {}) };
 };
 export class PiHistory implements HistorySource {
+  readonly host = "pi";
   constructor(private readonly root: string, private readonly relatedFiles: () => string[] = () => []) {}
   async scan(location: HistoryLocation, signal?: AbortSignal) {
+    requireThat(location.host !== "dsh", "Pi 历史只读取 Pi 原生会话。");
     const lists = await Promise.all([SessionManager.list(this.root, undefined, undefined, signal),
       SessionManager.list(this.root, location.directory, undefined, signal)]);
     const files = new Set([...lists.flat().map(session => session.path), ...this.relatedFiles(), ...(location.file ? [location.file] : [])]);
@@ -90,18 +93,5 @@ export async function historySummarizer(ctx: ExtensionContext): Promise<HistoryS
     requireThat(answer, "历史摘要为空。");
     return answer;
   };
-  return async (text, signal) => {
-    while (text.length > budget) {
-      const parts: string[] = [];
-      for (let offset = 0; offset < text.length;) {
-        let end = Math.min(text.length, offset + budget);
-        if (end < text.length && /[\uD800-\uDBFF]/.test(text[end - 1]!)) end--;
-        parts.push(await ask(text.slice(offset, end), signal)); offset = end;
-      }
-      const smaller = parts.join("\n\n");
-      requireThat(smaller.length < text.length, "历史摘要未缩短，稍后重试。");
-      text = smaller;
-    }
-    return ask(text, signal);
-  };
+  return reduceHistorySummary(budget, ask);
 }
