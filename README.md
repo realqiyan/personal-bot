@@ -99,19 +99,30 @@ The [full English guide](docs/dsh.en.md) ([中文](docs/dsh.md)) covers launcher
 
 ### Optional: Task Conductor
 
-For scheduled tasks, recurring workflows, or DAGs, install `task-conductor-plugin`. This integration package is distinct from the `task-conductor` service and is not required for Personal Bot. Use it with the project's Pi 1.5.0 baseline, native MCP support, and npm.
+For scheduled tasks, recurring workflows, or DAGs, use the optional `task-conductor-plugin` and its shared `using-task-conductor` skill. The plugin and the `task-conductor` service are installed separately. Follow the [upstream integration guide](https://github.com/realqiyan/task-conductor/blob/master/docs/host-integrations.md) for service setup, connection settings, and updates.
 
-Check `pi list` first. If the package is already installed but its skill is missing, check resource configuration and reload rather than installing it again. Review the [upstream integration guide](https://github.com/realqiyan/task-conductor/blob/master/docs/host-integrations.md), then run from the workspace root:
+**Pi:** Check `pi list` for an existing installation and its resource settings. For the published Pi integration, run from the workspace root:
 
 ```bash
 pi install --local npm:task-conductor-plugin
 ```
 
-In Pi, run `/reload`, then `/skill:using-task-conductor`. With your confirmation, the skill guides service installation, `task-conductor setup`, and native MCP configuration. Installing the plugin alone does not install the service. Keep credentials in your terminal or private files, not in chat.
+For unreleased plugin changes, use `pi install --local /absolute/path/to/task-conductor/plugin` instead. Keep one source enabled. Run `/reload` in Pi, then `/skill:using-task-conductor`. The skill covers service installation, `task-conductor setup`, and Pi's native MCP registration. `--local` limits plugin loading; choose MCP scope separately and reuse existing connections.
 
-For an older integration package, check its source and scope with `pi list`, review upstream upgrade instructions, and explicitly remove the old declaration before installing its replacement. Update the plugin and service separately. Before a service upgrade, check active tasks, stop the service, and back up its data. Follow upstream MCP instructions; do not automatically migrate configuration or delete history.
+**dsh:** The native Host integration is included in the unpublished Task Conductor `0.1.6` release candidate. Until publication, build the plugin and matching service from that source, then install the plugin tarball into your existing Web profile:
 
-`--local` limits plugin loading, not service data access. Choose MCP configuration scope separately, and keep existing connections without duplicate registration. Use `/mcp` or `pi mcp list` to check actual tools, then follow the skill's read-only validation steps. Do not create model tasks just to test installation. A working connection does not prove model authentication or task delivery.
+```bash
+cd /absolute/path/to/task-conductor
+npm run pack:plugin
+dsh plugin --profile pbot add /absolute/path/to/task-conductor/task-conductor-plugin-<version>.tgz
+dsh plugin --profile pbot list task-conductor-plugin --depth 0
+```
+
+Use the actual tarball path printed by the packaging command. Restart `dsh --profile pbot`, open the main session, and invoke `/using-task-conductor`. The plugin provides the shared skill through native filesystem discovery and creates a native MCP connection for each root main session, using that session's working directory. Tools retain names such as `mcp__task-conductor__executor_list`; avoid adding a duplicate manual connection. The desktop application's native Plugins page accepts the same local tarball; its profile is separate. See the [dsh Task Conductor guide](docs/dsh.md#task-conductor) for the matching local service build and setup.
+
+The service keeps its own coordinator model configuration and `pi-durable` runtime. Using dsh as the host does not require the interactive Pi CLI. To also run task nodes with dsh, register the canonical absolute dsh executable through Task Conductor's admin CLI or Web interface as custom executor `dsh-acp`, with arguments `["--profile", "acp"]`. Follow the upstream skill's [custom ACP instructions](https://github.com/realqiyan/task-conductor/blob/master/plugin/skills/using-task-conductor/references/custom-acp.md); `dsh` is not a built-in executor ID. Nodes use their own dsh profile, authentication, tools, and environment.
+
+Notifications return to the originating persistent host session; resume that session to receive pending events. Closing Pi or dsh does not stop service tasks. Update the plugin and service separately, following upstream instructions to check active work, stop the service, and back up its data. Keep credentials in your terminal or private files. Use the skill's native tool discovery and read-only connection checks; these do not establish successful model execution or task delivery.
 
 ## Optional workspace preparation
 
@@ -139,7 +150,7 @@ Describe the task directly: organize project materials, compare research finding
 - **Research and analysis:** Ask the assistant to synthesize evidence, explain conflicts, check calculations and definitions, or identify assumptions to validate first.
 - **Independent sub-sessions:** Personal Bot supports tmux and independent Pi sessions; install tmux on the system to use them. `pbot_agent start` returns immediately; without a message, prompts, or files it creates an idle process without calling a model. Task completion produces a notification. Options cover models, directories, files, tools, and resources. Operations include send, follow-up, rename, status, read, stop, and explicit resume; there is no foreground/background flag or wait operation. `/pbot agents` shows active agents and can open their TUI. Main-session reload preserves running agents; exit or session switching stops them and retains history. Sub-sessions use native CLI/MCP within their delegated scope. See [specialist collaboration](docs/agent-collaboration.md).
 - **Teams:** `pbot_team` groups existing agents for `roundRobin` discussion or `parallel` rounds. Members exchange original messages through `pbot_team_message`; ordinary posts do not wake models. A running team reserves its members. Pause and drain in-flight work before private messages; reload pauses teams without replaying requests. The first release uses fixed membership and bounded rounds, not dynamic ask/reply wake-ups. See [specialist collaboration](docs/agent-collaboration.md).
-- **Scheduled and durable tasks:** The main session uses optional Task Conductor directly through native MCP, its `using-task-conductor` skill, and actual tool contracts. Without it, ordinary Personal Bot features still work, but scheduling is unavailable. Personal Bot adds no durable task scheduler or forwarding layer. Query and stop external tasks separately from sub-sessions. Cancelling the current run does not stop future recurrences, and closing Pi does not imply that external tasks stopped.
+- **Scheduled and durable tasks:** The main session uses optional Task Conductor directly through native MCP, its `using-task-conductor` skill, and actual tool contracts. Without it, ordinary Personal Bot features still work, but scheduling is unavailable. Personal Bot adds no durable task scheduler or forwarding layer. Query and stop external tasks separately from sub-sessions. Cancelling the current run does not stop future recurrences, and closing Pi or dsh does not imply that external tasks stopped.
 - **Python:** All workspaces share one dedicated venv for the current user. Loading Personal Bot creates or updates it with locked dependencies and activates it in the current Pi process. Main and specialist sessions use `python` or `python3` through Bash. Failures are reported; fix the cause and retry with `/pbot python setup`. System Python, external terminals, existing scripts, and historical results are not changed. Shared dependency updates affect other workspaces, so stop relevant scripts before changing plugin versions or retrying setup. See the [Python guide](python/README.md) and [computation reference](resources/references/compute.md).
 - **Material maintenance:** Ask to organize project materials, reproduce a report using its previous definitions, or review delivery and close a task. The [project maintenance skill](resources/skills/project-maintenance/SKILL.md) updates the current task and affected materials within your requested scope. Current guidance is consolidated by topic, with reusable methods and analysis definitions extracted from project conclusions. Sources and important decisions remain traceable. Cleanup removes unnecessary temporary outputs within scope, not formal materials, history, or backups.
 
@@ -165,7 +176,7 @@ Personal Bot stores no private activation state in the workspace. Pi owns its co
 
 ## Updates and historical data
 
-Current release: **0.2.7**. Personal Bot maintains no workspace format, initialization state, or workspace upgrade mechanism. Update the plugin through its native host package manager. For a local Pi installation, update the source, run `npm ci --ignore-scripts` if dependencies changed, then reload or restart Pi.
+Current release: **0.2.8**. Personal Bot maintains no workspace format, initialization state, or workspace upgrade mechanism. Update the plugin through its native host package manager. For a local Pi installation, update the source, run `npm ci --ignore-scripts` if dependencies changed, then reload or restart Pi.
 
 Stop active sub-sessions before changing versions. Sub-session compatibility follows the minor version before 1.0 and the major version from 1.0 onward. Sessions from another compatibility line cannot be resumed directly.
 

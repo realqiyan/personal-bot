@@ -149,6 +149,74 @@ CLI 的 `pbot` profile 与 Electron 管理的 `desktop` profile 分开；普通 
 
 已在 macOS 桌面应用 `0.2.2-rc.1`（内置 Node.js 24.21.0）通过 tarball 验证四页签、附件、完整记录、团队失败暂停、历史查询及刷新；隔离 Python 准备和 5 项原生库测试通过。这不代表从 registry 全新安装或成功模型流程已验收，见[验证记录](validation.md)。
 
+## Task Conductor
+
+需要周期任务、重复流程、DAG 或宿主退出后继续执行时，可在同一 dsh profile 安装 `task-conductor-plugin`。它提供原生 Host 入口与 bundle patch、共享的 `using-task-conductor` 技能、原生 MCP 连接和会话通知。Personal Bot 不增加调度工具或 MCP 客户端；`pbot setup` 仍只安装 Pi 环境。
+
+### 安装未发布接入
+
+dsh 接入包含于尚未发布的 Task Conductor `0.1.6` 候选版本。发布前从该版本的同一源码检出构建插件和配套服务：
+
+```bash
+cd /absolute/path/to/task-conductor
+npm ci --ignore-scripts
+npm pack
+npm run pack:plugin
+```
+
+根目录的 `npm pack` 通过 prepack 构建服务，`pack:plugin` 单独打包接入资产；只需插件 tarball 时可只执行后者。把下面路径替换为实际产物的绝对路径，在已有 `pbot` Web profile 安装插件：
+
+```bash
+dsh plugin --profile pbot add /absolute/path/to/task-conductor/task-conductor-plugin-<version>.tgz
+dsh plugin --profile pbot list task-conductor-plugin --depth 0
+```
+
+使用桌面应用时，在应用原生“插件 → 添加插件”中安装并启用同一 tarball。CLI 与桌面 profile 分开，安装一个不会同步到另一个。已有同名插件时切换其来源，只保留一份；后续源码更新重新打包并安装，不能用 registry `update --latest` 获取尚未发布的改动。
+
+插件安装不安装或初始化服务。新安装配套服务时，在终端使用本地服务包，再由上游技能指导 setup：
+
+```bash
+npm install -g /absolute/path/to/task-conductor/task-conductor-<version>.tgz
+task-conductor setup
+```
+
+已有服务按[上游升级说明](https://github.com/realqiyan/task-conductor/blob/master/docs/upgrades.md)核对安装位置和活动工作、停服并备份，再更新同一安装；保留原有 home、数据和历史。协调模型在 Task Conductor 中单独配置，凭据通过终端或私有文件提供。内部协调者继续使用服务依赖的 `pi-durable`，以 dsh 为宿主无需安装 Pi 交互 CLI。
+
+### 主会话连接与通知
+
+重启相应 dsh 宿主，打开主会话，在聊天框调用 `/using-task-conductor`，或让模型通过原生 skill 工具读取同名技能。技能由插件的原生文件系统 provider 提供，详细安装、任务契约和排障方法均以上游技能为准。
+
+聊天命令 `/task-conductor status` 查看当前会话连接与通知归属；完成 setup、注册执行端或修复连接后，用 `/task-conductor connect` 重连。默认连接使用宿主 PATH 中的 `task-conductor` 和默认服务 home。自定义安装时，在启动宿主的环境中设置 `TASK_CONDUCTOR_PREFLIGHT_COMMAND` 为实际程序绝对路径、`TASK_CONDUCTOR_PREFLIGHT_HOME` 为原服务目录，使插件连接、检查与通知使用同一服务。
+
+插件为每个根 Agent 建立使用该会话 cwd 的原生 MCP 连接。通过 dsh 的工具发现使用实际名称，例如 `mcp__task-conductor__executor_list` 和 `mcp__task-conductor__task_list`；`task-conductor` 中的连字符保留。普通专家不会因共享 profile 而获得一份独立的协调连接。避免另行注册同名手工 MCP；已有连接按[上游接入说明](https://github.com/realqiyan/task-conductor/blob/master/docs/host-integrations.md)调整来源。原生技能仍可用于服务未就绪时的设置和排障。
+
+提交任务时使用目标项目的绝对 `workspace`。通知归属于提交任务的原生持久 Session；恢复原会话后可以补收待处理事件，同项目其他会话不会代收。关闭页面、主会话或 dsh 不停止已提交的服务任务，需通过 Task Conductor 查询和控制；取消当前 run 与停止未来周期分别操作。
+
+### 使用 dsh 执行节点
+
+以 dsh 为主会话宿主和用 dsh 执行任务节点是两项独立配置。节点通过现有自定义 ACP 注册机制接入，使用 ID `dsh-acp`；`dsh` 不是内置执行端 ID。dsh 的原生命令为 `dsh --profile acp`，可用 `dsh --profile acp --help` 查看当前版本帮助，无需 `--stdio` 参数。
+
+在 Task Conductor 管理员 CLI 或 Web 中注册本机 dsh 的规范绝对可执行路径。使用解析符号链接后的实际路径，以下 JSON 中的路径须替换：
+
+```json
+{
+  "id": "dsh-acp",
+  "command": "/absolute/canonical/path/to/dsh/lib/bin.js",
+  "args": ["--profile", "acp"]
+}
+```
+
+将无秘密的 JSON 保存到选定文件后，在已运行的同一服务实例注册并查询：
+
+```bash
+task-conductor executor register --file /absolute/private/dsh-acp.json --yes
+task-conductor executor show dsh-acp
+```
+
+自定义服务目录时，每次管理命令附加相同 `--home`。注册即时生效，不启动模型任务。可选 `cwd` 只设置进程启动目录，省略时采用任务 workspace；ACP 会话仍使用任务 workspace。节点通过 `executorId: "dsh-acp"` 选择该执行端，按上游技能的[自定义 ACP 方法](https://github.com/realqiyan/task-conductor/blob/master/plugin/skills/using-task-conductor/references/custom-acp.md)准备和管理。
+
+ACP 节点使用后台继承的环境与 dsh 的 `acp` profile，模型认证、工具、技能和 Python 需要单独准备；它们不自动继承当前 Web 主会话或 pbot 共享 venv。服务内协调模型也不会因选择 `dsh-acp` 而改变。连接和注册检查不证明成功模型调用或完整任务交付，真实运行范围以上游验证记录为准。
+
 ## 管理界面与生命周期
 
 在原生输入框选择不带参数的 `/pbot`，打开四个页签：

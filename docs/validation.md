@@ -96,9 +96,9 @@ npm 只读查询确认当时 `latest=0.2.2-rc.1`、Node.js 要求为 `>=24.9.0`�
 
 同一 macOS、Node.js 24.22.2、npm 11.19.1、Pi 1.5.0、dsh 0.2.2-rc.1 环境下，`npm run check`、`npm test`、`git diff --check` 通过；135/135 测试通过，无失败、取消或跳过，依赖边界仍为 137 个模块、558 条依赖。测试总数包含工作区已有的安装与通知回归。未调用真实模型；此前上下文快照对应上一轮措辞，本次通过现有行为回归检查加载、分页与通知，不将旧快照当作新文案实测。
 
-## 0.2.7 本地候选检查（2026-11-07）
+## 0.2.8 本地候选检查（2026-11-07）
 
-本次候选包含模型上下文与指令规则调整、Pi 安装来源检查、协作扫描恢复通知、dsh 最低版本与 optional peer 声明，以及中英文使用和设计文档。package.json、shrinkwrap 与两份 README 的当前版本同步为 0.2.7，子会话兼容线仍为 0.2。
+本次候选在 0.2.7 的安装、恢复和双宿主基础上，同步 Task Conductor 0.1.6 的 Pi/dsh 安装、原生 MCP、会话通知和自定义 ACP 使用指引。package.json、shrinkwrap 与两份 README 的当前版本同步为 0.2.8，子会话兼容线仍为 0.2。
 
 macOS、Node.js 24.22.2、npm 11.19.1、Pi 1.5.0、dsh 0.2.2-rc.1 下，`npm run check`、`npm test`、`git diff --check` 全部通过；135/135 测试通过，无失败、取消或跳过，依赖边界为 137 个模块、558 条依赖。正常执行 prepack 的 `npm pack --dry-run --json` 通过，270 个包条目包含 CLI、dsh Host/Web、Pi 源码、提示与技能、编写原则和中英文 dsh 指南，不包含 dist 或 node_modules。此记录为本地候选检查，未执行本版本的远端 CI、npm 发布或真实模型验收。
 

@@ -97,19 +97,30 @@ dsh --profile pbot
 
 ### 可选安装 Task Conductor
 
-需要周期任务、重复流程或 DAG 时，安装接入包 `task-conductor-plugin`。它不是服务包 `task-conductor`，也不是启用 pbot 的前提。按本项目 Pi 1.5.0 基线使用原生 MCP 和 npm 接入。
+需要周期任务、重复流程或 DAG 时，使用可选接入包 `task-conductor-plugin` 及其共享的 `using-task-conductor` 技能。插件与 `task-conductor` 服务分别安装；服务初始化、连接设置和更新按[上游接入说明](https://github.com/realqiyan/task-conductor/blob/master/docs/host-integrations.md)操作。
 
-先用 `pi list` 检查是否已经安装；已安装但技能不可见时，检查资源是否启用并重载，不要重复安装。新安装请审阅[官方接入说明](https://github.com/realqiyan/task-conductor/blob/master/docs/host-integrations.md)，从工作区根目录执行：
+**Pi：** 先用 `pi list` 检查已有安装及资源设置。使用已发布的 Pi 接入时，从工作区根目录执行：
 
 ```bash
 pi install --local npm:task-conductor-plugin
 ```
 
-然后在 Pi 中执行 `/reload`，再调用 `/skill:using-task-conductor`。插件自带技能会在你确认后引导服务安装、`task-conductor setup` 和原生 MCP 接入；插件安装本身不安装服务。凭据留在自己的终端或私有文件中，不发到聊天里。
+使用未发布插件改动时，改为 `pi install --local /absolute/path/to/task-conductor/plugin`，只启用一个来源。在 Pi 内执行 `/reload`，再调用 `/skill:using-task-conductor`。技能提供服务安装、`task-conductor setup` 和 Pi 原生 MCP 注册方法。`--local` 限定插件加载范围；MCP 作用域另行选择，复用已有连接。
 
-已有旧版接入包时，先用 `pi list` 核对来源和作用域，审阅官方升级说明后显式移除旧包声明，再安装新包，不同时加载两份。接入包与服务分别更新；服务升级前核对活动任务、停服并备份，按上游说明处理原生 MCP 连接，不自动迁移配置或删除历史数据。
+**dsh：** 原生 Host 接入包含于尚未发布的 Task Conductor `0.1.6` 候选版本。发布前从该源码构建插件和配套服务，再将插件 tarball 安装到已有 Web profile：
 
-`--local` 只限定插件的加载范围，不隔离服务数据；MCP 注册范围另行选择，保留已有连接，不重复注册。连接完成后用 `/mcp` 或 `pi mcp list` 检查实际工具，并按技能执行只读验证，不为安装验收创建模型任务。连接成功不证明模型认证或业务交付成功。
+```bash
+cd /absolute/path/to/task-conductor
+npm run pack:plugin
+dsh plugin --profile pbot add /absolute/path/to/task-conductor/task-conductor-plugin-<version>.tgz
+dsh plugin --profile pbot list task-conductor-plugin --depth 0
+```
+
+使用打包命令输出的实际 tarball 路径。重启 `dsh --profile pbot`，打开主会话并调用 `/using-task-conductor`。插件通过原生文件系统技能发现提供共享技能，为每个根主会话创建使用该会话工作目录的原生 MCP 连接。工具保留 `mcp__task-conductor__executor_list` 等名称，避免另加重复的手工连接。桌面应用在原生“插件”页安装同一 tarball，profile 与 CLI 分开。配套本地服务的构建和设置见 [dsh Task Conductor 指南](docs/dsh.md#task-conductor)。
+
+服务仍使用独立的协调模型配置及 `pi-durable` 运行时，以 dsh 为宿主不需要安装 Pi 交互 CLI。需要同时用 dsh 执行任务节点时，通过 Task Conductor 管理员 CLI 或 Web，将 dsh 的规范绝对可执行路径注册为自定义执行端 `dsh-acp`，参数为 `["--profile", "acp"]`。具体操作见上游技能的[自定义 ACP 说明](https://github.com/realqiyan/task-conductor/blob/master/plugin/skills/using-task-conductor/references/custom-acp.md)；`dsh` 不是内置执行端 ID。节点使用自己的 dsh profile、认证、工具和环境。
+
+通知回到提交任务的持久宿主会话；恢复原会话可接收待处理事件。关闭 Pi 或 dsh 不停止服务任务。插件与服务分别更新，按上游说明检查活动工作、停服并备份数据。凭据留在终端或私有文件中。连接检查沿用技能的原生工具发现与只读调用；它们不证明模型执行或任务交付已经成功。
 
 ## 可选资料准备
 
@@ -137,7 +148,7 @@ pi install --local npm:task-conductor-plugin
 - **研究与分析**：可要求“综合这些资料并说明证据冲突”“核验这份分析的口径与计算”或“找出先要验证的关键假设”。
 - **独立子会话**：包内提供 tmux 与独立 Pi 会话，需系统安装 tmux。`pbot_agent start` 立即返回；省略 message/prompts/files 时只创建待命进程，不调用模型。工作完成后自动通知。支持模型/目录/文件/工具与资源选项、send、follow-up、rename、status、read、stop 和显式 resume，没有前后台参数或 wait。`/pbot agents` 展示正在工作的 agent，可进入子 TUI。主 reload 保持运行，退出或切换会话停止并保留历史。子会话也使用原生 CLI/MCP，按委派范围工作。详见[专家协作](docs/agent-collaboration.md)。
 - **团队协作**：`pbot_team` 将已有 agent 组成固定团队，支持 roundRobin 轮流讨论和 parallel 并行轮次。成员通过 `pbot_team_message` 直接交换原文，普通 post 不唤醒模型。运行中的团队占用成员；先暂停并收尾，再切换私人工作。reload 暂停团队，不重放旧请求。首版不包含动态 ask/返回唤醒，详见[专家协作](docs/agent-collaboration.md)。
-- **周期与持久任务**：主会话通过原生 MCP 直接使用可选的 Task Conductor，处理周期、重复流程和 DAG；使用其 `using-task-conductor` 技能与实际工具契约。安装与接入见[可选安装引导](#可选安装-task-conductor)。缺失不影响普通 pbot 功能，但不能执行调度。pbot 不另建持久任务调度器或转发层。外部任务与子会话分别查询和停止，取消本轮不等于停止未来周期，关闭 Pi 也不代表外部任务已停止。
+- **周期与持久任务**：主会话通过原生 MCP 直接使用可选的 Task Conductor，处理周期、重复流程和 DAG；使用其 `using-task-conductor` 技能与实际工具契约。安装与接入见[可选安装引导](#可选安装-task-conductor)。缺失不影响普通 pbot 功能，但不能执行调度。pbot 不另建持久任务调度器或转发层。外部任务与子会话分别查询和停止，取消本轮不等于停止未来周期，关闭 Pi 或 dsh 也不代表外部任务已停止。
 - **Python 环境**：所有工作区共用当前用户的独立 venv。Personal Bot 加载后自动创建环境或安装锁定依赖，成功后在当前 Pi 进程激活；主会话与专家通过 Bash 使用 `python` 或 `python3`。环境异常时提醒，修复后用 `/pbot python setup` 重试。系统 Python、外部终端、已有脚本和历史结果不变。共享依赖更新会影响其他工作区；更换插件版本或手工重试前应停止相关脚本。详见 [Python 说明](python/README.md)与[计算参考](resources/references/compute.md)。
 - **资料维护**：可要求“整理当前项目资料”“按上次口径重做报告”或“检查交付并结项”。助手按[项目整理与维护技能](resources/skills/project-maintenance/SKILL.md)更新当前任务及实际受影响的资料；整体整理按用户指定范围进行。当前说明按主题合并更新，从项目结论中提炼可复用的方法与口径；来源与重要决策保持可追溯。整理或结项时归集成果并清理范围内无用的临时产物，保留正式资料、历史记录与备份。
 
@@ -163,7 +174,7 @@ Personal Bot 不在工作区内保存私有启用状态。Pi 配置仍由 Pi 管
 
 ## 更新与历史数据
 
-当前版本为 **0.2.7**。不维护工作区格式、初始化状态或升级机制。插件更新使用对应宿主的原生包管理；Pi 本地安装则更新来源源码，依赖变化后执行 `npm ci --ignore-scripts`，再重载或重启 Pi。更换版本前先停止活动子会话；不同兼容线的子会话不能直接恢复。
+当前版本为 **0.2.8**。不维护工作区格式、初始化状态或升级机制。插件更新使用对应宿主的原生包管理；Pi 本地安装则更新来源源码，依赖变化后执行 `npm ci --ignore-scripts`，再重载或重启 Pi。更换版本前先停止活动子会话；不同兼容线的子会话不能直接恢复。
 
 子会话 JSONL 由 Pi 保存在原生 sessions 目录或原生配置指定的位置；`pbot/subagents/` 只保存控制记录与会话引用，团队公共记录保存在 `pbot/teams/`。0.2.0 不兼容旧会话位置，不迁移或删除 0.1.x 历史；旧记录不进入当前列表或后台调度。先在旧版停止活动成员，更新后重新创建 agent。共享 Python 环境使用用户级 `pbot/python/.venv`，具体系统路径见 [Python 说明](python/README.md)。不自动导入其他应用的会话、配置或环境，也不修改其数据。MCP 连接与 CLI 环境按原生方式显式配置；用户资料、历史证据和备份原样保留。
 
