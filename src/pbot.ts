@@ -13,7 +13,6 @@ import { HistoryService } from "./services/history/history-service.js";
 import { HistoryFiles } from "./storage/history-files.js";
 import { PiHistory } from "./integrations/pi/history.js";
 import { sessionRef } from "./storage/agent-files.js";
-import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import { join } from "node:path";
 import { registerHistoryEvents } from "./extension/history.js";
 
@@ -23,11 +22,11 @@ export default function pbot(pi: ExtensionAPI) {
   const confirmations = new Confirmations(), registry = new ToolRegistry(pi);
   const lifecycle = new Lifecycle(root => {
     const agents = new AgentService(root, agentDirectory(), new PiAgents());
-    const history = new HistoryService(root, new HistoryFiles(join(root, ".pi/pbot/history")), new PiHistory(root, () =>
+    const history = new HistoryService(root, new HistoryFiles(join(root, ".pbot/history")), new PiHistory(root, () =>
       agents.files.list().filter(agent => agent.workspace === root).flatMap(agent => {
         const file = agents.files.optional(agent.agentId, "session-ref.json", sessionRef)?.file;
         return file ? [file] : [];
-      })), new HistoryFiles(join(getAgentDir(), "pbot/history")), new HistoryFiles(join(root, ".dsh/pbot/history"), "dsh"));
+      })), new HistoryFiles(join(root, ".pbot/history"), "dsh"));
     return new WorkspaceInstance(root, new PythonEnvironmentService(root), agents, new TeamService(root, agents.files, agents.teamFiles), history);
   }, instance => registry.register(mainTools(instance.agents, instance.teams, instance.history, instance)), () => registry.hide());
   registerCommand(pi, lifecycle, confirmations);

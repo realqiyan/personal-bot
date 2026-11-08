@@ -4,7 +4,7 @@
 
 ## 自动准备与激活
 
-Pi 加载 Personal Bot、原生 `/reload`，或 dsh 加载 pbot Host 组件时自动执行 setup，无需另行确认或指定路径。同一系统用户的两种宿主共用该环境：
+工作区的 `.pbot/config.json` 设置 `enabled: true` 后，Pi 加载或原生 `/reload` 时自动执行 setup；dsh 在首个已启用工作区加载时准备环境。无需另行确认或指定 Python 路径。同一系统用户的两种宿主共用该环境：
 
 1. 共享 venv 不存在时创建，不使用系统 site-packages。
 2. 按 `requirements.lock` 补齐或对齐依赖，允许升级或降级；已匹配时不重新安装。
@@ -18,7 +18,7 @@ Pi 加载 Personal Bot、原生 `/reload`，或 dsh 加载 pbot Host 组件时�
 
 首次准备从当前 PATH 选择 python3，无该命令时使用 python；需要 Python 3.11+ 和 venv/ensurepip。系统 Python 只用于创建独立 venv，不在系统环境中安装依赖。现有环境不自动替换基础解释器，也不删除额外安装的包。
 
-首次安装可能需要数分钟和网络。环境准备不依赖 `/pbot init` 或工作区资料；不需要 Personal Bot 时通过所属宿主的原生配置取消加载。`/pbot status` 显示环境状态。所属激活生命周期关闭时恢复本扩展修改的进程环境变量；dsh 按整个 pbot 组件共享激活，不随某个浏览器页面或单个工作区关闭而恢复，不覆盖期间其他代码对变量的新修改。外部终端和 shell 配置不变。
+首次安装可能需要数分钟和网络。`/pbot init` 创建共用启用配置并启动环境准备；手工设置 enabled 为 true 后重载也会准备环境。不需要 Personal Bot 的工作区可保留配置缺失或设置 enabled 为 false，再重载或重启宿主；也可通过宿主原生配置取消加载整个插件。`/pbot status` 显示环境状态。所属激活生命周期关闭时恢复本扩展修改的进程环境变量；dsh 按整个 pbot 组件共享激活，不随某个浏览器页面或单个工作区关闭而恢复，不覆盖期间其他代码对变量的新修改。外部终端和 shell 配置不变。
 
 ## 失败与手工重试
 

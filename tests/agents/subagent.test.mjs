@@ -18,8 +18,13 @@ import { loadThemeFromPath } from "../../node_modules/@earendil-works/pi-coding-
 import { visibleWidth } from "@earendil-works/pi-tui";
 import { host } from "../helpers/pi-host.mjs";
 import { preparePythonFailure } from "../helpers/python-home.mjs";
+import { initializeWorkspaceConfig } from "../../dist/services/workspace/workspace-config.js";
 
-async function temp(t) { const p = await realpath(await mkdtemp(join(tmpdir(), "pbot-agents-"))); t.after(() => rm(p, { recursive: true, force: true })); return p; }
+async function temp(t) {
+  const p = await realpath(await mkdtemp(join(tmpdir(), "pbot-agents-")));
+  t.after(() => rm(p, { recursive: true, force: true }));
+  await initializeWorkspaceConfig(p); return p;
+}
 function saved(files, workspace, owner, options = {}) {
   const agentId = randomUUID(), generation = randomUUID();
   files.create({ agentId, release: packageVersion, workspace, cwd: options.cwd ?? workspace, parentSessionId: owner.sessionId,

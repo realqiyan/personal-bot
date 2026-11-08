@@ -7,11 +7,19 @@ import { resourceRoot } from "../common/paths.js";
 import { agentText } from "../integrations/agent-resources.js";
 import type { Confirmations } from "../ui/confirmation.js";
 import type { Lifecycle } from "./lifecycle.js";
+import { readWorkspaceConfig, workspaceDisabledMessage } from "../services/workspace/workspace-config.js";
+import { workspaceSkillPaths } from "../integrations/pi/skills.js";
 
 export function registerEvents(pi: ExtensionAPI, lifecycle: Lifecycle, confirmations: Confirmations) {
   pi.on("session_start", async (_event, ctx) => {
     try {
       await lifecycle.open(ctx.cwd);
+      if (!lifecycle.active) {
+        ctx.ui.setStatus("pbot", lifecycle.configuration?.error ? "PBot 配置错误" : "PBot 未启用 · /pbot init");
+        if (ctx.hasUI && lifecycle.configuration) ctx.ui.notify(workspaceDisabledMessage(lifecycle.configuration), lifecycle.configuration.error ? "error" : "info");
+        return;
+      }
+      ctx.ui.setStatus("pbot", "PBot 已启动");
       if (ctx.mode === "tui") ctx.ui.setStatus("pbot-python", "Python 准备中");
       else ctx.ui.notify("正在准备共享 Python 环境；首次安装可能需要数分钟。", "info");
       try { await lifecycle.get().preparePython(); }
@@ -21,9 +29,14 @@ export function registerEvents(pi: ExtensionAPI, lifecycle: Lifecycle, confirmat
         else if (ctx.hasUI) ctx.ui.notify(message, "warning"); else console.error(message);
       } finally { if (ctx.mode === "tui") ctx.ui.setStatus("pbot-python", undefined); }
     } catch (error) {
+      ctx.ui.setStatus("pbot", "PBot 启动失败");
       if (ctx.hasUI) ctx.ui.notify(error instanceof Error ? error.message : "pbot 启动失败。", "error");
       else throw error;
     }
+  });
+  pi.on("resources_discover", (_event, ctx) => {
+    if (!lifecycle.active) return;
+    return { skillPaths: workspaceSkillPaths(pi, ctx.cwd) };
   });
   pi.on("before_agent_start", async (event, ctx) => {
     const instance = lifecycle.active;
@@ -49,7 +62,11 @@ export function registerEvents(pi: ExtensionAPI, lifecycle: Lifecycle, confirmat
   pi.on("session_before_switch", () => { lifecycle.active?.cancelWork(); });
   pi.on("session_before_fork", () => { lifecycle.active?.cancelWork(); });
   pi.on("session_before_tree", () => { lifecycle.active?.cancelWork(); });
-  pi.on("session_shutdown", event => lifecycle.close(event.reason === "reload"));
+  pi.on("session_shutdown", async (event, ctx) => {
+    const preserve = event.reason === "reload" && lifecycle.root && (await readWorkspaceConfig(lifecycle.root)).enabled;
+    try { await lifecycle.close(Boolean(preserve)); }
+    finally { ctx.ui.setStatus("pbot", undefined); ctx.ui.setStatus("pbot-python", undefined); }
+  });
   pi.on("tool_call", async (event, ctx) => {
     const instance = lifecycle.active;
     if (["write", "edit"].includes(event.toolName) && "path" in event.input && typeof event.input.path === "string") {

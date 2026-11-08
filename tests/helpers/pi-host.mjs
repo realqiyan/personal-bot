@@ -6,6 +6,7 @@ import { join, resolve } from "node:path";
 import { createAgentSession, createCodemodeExtension, DefaultResourceLoader, ModelRuntime, SessionManager, SettingsManager } from "@earendil-works/pi-coding-agent";
 
 import { preparePythonFailure } from "./python-home.mjs";
+import { initializeWorkspaceConfig } from "../../dist/services/workspace/workspace-config.js";
 
 // Exercise a real damaged shared environment on the current platform, with an isolated user home.
 const previousDataHome = process.env.XDG_DATA_HOME, previousHome = process.env.HOME;
@@ -17,9 +18,10 @@ after(async () => {
   await rm(pythonDataHome, { recursive: true, force: true });
 });
 
-export async function host(t, { prepare, enabled = true, extensions = [], noSkills = false, noContextFiles = true, packageEntry = resolve(".") } = {}) {
+export async function host(t, { prepare, enabled = true, workspaceEnabled = true, extensions = [], noSkills = false, noContextFiles = true, packageEntry = resolve(".") } = {}) {
   const temp = await realpath(await mkdtemp(join(tmpdir(), "pbot-pi-"))), root = join(temp, "workspace"), agentDir = join(temp, "agent");
   await mkdir(root); await mkdir(agentDir);
+  if (workspaceEnabled) await initializeWorkspaceConfig(root);
   await prepare?.(root);
   const settingsManager = SettingsManager.inMemory({ packages: enabled ? [packageEntry] : [], defaultTools: ["+codemode"] });
   let api;
@@ -32,7 +34,8 @@ export async function host(t, { prepare, enabled = true, extensions = [], noSkil
     modelRuntime: runtime, model: runtime.getModels("openai-codex")[0],
     sessionManager: SessionManager.create(root, join(temp, "sessions")) });
   const errors = [];
-  await session.bindExtensions({ mode: "json", onError: error => errors.push(error) });
+  await session.bindExtensions({ mode: "json", onError: error => errors.push(error),
+    commandContextActions: { waitForIdle: () => session.waitForIdle(), reload: () => session.reload() } });
   t.after(async () => {
     await session.extensionRunner.emit({ type: "session_shutdown", reason: "quit" }); session.dispose();
     await rm(temp, { recursive: true, force: true });

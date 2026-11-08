@@ -1,7 +1,5 @@
 # dsh 使用说明
 
-[English](dsh.en.md) | 简体中文
-
 Personal Bot 使用 dsh 原生 Web 界面，提供工作区资料、专家、团队、历史查询和 Python 环境。它与 Pi 共用资料、角色、方法及协作规则，各自管理原生会话、模型配置、认证与 MCP。
 
 安装和更新使用 dsh 最新版，最低宿主版本为 `0.2.2-rc.1`。本文区分终端命令与聊天框中的 `/pbot` 命令，升级后可查看实际安装版的帮助。
@@ -19,7 +17,7 @@ dsh plugin --profile pbot add personal-bot@latest
 dsh --profile pbot
 ```
 
-`pbot` 是可自选的 profile 名称，后续命令应保持一致。已有 profile 更新时不要重复执行 `--from-default-profile`。
+`pbot` 是可自选的 profile 名称，内置 `web` 也可安装同一插件。安装和插件开关作用于 profile，各工作区通过 `/pbot init` 创建共用的 `.pbot/config.json` 并启用 Personal Bot，规则见[工作区配置](workspace-configuration.md)。已有 profile 更新时不要重复执行 `--from-default-profile`。
 
 dsh 启动 Web 服务并通常自动打开浏览器。SSH 或 `--no-open` 模式下手动打开输出的 URL；该地址含访问令牌，应妥善保管。选择工作区和主会话，配置模型与认证，再在聊天框执行：
 
@@ -29,7 +27,7 @@ dsh 启动 Web 服务并通常自动打开浏览器。SSH 或 `--no-open` 模式
 /pbot
 ```
 
-`status` 查看状态；`init` 可选地补建资料目录和根 AGENTS，保留已有文件；裸 `/pbot` 打开管理界面。加载插件会自动准备当前用户共享的 Python venv。准备失败时修复基础环境，再运行 `/pbot python setup`。
+`status` 显示未启用或已启动状态；`init` 补建资料目录和根 AGENTS，保留已有资料与其他配置字段，并立即启用此目录下已打开的主会话；裸 `/pbot` 打开管理界面。已启用工作区加载后会自动准备当前用户共享的 Python venv。准备失败时修复基础环境，再运行 `/pbot python setup`。
 
 一个 profile 可管理多个工作区。通过原生工作区选择器指定目录；默认使用系统 Documents。pbot 绑定主会话创建时的根目录，后续 cwd 变化只影响相对路径解析。
 
@@ -161,7 +159,7 @@ task-conductor setup
 
 | 页签 | 操作 |
 | --- | --- |
-| 工作区 | 来源、目录、模型、Python 和历史整理状态；准备资料或重试 Python |
+| 工作区 | 启动状态、来源、目录、模型、Python 和历史整理状态；初始化启用、准备资料或重试 Python |
 | 专家 | 创建、重命名、停止、显式恢复；人工对话、附件和完整原生记录 |
 | 团队 | 固定成员与职责、有限轮次、暂停、关闭、公共原文和长消息分页 |
 | 历史 | 按 Pi/dsh 来源与时间查询，读取问答和摘要，沿父子节点导航 |
@@ -325,7 +323,7 @@ query 按不区分大小写的连续文本搜索已就绪问答与摘要；省�
 
 search 返回 matches、total、nextOffset 和 warnings，续页保持筛选条件并回填 nextOffset。read 返回 node：`node.nextOffset` 用于正文 offset，`node.nextChildrenOffset` 用于 childrenOffset；沿 parents/children 的 id 继续读取。没有 childrenLimit 参数。摘要提供线索，关键事实应回到问答原文；历史归档不能替代专家完整工具记录。
 
-Pi 维护 `.pi/pbot/history/`，dsh 维护 `.dsh/pbot/history/`。两者共同查询已有归档，只更新和整理自己的来源。查询不调用模型；正常主交互结束后的空闲阶段才使用当前宿主模型补齐摘要，新人工输入优先取消整理。详见[历史对话](history.md)。
+Pi 与 dsh 共用 `.pbot/history/`，共同查询已有归档，只更新和整理自己的来源。查询不调用模型；正常主交互结束后的空闲阶段才使用当前宿主模型补齐摘要，新人工输入优先取消整理。详见[历史对话](history.md)。
 
 ## 模型工具
 

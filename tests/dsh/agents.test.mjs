@@ -14,6 +14,7 @@ import { setApprovalPolicy } from "@deepseek-ai/dsh-user-approval";
 import { createUserMessage } from "@deepseek-ai/dsh-llm";
 import { dshHost } from "../helpers/dsh-host.mjs";
 import * as pbot from "../../dist/dsh.js";
+import { initializeWorkspaceConfig } from "../../dist/services/workspace/workspace-config.js";
 import { preparePythonFailure } from "../helpers/python-home.mjs";
 
 async function fixture(t) {
@@ -32,6 +33,7 @@ async function fixture(t) {
   const extension = await host.ctx.plugin(pbot), parents = [];
   for (const name of ["a", "b"]) {
     const cwd = join(root, name); await mkdir(join(cwd, ".git"), { recursive: true });
+    await initializeWorkspaceConfig(cwd);
     await writeFile(join(cwd, "AGENTS.md"), "workspace-marker-" + name + "\n{{literal}}\n");
     await mkdir(join(cwd, "agents"));
     await writeFile(join(cwd, "agents/coordinator.md"), "coordinator-marker-" + name + "\n");
@@ -215,7 +217,7 @@ test("native skill providers retain project and user precedence, refresh edits, 
   assert.equal((await host.ctx.skills.get("provider-connections", lookup(other))).source, "user-dsh");
   assert.equal((await host.ctx.skills.get("project-maintenance", lookup(child))).provider, "pbot");
   const global = await host.ctx.skills.list({ cwd: join(root, "a") });
-  assert.equal(global.find(skill => skill.name === "provider-connections").provider, "pbot");
+  assert.equal(global.some(skill => skill.provider === "pbot"), false);
   assert.equal(global.some(skill => skill.name === "local-check"), false);
 
   await run(child, "write", { file_path: ".dsh/skills/provider-connections/SKILL.md",

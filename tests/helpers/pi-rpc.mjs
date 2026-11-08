@@ -4,6 +4,7 @@ import { mkdtemp, mkdir, rm, realpath, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { initializeWorkspaceConfig } from "../../dist/services/workspace/workspace-config.js";
 import { preparePythonFailure, pythonExecutable } from "./python-home.mjs";
 
 export const packageRoot = fileURLToPath(new URL("../../", import.meta.url));
@@ -118,7 +119,7 @@ class PiProcess {
   }
 }
 
-export async function rpcWorkspace(t) {
+export async function rpcWorkspace(t, { workspaceEnabled = true } = {}) {
   const temp = await realpath(await mkdtemp(join(tmpdir(), "pbot-e2e-")));
   const root = join(temp, "workspace"), agentDir = join(temp, "agent"), home = join(temp, "home");
   const processes = [];
@@ -129,6 +130,7 @@ export async function rpcWorkspace(t) {
     } finally { await rm(temp, { recursive: true, force: true }); }
   });
   await Promise.all([root, agentDir, home].map(path => mkdir(path)));
+  if (workspaceEnabled) await initializeWorkspaceConfig(root);
   // A real invalid target exercises startup warnings without downloading dependencies.
   const { directory: pythonDirectory } = await preparePythonFailure(home);
   await mkdir(join(home, "bin")); await symlink(pythonExecutable, join(home, "bin/python3"));

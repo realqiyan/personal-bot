@@ -2,6 +2,14 @@ import { lstat, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { requireThat } from "../../common/validation.js";
 import { resourceRoot } from "../../common/paths.js";
+import { initializeWorkspaceConfig, readWorkspaceConfig } from "./workspace-config.js";
+
+export async function initializeWorkspace(root: string): Promise<void> {
+  const configuration = await readWorkspaceConfig(root);
+  if (configuration.error) throw new Error(configuration.error);
+  await prepareWorkspace(root);
+  await initializeWorkspaceConfig(root);
+}
 
 export const directories = ["areas", "projects", "knowledge", "providers", "scratch", "agents"];
 export async function prepareWorkspace(root: string) {

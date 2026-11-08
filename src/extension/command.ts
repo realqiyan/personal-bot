@@ -1,6 +1,6 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { packageVersion } from "../common/version.js";
-import { prepareWorkspace } from "../services/workspace/workspace-preparation.js";
+import { initializeWorkspace } from "../services/workspace/workspace-preparation.js";
 import type { Confirmations } from "../ui/confirmation.js";
 import { readPage } from "../ui/pi/reader.js";
 import { choose } from "../ui/pi/menu.js";
@@ -10,6 +10,7 @@ import type { Lifecycle } from "./lifecycle.js";
 import { showAgents } from "./agents-command.js";
 import { showTeams } from "./teams-command.js";
 import { showHistory } from "./history.js";
+import { workspaceDisabledMessage } from "../services/workspace/workspace-config.js";
 
 export function registerCommand(pi: ExtensionAPI, lifecycle: Lifecycle, confirmations: Confirmations) {
   pi.registerCommand("pbot", {
@@ -22,17 +23,30 @@ export function registerCommand(pi: ExtensionAPI, lifecycle: Lifecycle, confirma
     handler: async (args, ctx) => {
       const [, command, argument = ""] = args.trim().match(/^(\S+)(?:\s+([\s\S]*))?$/) ?? [];
       confirmations.resume();
+      if (command === "init" && !argument) {
+        await ctx.waitForIdle();
+        const start = !lifecycle.active;
+        await initializeWorkspace(lifecycle.root ?? ctx.cwd);
+        ctx.ui.notify(start ? "工作区已初始化并启用，正在加载 Personal Bot。" : "资料目录已准备；新建的 AGENTS.md 经 /reload 加载。", "info");
+        if (start) await ctx.reload();
+        return;
+      }
+      if (!lifecycle.active) {
+        const configuration = lifecycle.configuration;
+        const status = { workspaceRoot: lifecycle.root ?? ctx.cwd, release: packageVersion, enabled: false,
+          state: configuration?.error || configuration?.enabled ? "error" : "disabled",
+          nextStep: configuration?.error ?? "/pbot init", configuration };
+        ctx.ui.notify(command === "status" ? JSON.stringify(status, null, 2)
+          : configuration ? workspaceDisabledMessage(configuration) : "pbot 工作区实例不可用。", configuration?.error ? "error" : "info");
+        return;
+      }
       async function execute(command: string | undefined, argument: string) {
         const instance = lifecycle.get();
-        if (command === "init" && !argument) {
-          await ctx.waitForIdle(); instance.check(); await prepareWorkspace(instance.root);
-          ctx.ui.notify("资料目录已准备。新建的 AGENTS.md 在 /reload 或下次启动后由 Pi 加载。", "info"); return;
-        }
         if (command === "status" && !argument) {
           const python = instance.pythonEnvironment.status;
-          if (ctx.mode !== "tui") { ctx.ui.notify(JSON.stringify({ workspaceRoot: instance.root, release: packageVersion, python }, null, 2), "info"); return; }
+          if (ctx.mode !== "tui") { ctx.ui.notify(JSON.stringify({ workspaceRoot: instance.root, release: packageVersion, enabled: true, state: "running", configuration: lifecycle.configuration, python }, null, 2), "info"); return; }
           const agents = instance.agents.list(agentOwner(ctx)), history = instance.history.status;
-          await readPage(ctx, "工作区", [instance.root, "", `版本    ${packageVersion}`,
+          await readPage(ctx, "工作区", [instance.root, "", "状态    已启动", `配置    ${lifecycle.configuration?.path ?? ""}`, `版本    ${packageVersion}`,
             `模型    ${ctx.model && !(ctx.model.provider === "unknown" && ctx.model.id === "unknown") ? ctx.model.provider + "/" + ctx.model.id : "未选择"}`,
             `专家    ${agents.length} 位 · ${agents.filter(value => value.alive).length} 位存活`,
             `Python  ${stateLabel(python.state)}`, ...(python.directory ? [python.directory] : []), ...(python.error ? ["", python.error] : []),
@@ -58,7 +72,10 @@ export function registerCommand(pi: ExtensionAPI, lifecycle: Lifecycle, confirma
         const choice = await choose(ctx, `Personal Bot · Python ${stateLabel(instance.pythonEnvironment.status.state)}`, choices);
         if (!choice) return;
         const command = ["agents", "teams", "history", "status", "init", "python"][choices.indexOf(choice)]!;
-        try { await execute(command, command === "python" ? "setup" : ""); }
+        try {
+          if (command === "init") { await ctx.waitForIdle(); instance.check(); await initializeWorkspace(instance.root); ctx.ui.notify("资料目录已准备。", "info"); }
+          else await execute(command, command === "python" ? "setup" : "");
+        }
         catch (error) { ctx.ui.notify(error instanceof Error ? error.message : String(error), "error"); }
       }
     },

@@ -8,6 +8,8 @@ import type { AgentService } from "../services/agents/agent-service.js";
 import type { TeamService } from "../services/agents/team-service.js";
 import type { CallAccess } from "../tools/access.js";
 import type { HistoryService } from "../services/history/history-service.js";
+import { readWorkspaceConfig, workspaceDisabledMessage } from "../services/workspace/workspace-config.js";
+import type { WorkspaceConfiguration } from "../model/workspace-config.js";
 
 export class WorkspaceInstance implements CallAccess {
   readonly #controller = new AbortController();
@@ -62,16 +64,21 @@ export class WorkspaceInstance implements CallAccess {
 }
 export class Lifecycle {
   #active: WorkspaceInstance | undefined;
+  configuration: WorkspaceConfiguration | undefined;
+  root: string | undefined;
   constructor(private readonly create: (root: string) => WorkspaceInstance,
     private readonly register: (instance: WorkspaceInstance) => void, private readonly hide: () => void) {}
   get active() { return this.#active; }
   get() {
-    requireThat(this.#active, "pbot 工作区实例不可用。");
+    requireThat(this.#active, this.configuration ? workspaceDisabledMessage(this.configuration) : "pbot 工作区实例不可用。");
     this.#active.check(); return this.#active;
   }
   async open(root: string) {
     await this.close();
-    const instance = this.create(await realpath(root));
+    this.root = await realpath(root);
+    this.configuration = await readWorkspaceConfig(this.root);
+    if (!this.configuration.enabled) return;
+    const instance = this.create(this.root);
     this.#active = instance;
     try { this.register(instance); }
     catch (error) { await this.close(); throw error; }

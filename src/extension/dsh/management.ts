@@ -1,3 +1,4 @@
+import type { Agent } from "@deepseek-ai/dsh-agent";
 import type { Context } from "@deepseek-ai/cordis";
 import { Remote, TypertRemoteService } from "@deepseek-ai/dsh-typert-protocol";
 import type {} from "@deepseek-ai/dsh-typert-registry";
@@ -25,31 +26,46 @@ const validRequest = schema(requestSchema), validExpert = schema(expertSchema), 
 export function dshStatus(workspaces: DshWorkspaces, workspace: DshWorkspace): Json {
   workspace.check();
   const agents = workspace.agents.list(workspace.owner);
-  return json({ host: "dsh", release: packageVersion, workspaceRoot: workspace.root, sessionId: workspace.agent.id,
+  return json({ host: "dsh", release: packageVersion, enabled: true, state: "running", workspaceRoot: workspace.root, sessionId: workspace.agent.id,
     model: workspace.agent.model.current() ?? null, python: workspaces.python.status,
     controlError: workspace.controlError ?? null, history: workspace.history.status,
     agents, teams: workspace.teams.list(workspace.owner, agents) });
+}
+
+/** Status remains available when this workspace has not opted in. */
+export async function dshWorkspaceStatus(workspaces: DshWorkspaces, agent: Agent): Promise<Json> {
+  const { root, configuration } = await workspaces.configuration(agent);
+  if (!configuration.enabled) return json({ host: "dsh", release: packageVersion, enabled: false,
+    state: configuration.error ? "error" : "disabled", nextStep: configuration.error ? configuration.error : "/pbot init",
+    workspaceRoot: root, sessionId: agent.id, configuration, model: agent.model.current() ?? null, agents: [], teams: [] });
+  return json({ ...dshStatus(workspaces, await workspaces.get(agent)) as Record<string, Json>, configuration });
 }
 
 /** Native Remote owns transport and access checks. These workspace reads do not admit or cancel execution. */
 export class PbotManagement extends TypertRemoteService {
   constructor(ctx: Context, private readonly workspaces: DshWorkspaces) { super(ctx, "pbotManagement", { namespace: "pbot" }); }
 
-  private async workspace(request: Json, signal: AbortSignal) {
+  private parent(request: Json, signal: AbortSignal) {
     signal.throwIfAborted(); requireThat(validRequest(request), "管理查询参数无效。");
     const args = request as Static<typeof requestSchema>;
     const agent = this.ctx.agents.get(SessionId(args.parentSessionId));
     requireThat(agent, "父会话未加载或已关闭，请在原生会话页面重新打开。");
+    return { agent, input: args.input };
+  }
+
+  private async workspace(request: Json, signal: AbortSignal) {
+    const { agent, input } = this.parent(request, signal);
     const workspace = await this.workspaces.get(agent);
     signal.throwIfAborted(); workspace.check();
-    return { workspace, input: args.input, signal: AbortSignal.any([signal, workspace.lifetime.signal]) };
+    return { workspace, input, signal: AbortSignal.any([signal, workspace.lifetime.signal]) };
   }
 
   @Remote
   async snapshot(request: Json, signal: AbortSignal): Promise<Json> {
-    const { workspace, input } = await this.workspace(request, signal);
+    const { agent, input } = this.parent(request, signal);
     requireThat(input === undefined, "工作区状态查询不接受额外参数。");
-    return dshStatus(this.workspaces, workspace);
+    const status = await dshWorkspaceStatus(this.workspaces, agent);
+    signal.throwIfAborted(); return status;
   }
 
   @Remote

@@ -79,7 +79,7 @@ test("a slower native scan cannot replace a newer archive committed by another p
 });
 
 test("source locks are independent and summary commits reject changed inputs or an already saved result", async t => {
-  const { root, manager, files } = await fixture(t), other = new HistoryFiles(join(root, "dsh-index"), "dsh");
+  const { root, manager, files } = await fixture(t), other = new HistoryFiles(files.directory, "dsh");
   const record = indexHistory(projectHistory(await readFile(manager.getSessionFile(), "utf8"))); files.save(record);
   const summary = record.nodes.find(value => value.kind === "summary"), children = summary.children.map(id => record.nodes.find(value => value.id === id));
   const marker = join(other.directory, "writer-marker");

@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
 import { dshHost } from "../helpers/dsh-host.mjs";
 import * as pbot from "../../dist/dsh.js";
+import { initializeWorkspaceConfig } from "../../dist/services/workspace/workspace-config.js";
 import { preparePythonFailure } from "../helpers/python-home.mjs";
 
 // The real setup script encounters unrelated data and refuses to install anything.
@@ -22,6 +23,7 @@ test("dsh commands bind each parent to its workspace and unload invalidates capt
     const parents = [];
     for (const cwd of roots) {
       await mkdir(cwd);
+      await initializeWorkspaceConfig(cwd);
       parents.push(await host.ctx.agents.create({ sessionId: randomUUID(), meta: { cwd } }));
     }
     const run = (agent, line) => host.ctx.commands.execute(agent, line, [], new AbortController().signal);

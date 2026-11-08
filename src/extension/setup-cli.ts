@@ -92,7 +92,7 @@ export async function main(args: string[]): Promise<number> {
     const failed = result.results.some(item => item.state === "failed");
     if (!result.pi) return 1;
     ui.text("\n软件安装阶段结束。初始化、Python 环境和外部服务的状态由 Pi/pbot/插件分别报告。");
-    if (await ui.confirm(failed ? "部分插件失败，是否仍先启动 Pi" : "立即启动 Pi", !failed)) {
+    if (await ui.confirm(failed ? "部分插件失败，是否仍启动 Pi 并初始化启用工作区" : "启动 Pi 并初始化启用工作区", !failed)) {
       process.stdin.pause();
       await host.start(result.pi, workspace);
     } else {

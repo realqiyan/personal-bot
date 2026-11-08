@@ -7,6 +7,7 @@ import { randomUUID } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 import { dshHost } from "../helpers/dsh-host.mjs";
 import * as pbot from "../../dist/dsh.js";
+import { initializeWorkspaceConfig } from "../../dist/services/workspace/workspace-config.js";
 import { preparePythonFailure } from "../helpers/python-home.mjs";
 
 async function until(predicate) {
@@ -19,6 +20,7 @@ test("native management reads preserve sessions, retain full records after stop,
   const saved = { DSH_HOME: process.env.DSH_HOME, XDG_DATA_HOME: process.env.XDG_DATA_HOME, HOME: process.env.HOME };
   const { directory: venv, environment } = await preparePythonFailure(join(root, "user"));
   Object.assign(process.env, environment, { DSH_HOME: join(root, "home") });
+  await initializeWorkspaceConfig(root);
   const host = await dshHost(join(root, "sessions")), signal = new AbortController().signal;
   try {
     const extension = await host.ctx.plugin(pbot);

@@ -18,6 +18,7 @@ import { schema } from "../../dist/common/validation.js";
 import { packageVersion } from "../../dist/common/version.js";
 import { host } from "../helpers/pi-host.mjs";
 import { preparePythonFailure } from "../helpers/python-home.mjs";
+import { initializeWorkspaceConfig } from "../../dist/services/workspace/workspace-config.js";
 
 const owner = { sessionId: "parent", leaf: "anchor", branch: ["anchor"] };
 const actor = { kind: "coordinator", owner };
@@ -396,6 +397,7 @@ test("real idle Pi children do not call a model, and team use retains the origin
   for (const key of Object.keys(process.env)) delete process.env[key];
   Object.assign(process.env, { PATH: before.PATH, HOME: root, TERM: "xterm-256color", PI_OFFLINE: "1",
     PI_CODING_AGENT_DIR: join(root, "config"), TMUX_TMPDIR: root, XDG_DATA_HOME: join(root, "data") });
+  await initializeWorkspaceConfig(root);
   await preparePythonFailure(root);
   const agents = new AgentService(root, join(root, "subagents"), new PiAgents()), teams = new TeamService(root, agents.files, agents.teamFiles);
   t.after(async () => {

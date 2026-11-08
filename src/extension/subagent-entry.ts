@@ -20,9 +20,10 @@ import { agentFileTools } from "../integrations/pi/agent-tools.js";
 import { resourceRoot } from "../common/paths.js";
 import { requireThat } from "../common/validation.js";
 import { packageVersion, releaseLine } from "../common/version.js";
+import { readWorkspaceConfig, workspaceDisabledMessage } from "../services/workspace/workspace-config.js";
 
 /** Explicit child composition; never installs main commands or approval capabilities. */
-export default function subagent(pi: ExtensionAPI) {
+export default async function subagent(pi: ExtensionAPI) {
   const id = process.env.PBOT_SUBAGENT_RUN_ID, directory = process.env.PBOT_SUBAGENT_DIR, generation = process.env.PBOT_SUBAGENT_GENERATION;
   requireThat(id && directory && generation, "缺少子会话启动身份。");
   const files = new AgentFiles(dirname(realpathSync(directory)));
@@ -30,6 +31,8 @@ export default function subagent(pi: ExtensionAPI) {
   const d = files.read(id, "descriptor.json", descriptor);
   requireThat(d.agentId === id && releaseLine(d.release) === releaseLine(packageVersion), "子会话身份或版本无效。");
   requireThat(files.read(id, "launch.json", launch).generation === generation, "子会话启动代次已失效。");
+  const configuration = await readWorkspaceConfig(d.workspace);
+  requireThat(configuration.enabled, workspaceDisabledMessage(configuration));
   const teams = new TeamService(d.workspace, files, new TeamFiles(files));
   const lifetime = new AbortController();
   let activeTeam: TeamLink | undefined, pendingPause: string | undefined;

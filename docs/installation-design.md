@@ -13,7 +13,7 @@ flowchart TD
     E --> F[补装 tmux，安装或更新 Pi]
     F --> G[安装或更新工作区 pbot]
     G --> H[逐项处理可选插件并汇总结果]
-    H --> I[选择是否启动 Pi]
+    H --> I[选择是否启动 Pi 并初始化启用工作区]
     I --> J[Pi 处理项目信任并执行 /pbot init]
 ```
 
@@ -26,6 +26,7 @@ flowchart TD
 | pbot 与可选插件 | 安装到所选工作区，使用 Pi 原生包管理 |
 | tmux | 已有时复用；缺失时通过已有 Homebrew、apt、dnf、pacman、zypper 或 apk 安装 |
 | Python | 检查 3.11+、venv 与 ensurepip；共享 venv 由 pbot 加载时准备 |
+| 工作区启用 | 由 `/pbot init` 创建或更新 `.pbot/config.json` 的 enabled，保留其他字段；无效配置报错 |
 | 工作区资料 | 由 `/pbot init` 补建，保留已有内容 |
 | 插件的外部服务 | 按对应插件的安装与配置流程处理 |
 
@@ -56,6 +57,8 @@ Git 和本地目录必须存在，且 package.json 有有效包名；独立单�
 真实 Pi 安装须与 npx 临时缓存区分。没有 Pi 但已有包声明时，先确认安装 Pi，再使用其 SDK 读取来源。全局目录不可写、PATH 异常或无法在项目范围内切换来源时，提供原生修复步骤。
 
 ## 启动与恢复
+
+配置规则见[工作区配置](workspace-configuration.md)。软件安装阶段不创建或修改启用配置。选择启动并执行 init 会显式启用工作区；无效配置由用户修复后重试。
 
 用户选择启动后，子进程以工作区为 cwd 并继承终端，执行 `pi "/pbot init"`。Pi 完成项目信任和扩展加载后分发命令，初始化结束仍留在同一交互会话。
 

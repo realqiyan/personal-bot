@@ -34,7 +34,7 @@ src/pbot.ts 装配 Pi 入口，src/dsh.ts 装配 dsh Host，src/ui/dsh/index.ts 
 
 | 主体 | 管理内容 |
 | --- | --- |
-| prepareWorkspace | 补建资料目录与根 AGENTS.md |
+| initializeWorkspace / prepareWorkspace | 初始化依次准备资料并写入共用启用配置；资料准备补建目录与根 AGENTS.md |
 | PythonEnvironmentService | venv 准备、依赖检查、状态与取消等待 |
 | AgentService / AgentRun | 原生专家实例、启动预约、代次、inbox、领取/进入/消费/完成与交付资格；拒绝向被团队占用的成员发送私人任务 |
 | TeamService | 固定成员、公共消息、有限轮次、团队占用与暂停规则 |
@@ -43,15 +43,17 @@ src/pbot.ts 装配 Pi 入口，src/dsh.ts 装配 dsh Host，src/ui/dsh/index.ts 
 
 ## 加载与关闭
 
-Pi 原生配置决定扩展加载范围，启动目录作为工作区根目录。session_start 创建实例、提供工具与技能，并准备共享 Python 环境。加载本身不开展模型任务。
+宿主原生配置决定插件加载范围，工作区根目录下的 `.pbot/config.json` 决定业务实例是否启动。`services/workspace/workspace-config` 为两种宿主读取同一 JSON；缺失、false 或无效配置保持未启用，错误由状态入口报告，不向父目录继承。规则与修改生效方式见[工作区配置](workspace-configuration.md)。
+
+Pi 的 session_start 读取启动目录配置，仅在 enabled 为 true 时创建实例、注册工具和准备 Python。未启用时保留状态和初始化入口，不注册包内技能，也不注入 pbot 提示词；状态栏显示未启用或已启动。加载本身不开展模型任务。
 
 Pi 的 `/pbot` 打开原生菜单，状态与长记录使用只读阅读页；dsh 使用独立工作台。见[界面设计](interaction-design.md)。
 
-`/pbot init` 可选地补建资料，已有文件保持不变。Pi 的新建根 AGENTS.md 在原生 `/reload` 或下次启动后加载，命令完成时提示这一点，不另行拼接或自动重载活动会话。`/pbot status` 展示路径、版本和完整 Python 状态；模型环境只保留工作区、资源根目录及 Python 状态与就绪目录。实际 cwd 由宿主提供，准备错误日志保留在状态入口。
+`/pbot init` 先准备资料，再将共用配置中的 enabled 设为 true，保留其他字段；无效配置在写入前报错。Pi 从未启用状态初始化后调用原生 ctx.reload，让实例、工具、技能和新建根 AGENTS 一起生效；已启动会话仅补建资料，新建 AGENTS 经 `/reload` 加载。`/pbot status` 展示运行状态、路径、版本和完整 Python 状态；模型环境只保留工作区、资源根目录及 Python 状态与就绪目录。实际 cwd 由宿主提供，准备错误日志保留在状态入口。
 
-主 reload 保留子进程并重新关联，但暂停团队，不继续安排旧批次；退出或切换会话时清理子进程、取消环境准备并恢复本实例持有的环境变量。关闭操作幂等。子会话的分支归属、通知和恢复规则见[专家协作](agent-collaboration.md)。
+主 reload 在配置仍启用时保留子进程并重新关联，但暂停团队，不继续安排旧批次；配置关闭或损坏时停止所属专家；退出或切换会话时清理子进程、取消环境准备并恢复本实例持有的环境变量。关闭操作幂等。子会话的分支归属、通知和恢复规则见[专家协作](agent-collaboration.md)。
 
-dsh 只为原生 registry 中的根 Agent 建立协调者工作区，绑定其原始 cwd。专家使用同进程独立 Agent/Session；组件或所属父 Agent 关闭时取消预约、暂停安排并等待自己拥有的执行资源释放。打开页面、轮询、重连不恢复专家或启动模型，已接纳工作不归浏览器生命周期所有。原生存在但由其他实例持有的专家不能替换或假称已释放。
+dsh 为原生 registry 中的每个根 Agent 读取其原始 cwd 下的配置，仅对已启用根目录建立协调者工作区。关闭的工作区保留只读状态和初始化入口，其余业务命令与 Remote 查询拒绝进入；init 写入配置后重新打开同一根目录下尚未启用的主会话，按目录合并并发初始化；首个已启用工作区触发共享 Python 准备。专家使用同进程独立 Agent/Session；组件或所属父 Agent 关闭时取消预约、暂停安排并等待自己拥有的执行资源释放。打开页面、轮询、重连不恢复专家或启动模型，已接纳工作不归浏览器生命周期所有。原生存在但由其他实例持有的专家不能替换或假称已释放。
 
 ## 资源加载
 
@@ -65,9 +67,9 @@ dsh 只为原生 registry 中的根 Agent 建立协调者工作区，绑定其�
 | resources/references/ | 按任务读取；普通计算与指标/回测分开 |
 | resources/templates/workspace-agents.md | 补建根资料入口的模板，不覆盖现有文件 |
 
-Pi 主会话通过包清单发现技能，遵守原生 `--no-skills` 与包级资源过滤；专家按自己的 noSkills 选择发现包内及原工作区技能。before_agent_start 读取公共约定和角色补充，完整读取后更新 section；读取失败显式取消本轮，避免宿主只报告 hook 错误后继续。原生 AGENTS、技能元数据和提示模板由 Pi 自己加载、重载与去重；pbot 不另拼根 AGENTS，工具也不重复附加公共指南。
+Pi 包清单关闭包内技能的静态发现，已启用主会话通过 resources_discover 返回技能路径，再由原生加载器读取和去重。接入适配遵守 CLI `--no-skills` 与包级资源过滤；用户级过滤与项目 delta 保留各自优先级。专家按自己的 noSkills 选择发现包内及原工作区技能。Pi SDK 的 DefaultResourceLoader.noSkills 只关闭自动发现；SDK 宿主使用包级 skills 过滤控制这些显式动态路径，并绑定原生 commandContextActions.reload 以支持 init 后重载。before_agent_start 读取公共约定和角色补充，完整读取后更新 section；读取失败显式取消本轮，避免宿主只报告 hook 错误后继续。原生 AGENTS、技能元数据和提示模板由 Pi 自己加载、重载与去重；pbot 不另拼根 AGENTS，工具也不重复附加公共指南。
 
-dsh 专家通过原生 composeFrom 应用父会话 preset，再限制其工具。包内技能在 Host 层注册一次，项目/用户技能与更新监听交给原生 provider；公共约定和角色在 system-prompt/assemble 当次刷新，遵守宿主 complete persona 覆盖。团队简报随首个已接纳团队上下文提供，不放在先于 pre-step 求值的动态 system section。
+dsh 专家通过原生 composeFrom 应用父会话 preset，再限制其工具。包内技能 provider 仅在已启用主会话和受管专家的 scope 注册，原生文件系统 provider 负责读取和监听；作用域适配保留继承的项目/用户同名方法优先级；公共约定和角色在 system-prompt/assemble 当次刷新，遵守宿主 complete persona 覆盖。团队简报随首个已接纳团队上下文提供，不放在先于 pre-step 求值的动态 system section。
 
 同一会话中不变的 section 由宿主沿用，有效系统内容随后续请求传递。团队公共消息按结构化来源与序号去重，压缩后需要的原文通过 read 续取。目录用途常驻，维护方法、接入、计算和调度细节按需读取。具体加载方式见[模型上下文](model-context.md)。
 
@@ -75,9 +77,9 @@ dsh 专家通过原生 composeFrom 应用父会话 preset，再限制其工具�
 
 ## 历史查询
 
-Pi 维护 `.pi/pbot/history/`，dsh 维护 `.dsh/pbot/history/`；两者共同查询既有归档，只收录和整理自己的原生来源。来源保存 host、会话 ID 与消息位置，不保存原生路径。Pi 保留既有 ID、摘要与旧归档处理，dsh 使用独立根 ID，不跨来源写入。
+Pi 与 dsh 共用 `.pbot/history/`，共同查询归档，只收录和整理自己的原生来源。两种来源使用相同归档格式，顶层保存 `host`、`id`、`sessionId`、`name` 和 `nodes`；来源识别、读取筛选与写入校验使用必填的 `host` 字段。文件名与根 ID 一致，两端分别使用 `.write-pi`、`.write-dsh` 短写锁。
 
-扫描与模型调用在短写锁外，提交时重读，拒绝过期原文或摘要覆盖。查询不调用模型；正常主交互结束后才在空闲阶段整理，新人工输入优先取消。dsh 使用原生 LLM 路由，不创建额外 Agent，也不写主聊天。原生会话缺失时保留现成归档，单个来源损坏不阻断另一来源。实现与限制见[历史对话](history.md)。
+扫描与模型调用在短写锁外，提交时重读，拒绝过期原文或摘要覆盖。查询不调用模型；正常主交互结束后才在空闲阶段整理，新人工输入优先取消。dsh 使用原生 LLM 路由，不创建额外 Agent，也不写主聊天。原生会话缺失时保留现成归档；损坏文件单独报告，其他归档继续可查。有不可读归档时只更新已识别会话，避免为其原生会话重复分配根 ID。实现与限制见[历史对话](history.md)。
 
 ## 原生子会话存储
 

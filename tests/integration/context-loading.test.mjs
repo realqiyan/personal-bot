@@ -5,10 +5,15 @@ import { join, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import { host } from "../helpers/pi-host.mjs";
 
-for (const options of [{ noSkills: true }, { packageEntry: { source: resolve("."), skills: [] } }]) {
-  test("Pi respects native skill discovery and package filters: " + JSON.stringify(options), async t => {
-    const { loader, session } = await host(t, options);
-    assert.deepEqual(loader.getSkills().skills, []);
+for (const [filter, expected] of [
+  [{ skills: [] }, []],
+  [{ skills: ["resources/skills/provider-connections"] }, ["provider-connections"]],
+  [{ skills: ["!**", "+resources/skills/provider-connections"] }, ["provider-connections"]],
+  [{ autoload: false, extensions: ["+src/pbot.ts"], skills: ["+resources/skills/provider-connections"] }, ["provider-connections"]],
+]) {
+  test("Pi applies package filters to workspace-owned skill discovery: " + JSON.stringify(filter), async t => {
+    const { loader, session } = await host(t, { packageEntry: { source: resolve("."), ...filter } });
+    assert.deepEqual(loader.getSkills().skills.map(skill => skill.name).sort(), expected);
     assert.ok(session.getAllTools().some(tool => tool.name === "pbot_agent"));
   });
 }

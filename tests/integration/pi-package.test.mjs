@@ -41,7 +41,7 @@ test("native autocomplete exposes current command contracts", async t => {
 });
 
 for (const legacy of [undefined, '{"format":"legacy/1","status":"pending"}', "invalid historical JSON"]) {
-  test("loading Personal Bot enables tools and skills without reading or creating workspace state: " + (legacy ?? "empty"), async t => {
+  test("an opted-in workspace enables tools and skills and preserves legacy state: " + (legacy ?? "empty"), async t => {
     const { root, loader, session, errors } = await host(t, { prepare: async root => {
       if (legacy === undefined) return;
       await mkdir(join(root, ".legacy"));
@@ -57,7 +57,7 @@ for (const legacy of [undefined, '{"format":"legacy/1","status":"pending"}', "in
     assert.deepEqual(errors, []);
     assert.deepEqual(session.getAllTools().map(t => t.name).filter(n => n.startsWith("pbot_")).sort(), ["pbot_agent", "pbot_history", "pbot_team", "pbot_team_message"]);
     assert.ok(loader.getSkills().skills.length > 0);
-    assert.deepEqual(await readdir(root), legacy === undefined ? [] : [".legacy"]);
+    assert.deepEqual((await readdir(root)).sort(), legacy === undefined ? [".pbot"] : [".legacy", ".pbot"]);
     if (legacy !== undefined) assert.equal(await readFile(join(root, ".legacy/workspace.json"), "utf8"), legacy);
     await session.prompt("/pbot init");
     assert.deepEqual(errors, []);

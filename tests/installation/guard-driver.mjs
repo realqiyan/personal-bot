@@ -14,14 +14,19 @@ const { session } = await createAgentSession({ cwd: workspace, agentDir, setting
   modelRuntime, model: modelRuntime.getModels("openai-codex")[0], sessionManager: SessionManager.inMemory(workspace) });
 const errors = [];
 try {
-  await session.bindExtensions({ mode: "json", onError: error => errors.push(error) });
+  await session.bindExtensions({ mode: "json", onError: error => errors.push(error),
+    commandContextActions: { waitForIdle: () => session.waitForIdle(), reload: () => session.reload() } });
   let disposition;
   await session.prompt("/pbot init", { preflightResult: value => { disposition = value; } });
   assert.equal(disposition, "handled");
   assert.equal(session.messages.length, 0);
   assert.deepEqual(errors, []);
   const files = await readdir(workspace);
-  if (enabled === "yes") assert.ok(files.includes("AGENTS.md"));
+  if (enabled === "yes") {
+    assert.ok(files.includes("AGENTS.md"));
+    assert.ok(session.getAllTools().some(tool => tool.name === "pbot_agent"));
+    assert.ok(loader.getSkills().skills.length > 0);
+  }
   else assert.deepEqual(files, []);
   console.log(JSON.stringify({ disposition, initialized: files.includes("AGENTS.md"), messages: session.messages.length }));
 } finally {

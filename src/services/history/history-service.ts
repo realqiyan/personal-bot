@@ -4,7 +4,7 @@ import type { HistoryFiles } from "../../storage/history-files.js";
 import { requireThat } from "../../common/validation.js";
 
 /** Shared prefixes reuse nodes; only consecutive exchanges on one native branch can merge. */
-export function indexHistory(session: HistorySession, previous?: HistoryRecord, host: HistoryHost = "pi"): HistoryRecord {
+export function indexHistory(session: HistorySession, previous?: HistoryRecord, host: HistoryHost = previous?.host ?? "pi"): HistoryRecord {
   const id = previous?.id ?? (host === "dsh" ? "dsh-" : "") + randomUUID(), nodes = new Map<string, HistoryNode>();
   const old = new Map(previous?.nodes.map(node => [node.id, node])), changed = new Set<string>();
   const add = (value: HistoryExchange, level: number, children: string[] = []): HistoryNode => {
@@ -37,7 +37,7 @@ export function indexHistory(session: HistorySession, previous?: HistoryRecord, 
     from: dates[0] ?? "", to: dates.at(-1) ?? "", parents: [],
     children: [...roots].sort((a, b) => nodes.get(a)!.from.localeCompare(nodes.get(b)!.from)) });
   for (const node of nodes.values()) for (const child of node.children) nodes.get(child)!.parents.push(node.id);
-  return { id, sessionId: session.sessionId, name: session.name, nodes: [...nodes.values()] };
+  return { host, id, sessionId: session.sessionId, name: session.name, nodes: [...nodes.values()] };
 }
 
 export interface HistoryQuery { host?: HistoryHost; query?: string; sessionId?: string; from?: string; to?: string; offset?: number; limit?: number }
@@ -69,12 +69,12 @@ export class HistoryService {
   #sourceWarnings: string[] = [];
   #summaryError: string | undefined;
   constructor(readonly root: string, private readonly files: HistoryFiles, private readonly source: HistorySource,
-    private previousFiles?: HistoryFiles, private readonly otherFiles?: HistoryFiles) {
+    private readonly otherFiles?: HistoryFiles) {
     requireThat(source.host === files.host && (!otherFiles || otherFiles.host !== files.host), "历史来源与归档目录不匹配。");
-    requireThat(files.host === "pi" || !previousFiles, "dsh 不导入 Pi 旧归档。");
   }
   check() { requireThat(!this.#closed, "历史服务已关闭。"); }
-  get warnings() { return [...this.#sourceWarnings, ...(this.#summaryError ? [this.files.host + " 摘要：" + this.#summaryError] : [])]; }
+  get warnings() { return [...new Set([...this.#sourceWarnings, ...this.files.warnings, ...(this.otherFiles?.warnings ?? []),
+    ...(this.#summaryError ? [this.files.host + " 摘要：" + this.#summaryError] : [])])]; }
   get status() { return { loaded: this.#loaded, organizing: Boolean(this.#work), pending: this.#loaded ? this.#records.filter(value => value.host === this.files.host)
     .reduce((total, value) => total + value.record.nodes.filter(node => node.kind === "summary" && !node.ready).length, 0) : null, warnings: this.warnings }; }
   refresh(location: HistoryLocation, signal?: AbortSignal): Promise<void> {
@@ -90,35 +90,25 @@ export class HistoryService {
     const warning = (host: HistoryHost, error: unknown) => { this.check(); signal?.throwIfAborted(); warnings.push(host + ": " + String(error)); };
     let known: HistoryRecord[] = [];
     try {
-      const before = this.files.list(); known = before;
-      let imports: HistoryRecord[] = [], importedPrevious = !this.previousFiles;
-      if (this.previousFiles) {
-        try { imports = this.previousFiles.list(this.root); importedPrevious = true; } catch (error) { warning("pi", error); }
-      }
+      try { this.files.migrate(this.root); } finally { known = this.files.list(); }
+      const before = known;
       let sessions: HistorySession[] = [];
       try {
         const scanned = await this.source.scan(location, signal); sessions = scanned.sessions;
         warnings.push(...scanned.warnings.map(value => this.files.host + ": " + value));
       } catch (error) { warning(this.files.host, error); }
       this.check(); signal?.throwIfAborted();
-      if (sessions.length || imports.length || (this.files.host === "pi" && before.some(value => "file" in value))) {
+      if (sessions.length) {
         known = this.files.control(() => {
           this.check(); signal?.throwIfAborted();
-          const latest = this.files.list(), current = new Map(latest.map(record => [record.sessionId, record])), imported = new Set<string>();
-          if (this.files.host === "pi") {
-            for (const value of latest) if ("file" in value) {
-              const { id, sessionId, name, nodes } = value, clean = { id, sessionId, name, nodes };
-              this.files.save(clean); current.set(sessionId, clean);
-            }
-            for (const { id, sessionId, name, nodes } of imports) if (!current.has(sessionId)) {
-              const value = { id, sessionId, name, nodes }; this.files.save(value); current.set(sessionId, value); imported.add(sessionId);
-            }
-          }
+          const latest = this.files.list(), current = new Map(latest.map(record => [record.sessionId, record]));
           for (const session of sessions) {
             const previous = current.get(session.sessionId), captured = before.find(record => record.sessionId === session.sessionId);
+            // An unreadable archive may own this session; avoid assigning it a second root ID.
+            if (!previous && this.files.warnings.length) continue;
             // A concurrent source update must not be overwritten by this older scan. Summary-only updates remain reusable.
             if (captured && rawSource(captured) !== rawSource(previous)) continue;
-            if (!captured && previous && !imported.has(session.sessionId)) continue;
+            if (!captured && previous) continue;
             const value = indexHistory(session, previous, this.files.host);
             if (JSON.stringify(previous) !== JSON.stringify(value)) this.files.save(value);
             current.set(session.sessionId, value);
@@ -126,11 +116,11 @@ export class HistoryService {
           return [...current.values()];
         });
       }
-      if (importedPrevious) this.previousFiles = undefined;
     } catch (error) { warning(this.files.host, error); }
-    records.push(...known.map(record => ({ host: this.files.host, record })));
+    records.push(...known.map(record => ({ host: record.host, record })));
     if (this.otherFiles) {
-      try { records.push(...this.otherFiles.list().map(record => ({ host: this.otherFiles!.host, record }))); }
+      try { this.otherFiles.migrate(this.root); } catch (error) { warning(this.otherFiles.host, error); }
+      try { records.push(...this.otherFiles.list().map(record => ({ host: record.host, record }))); }
       catch (error) { warning(this.otherFiles.host, error); }
     }
     this.check(); signal?.throwIfAborted(); this.#records = records; this.#sourceWarnings = warnings; this.#loaded = true;

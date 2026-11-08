@@ -19,11 +19,11 @@
 
 ## Pi
 
-主会话保留 Pi 原生系统提示、工具、AGENTS、技能目录和 cwd，再加入公共约定、协调者职责、工作区补充和环境状态。专家使用 general-purpose 职责；原生资料由专家 cwd 决定，pbot 职责补充从原工作区读取。
+工作区通过 `.pbot/config.json` 显式启用后，主会话保留 Pi 原生系统提示、工具、AGENTS、技能目录和 cwd，再加入公共约定、协调者职责、工作区补充和环境状态。未启用时只保留状态和初始化入口，不创建 pbot 实例，不注册业务工具、提示词或包内技能。专家使用 general-purpose 职责；原生资料由专家 cwd 决定，pbot 职责补充从原工作区读取。
 
-包内技能由 `package.json` 的 `pi.skills` 声明，遵守 no-skills 和包级过滤；专家使用自己的 noSkills 选项。技能与提示模板正文在读取或展开时加入。
+已启用的 Pi 主会话通过 `resources_discover` 提供包内技能路径，由原生加载器读取，遵守 CLI `--no-skills` 和包级过滤；专家使用自己的 noSkills 选项。技能与提示模板正文在读取或展开时加入。
 
-`before_agent_start` 完整读取公共约定与角色后更新 section，读取失败取消本轮。角色补充在下一工作周期刷新；原生 AGENTS 与技能目录经 `/reload` 更新。`/pbot init` 创建的根 AGENTS 在重载或下次启动后加载。
+`before_agent_start` 完整读取公共约定与角色后更新 section，读取失败取消本轮。角色补充在下一工作周期刷新；原生 AGENTS 与技能目录经 `/reload` 更新。`/pbot init` 首次启用时自动重载并加载新建根 AGENTS；已启动时补建的根 AGENTS 经 `/reload` 加载。
 
 未变的 section 沿用，变更通过原生差量更新，有效系统内容随后续请求传递。团队公共消息按 teamId、seq 和当前分支去重，在安全边界补充新消息；压缩后需要的原文通过团队 read 读取。
 
@@ -33,7 +33,7 @@
 
 公共约定和角色在 `system-prompt/assemble` 当次读取。显式 complete persona 按宿主规则覆盖普通提示 section，其完整行为要求由该 persona 提供。
 
-包内技能在 Host 层注册一次。项目和用户技能沿用原生 provider 的目录优先级与文件更新监听。noSkills 关闭专家的模型技能目录和 skill 工具；用户显式技能命令按宿主规则处理。
+只有已启用工作区的主会话及受管专家注册包内技能 provider。项目和用户技能沿用原生 provider 的目录优先级与文件更新监听，包内方法让位于继承的同名方法。noSkills 关闭专家的模型技能目录和 skill 工具；用户显式技能命令按宿主规则处理。
 
 普通请求包含宿主提示、pbot 约定与角色、工具声明，以及原生 AGENTS、环境与技能目录。未变的原生内容沿用；PTC 的工具目录和 run_code 由宿主管理。
 

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
@@ -25,6 +25,14 @@ async function fixture(t) {
   t.after(() => rm(root, { recursive: true, force: true }));
   const manager = SessionManager.create(root, join(root, "sessions"));
   return { root, manager, file: manager.getSessionFile() };
+}
+
+async function legacyArchive(root, record) {
+  const { host, ...value } = record, directory = join(root, "." + host, "pbot/history");
+  await mkdir(directory, { recursive: true });
+  const path = join(directory, record.id + ".json");
+  await writeFile(path, JSON.stringify(value, null, 2) + "\n");
+  return { directory, path, value };
 }
 
 test("history preserves Q&A and steering, omits tool logs, and merges only within native branches", async t => {
@@ -63,7 +71,7 @@ test("history preserves Q&A and steering, omits tool logs, and merges only withi
 test("a reserved Pi filename is quiet; unreadable history still warns and keeps the saved exchanges", async t => {
   const { root, manager, file } = await fixture(t);
   manager.appendModelChange("openai", "gpt-4.1");
-  const service = new HistoryService(root, new HistoryFiles(join(root, ".pi/pbot/history")), new PiHistory(root));
+  const service = new HistoryService(root, new HistoryFiles(join(root, ".pbot/history")), new PiHistory(root));
   t.after(() => service.close());
   const location = { directory: manager.getSessionDir(), file };
   await service.refresh(location);
@@ -80,44 +88,36 @@ test("a reserved Pi filename is quiet; unreadable history still warns and keeps 
   assert.equal(service.read(hit.id).text, original);
 });
 
-test("workspace archives retain summaries across old-store import, copying, missing originals and native file relocation", async t => {
-  const { root, manager, file } = await fixture(t), foreign = await fixture(t);
+test("Pi archives gain host, remove the old directory and retain summaries after copying and native relocation", async t => {
+  const { root, manager, file } = await fixture(t);
   for (let i = 0; i < 4; i++) exchange(manager, `迁移问题 ${i}`, `回答 ${i}`);
-  exchange(foreign.manager, "其他工作区", "不应导入");
-  const original = await readFile(file, "utf8"), previousFiles = new HistoryFiles(join(root, "user-history"));
-  const record = { ...indexHistory(projectHistory(original)), workspace: root, file };
+  const original = await readFile(file, "utf8"), record = { ...indexHistory(projectHistory(original)), file };
   const summary = record.nodes.find(node => node.kind === "summary"), needle = randomUUID();
-  summary.text = needle; summary.ready = true; previousFiles.save(record);
-  previousFiles.save({ ...indexHistory(projectHistory(await readFile(foreign.file, "utf8"))),
-    workspace: foreign.root, file: foreign.file });
-  const oldPath = join(previousFiles.directory, record.id + ".json"), oldContent = await readFile(oldPath, "utf8");
-  const files = new HistoryFiles(join(root, ".pi/pbot/history"));
-  const service = new HistoryService(root, files, new PiHistory(root), previousFiles);
+  summary.text = needle; summary.ready = true;
+  const previous = await legacyArchive(root, record);
+  const settings = join(root, ".pi/settings.json"); await writeFile(settings, "{}\n");
+  const files = new HistoryFiles(join(root, ".pbot/history")), service = new HistoryService(root, files, new PiHistory(root));
   t.after(() => service.close());
-  await service.refresh({ directory: manager.getSessionDir(), file });
+  // Only the archive is available to this scan; relocation must not depend on the native session.
+  const offline = { directory: join(root, "unavailable-native") };
+  await service.refresh(offline);
+  assert.deepEqual(service.warnings, []);
   assert.equal(service.search().total, 1);
   assert.equal(service.read(summary.id).text, needle);
-  assert.equal(Object.hasOwn(files.list()[0], "file"), false);
-  assert.equal(Object.hasOwn(files.list()[0], "workspace"), false);
-  assert.equal(await readFile(oldPath, "utf8"), oldContent);
-  // Loading again must prefer the newer workspace archive over the old user-level copy.
-  const current = files.list()[0];
-  current.nodes.find(node => node.id === summary.id).text += " updated"; files.save(current);
-  const reopened = new HistoryService(root, files, new PiHistory(root), previousFiles);
-  t.after(() => reopened.close());
-  await reopened.refresh({ directory: manager.getSessionDir(), file });
-  assert.equal(reopened.read(summary.id).text, needle + " updated");
+  assert.deepEqual(JSON.parse(await readFile(join(files.directory, record.id + ".json"), "utf8")), { ...previous.value, host: "pi" });
+  await assert.rejects(stat(previous.directory), { code: "ENOENT" });
+  await assert.rejects(stat(join(root, ".pi/pbot")), { code: "ENOENT" });
+  assert.equal(await readFile(settings, "utf8"), "{}\n");
+  await service.refresh(offline);
+  assert.deepEqual(service.warnings, []); assert.equal(service.search().total, 1);
 
-  const copiedRoot = join(root, "another-machine"), copiedFiles = new HistoryFiles(join(copiedRoot, ".pi/pbot/history"));
+  const copiedRoot = join(root, "another-machine"), copiedFiles = new HistoryFiles(join(copiedRoot, ".pbot/history"));
   await cp(files.directory, copiedFiles.directory, { recursive: true });
-  const stored = copiedFiles.list()[0], archiveFile = join(copiedFiles.directory, stored.id + ".json");
-  // An older archive's path must be removed without following it or changing the saved content.
-  await writeFile(archiveFile, JSON.stringify({ ...stored, file: foreign.file }));
   const copied = new HistoryService(copiedRoot, copiedFiles, new PiHistory(copiedRoot));
   t.after(() => copied.close());
   const location = { directory: join(copiedRoot, "native-sessions") };
   await copied.refresh(location);
-  assert.deepEqual(JSON.parse(await readFile(archiveFile, "utf8")), stored);
+  assert.deepEqual(copiedFiles.list(), [record]);
   assert.deepEqual(copied.warnings, []);
   assert.equal(copied.search().total, 1);
   const found = copied.search({ query: needle }).matches[0];
@@ -130,10 +130,79 @@ test("workspace archives retain summaries across old-store import, copying, miss
   await cp(file, relocated);
   await copied.refresh({ ...location, file: relocated });
   assert.equal(copied.search().total, 1);
-  assert.equal(copied.read(summary.id).text, needle + " updated");
+  assert.equal(copied.read(summary.id).text, needle);
   assert.deepEqual(copied.read(summary.id).source, { host: "pi", sessionId: manager.getSessionId(), entryIds: summary.entryIds });
   assert.equal(copiedFiles.list().length, 1);
   assert.equal(await readFile(file, "utf8"), original);
+});
+
+for (const host of ["pi", "dsh"]) {
+  test(`${host} migration preserves locked or conflicting archives and resumes without replacing the destination`, async t => {
+    const { root, manager, file } = await fixture(t);
+    exchange(manager, "已有问题", "已有答复");
+    const record = indexHistory(projectHistory(await readFile(file, "utf8")), undefined, host), old = await legacyArchive(root, record);
+    const oldContent = await readFile(old.path, "utf8"), files = new HistoryFiles(join(root, ".pbot/history"), host);
+    record.nodes.find(node => node.kind === "exchange").text += "\n已更新的归档"; files.save(record);
+    const target = join(files.directory, record.id + ".json"), current = await readFile(target, "utf8");
+    const sibling = join(root, "." + host, "pbot/keep.txt"); await writeFile(sibling, "other workspace data");
+    const lock = join(old.directory, ".write"); await mkdir(lock);
+    assert.throws(() => files.migrate(root));
+    assert.equal(await readFile(old.path, "utf8"), oldContent);
+    assert.equal(await readFile(target, "utf8"), current);
+    await rm(lock, { recursive: true });
+    assert.throws(() => files.migrate(root));
+    assert.equal(await readFile(old.path, "utf8"), oldContent);
+    assert.equal(await readFile(target, "utf8"), current);
+    // A reconciled duplicate still lacks host and can finish an interrupted copy.
+    await legacyArchive(root, record);
+    files.migrate(root);
+    assert.equal(await readFile(target, "utf8"), current);
+    await assert.rejects(stat(old.directory), { code: "ENOENT" });
+    assert.equal(await readFile(sibling, "utf8"), "other workspace data");
+  });
+
+  test(`${host} migration preserves the old file when publication fails or a parent alias identifies the same file`, async t => {
+    const { root, manager, file } = await fixture(t);
+    exchange(manager, "已有问题", "已有答复");
+    const record = indexHistory(projectHistory(await readFile(file, "utf8")), undefined, host), old = await legacyArchive(root, record);
+    const original = await readFile(old.path, "utf8"), shared = join(root, ".pbot"), files = new HistoryFiles(join(shared, "history"), host);
+    const blocked = join(files.directory, record.id + ".json"); await mkdir(blocked, { recursive: true });
+    assert.throws(() => files.migrate(root));
+    assert.equal(await readFile(old.path, "utf8"), original);
+    await rm(shared, { recursive: true });
+    await symlink(join(root, "." + host, "pbot"), shared);
+    assert.throws(() => files.migrate(root));
+    assert.equal(await readFile(old.path, "utf8"), original);
+    await rm(shared);
+    files.migrate(root);
+    assert.deepEqual(JSON.parse(await readFile(blocked, "utf8")), record);
+    await assert.rejects(stat(old.directory), { code: "ENOENT" });
+  });
+}
+
+test("archive host is required and independent of ID prefixes; damaged files leave valid archives readable", async t => {
+  const { root, manager, file } = await fixture(t);
+  exchange(manager, "已有问题", "已有答复");
+  const source = projectHistory(await readFile(file, "utf8"));
+  const pi = { ...indexHistory(source, undefined, "dsh"), host: "pi" }, dsh = { ...indexHistory(source), host: "dsh" };
+  const piFiles = new HistoryFiles(join(root, ".pbot/history")), dshFiles = new HistoryFiles(piFiles.directory, "dsh");
+  piFiles.save(pi); dshFiles.save(dsh);
+  assert.deepEqual(piFiles.list(), [pi]); assert.deepEqual(dshFiles.list(), [dsh]);
+  assert.throws(() => piFiles.save(dsh)); assert.throws(() => dshFiles.save(pi));
+  const service = new HistoryService(root, piFiles, new PiHistory(root), dshFiles); t.after(() => service.close());
+  const location = { directory: join(root, "unavailable-native") };
+  await service.refresh(location);
+  assert.equal(service.read(pi.id).host, "pi"); assert.equal(service.read(dsh.id).host, "dsh");
+  const path = join(piFiles.directory, pi.id + ".json"), original = await readFile(path, "utf8");
+  for (const broken of [JSON.stringify({ ...pi, host: undefined }), JSON.stringify({ ...pi, host: "other" }), "invalid JSON"]) {
+    await writeFile(path, broken); await service.refresh(location);
+    assert.equal(service.search().total, 1);
+    assert.equal(service.search().matches[0].host, "dsh");
+    assert.equal(service.warnings.length, 1);
+    assert.equal(await readFile(path, "utf8"), broken);
+  }
+  await writeFile(path, original); await service.refresh(location);
+  assert.deepEqual(service.warnings, []); assert.equal(service.search().total, 2);
 });
 
 test("history searches all levels, pages original text and links, and reuses saved summaries after refresh", async t => {

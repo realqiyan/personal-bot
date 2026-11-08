@@ -3,7 +3,8 @@
 ## 使用
 
 - [项目介绍与安装](../README.zh-CN.md) / [English](../README.md)
-- [dsh 使用](dsh.md) / [English](dsh.en.md)：profile、插件、Web 管理与聊天命令
+- [dsh 使用](dsh.md)：profile、插件、Web 管理与聊天命令
+- [工作区配置](workspace-configuration.md)：Pi/dsh 共用配置、启用范围与重载
 - [专家协作](agent-collaboration.md)：独立委派、团队、通知与恢复
 - [历史对话](history.md)：查询、摘要与归档
 - [Python 环境](../python/README.md)：准备、排障、计算库与许可
@@ -24,4 +25,4 @@
 | [npm 发布](release.md) | 候选检查、发布配置与操作 |
 | [维护脚本](../scripts/README.md) | 构建与安装包检查 |
 
-每个主题维护一份当前说明，中英文指南同步维护。测试结果放在任务、PR 或 CI 输出中，历史方案与变更过程通过 Git 查询。
+根目录 README 保留中英文版本，其他主题各维护一份当前说明。测试结果放在任务、PR 或 CI 输出中，历史方案与变更过程通过 Git 查询。

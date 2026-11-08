@@ -50,11 +50,14 @@ const { session } = await createAgentSession({ cwd: workspace, agentDir, setting
   modelRuntime, model: modelRuntime.getModels("openai-codex")[0], sessionManager: SessionManager.inMemory(workspace) });
 const errors = [];
 try {
-  await session.bindExtensions({ mode: "json", onError: error => errors.push(error) });
+  await session.bindExtensions({ mode: "json", onError: error => errors.push(error),
+    commandContextActions: { waitForIdle: () => session.waitForIdle(), reload: () => session.reload() } });
+  assert.deepEqual(loader.getSkills().skills, []);
+  assert.equal(session.getAllTools().some(tool => tool.name.startsWith("pbot_")), false);
+  await session.prompt("/pbot init");
   assert.ok(loader.getSkills().skills.length > 0);
   assert.deepEqual(session.getAllTools().map(tool => tool.name).filter(name => name.startsWith("pbot_")).sort(),
     ["pbot_agent", "pbot_history", "pbot_team", "pbot_team_message"]);
-  await session.prompt("/pbot init");
   assert.ok((await readdir(workspace)).includes("AGENTS.md"));
   assert.equal(session.messages.length, 0);
   assert.deepEqual(errors, []);

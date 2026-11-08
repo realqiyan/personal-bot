@@ -18,9 +18,9 @@ export class DshHistoryWork {
   #closing: Promise<void> | undefined;
   constructor(private readonly ctx: Context, root: string) {
     const agents = new AgentFiles(dshHomePath("pbot", "subagents"), "dsh");
-    this.service = new HistoryService(root, new HistoryFiles(join(root, ".dsh/pbot/history"), "dsh"),
+    this.service = new HistoryService(root, new HistoryFiles(join(root, ".pbot/history"), "dsh"),
       new DshHistory(ctx, root, () => agents.list().filter(value => value.workspace === root).map(value => value.agentId)),
-      undefined, new HistoryFiles(join(root, ".pi/pbot/history")));
+      new HistoryFiles(join(root, ".pbot/history")));
   }
   attach(agent: Agent) { this.#parents.add(agent); return () => { this.#parents.delete(agent); }; }
   cancel() { this.#controller?.abort(); }

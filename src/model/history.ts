@@ -19,6 +19,7 @@ export interface HistoryNode extends HistoryExchange {
   ready: boolean;
 }
 export interface HistoryRecord {
+  host: HistoryHost;
   id: string;
   sessionId: string;
   name: string;

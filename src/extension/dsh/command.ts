@@ -3,12 +3,11 @@ import type {} from "@deepseek-ai/dsh-commands";
 import { Type, type Static } from "typebox";
 import { object, json } from "../../common/json.js";
 import { requireThat, schema } from "../../common/validation.js";
-import { prepareWorkspace } from "../../services/workspace/workspace-preparation.js";
 import { executeAgent, type AgentInput } from "../../tools/agents/actions.js";
 import { dshAgentActionSchema } from "../../tools/agents/dsh-contract.js";
 import { executeTeam, executeTeamMessage } from "../../tools/teams/actions.js";
 import { teamActionSchema, teamParametersSchema, teamMessageActionSchema, teamMessageParametersSchema } from "../../tools/teams/contract.js";
-import { dshStatus, type PbotManagement } from "./management.js";
+import { dshWorkspaceStatus, type PbotManagement } from "./management.js";
 import type { DshWorkspaces } from "./workspace.js";
 
 const validAgent = schema(dshAgentActionSchema), validTeam = schema(teamActionSchema), validMessage = schema(teamMessageActionSchema);
@@ -23,20 +22,26 @@ export function registerDshCommand(ctx: Context, workspaces: DshWorkspaces, mana
     input: { hint: "status | init | python setup | agent/chat/team/post/history/records JSON", attachments: true },
     async handler({ agent, rawInput, signal, attachments, commandId }) {
       signal.throwIfAborted();
+      const command = rawInput.trim(), split = command.search(/\s/);
+      if (!command || command === "status") {
+        requireThat(!attachments.length, "状态查询不接受附件。");
+        const status = await dshWorkspaceStatus(workspaces, agent);
+        signal.throwIfAborted(); return { kind: "success", text: JSON.stringify(status, null, 2) };
+      }
+      if (command === "init") {
+        requireThat(!attachments.length, "初始化不接受附件。");
+        await workspaces.initialize(agent);
+        signal.throwIfAborted();
+        return { kind: "success", text: JSON.stringify(await dshWorkspaceStatus(workspaces, agent), null, 2) };
+      }
       const workspace = await workspaces.get(agent);
       signal.throwIfAborted();
-      const command = rawInput.trim(), split = command.search(/\s/);
       const verb = split < 0 ? command : command.slice(0, split);
       requireThat(verb === "chat" || !attachments.length, "输入框附件仅用于 chat 人工对话。");
-      if (command === "init") {
-        await prepareWorkspace(workspace.root); workspace.check();
-        return { kind: "success", text: "资料目录已准备；已有文件保留。" };
-      }
       if (command === "python setup") {
         const result = await workspaces.preparePython(); workspace.check();
         return { kind: "success", text: JSON.stringify(result, null, 2) };
       }
-      if (!command || command === "status") return { kind: "success", text: JSON.stringify(dshStatus(workspaces, workspace), null, 2) };
       requireThat(split >= 0, usage);
       const input: unknown = JSON.parse(command.slice(split));
       requireThat(object(input), "命令参数必须是 JSON 对象。");

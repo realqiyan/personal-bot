@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, mkdir, readFile, writeFile, rm, rename, symlink, realpath } from "node:fs/promises";
 import { existsSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
@@ -13,6 +13,7 @@ import { TeamService } from "../../dist/services/agents/team-service.js";
 import { PiAgents, tmuxName } from "../../dist/integrations/pi/pi-agents.js";
 import { packageVersion } from "../../dist/common/version.js";
 import childEntry from "../../dist/extension/subagent-entry.js";
+import { initializeWorkspaceConfig, workspaceConfigPath } from "../../dist/services/workspace/workspace-config.js";
 import { preparePythonFailure } from "../helpers/python-home.mjs";
 
 const owner = { sessionId: "parent", leaf: null, branch: [] };
@@ -31,6 +32,7 @@ async function isolated(t) {
       await rm(root, { recursive: true, force: true });
     }
   });
+  await initializeWorkspaceConfig(root);
   await preparePythonFailure(root);
   await mkdir(join(root, "config"), { recursive: true });
   return { root, agents, agentDir: join(root, "config") };
@@ -270,6 +272,34 @@ for (const mode of ["input", "binding-io", "missing-on-load"]) test("native chil
       assert.equal(agents.files.read(d.agentId, "launch.json", launch).generation, d.generation);
     }
     assert.equal(starts, 0); assert.equal(existsSync(manager.getSessionFile()), false);
+    assert.deepEqual(errors, []);
+  } finally {
+    await session.extensionRunner.emit({ type: "session_shutdown", reason: "quit" }); session.dispose();
+  }
+});
+
+test("workspace opt-out during Pi reload stops preserved idle children and retains their records", { timeout: 45000 }, async t => {
+  const { root, agents, agentDir } = await isolated(t);
+  const settingsManager = SettingsManager.inMemory({ packages: [resolve(".")] });
+  const loader = new DefaultResourceLoader({ cwd: root, agentDir, settingsManager, noSkills: true, noContextFiles: true });
+  await loader.reload();
+  const modelRuntime = await ModelRuntime.create({ authPath: join(agentDir, "auth.json"), modelsPath: join(agentDir, "models.json") });
+  const { session } = await createAgentSession({ cwd: root, agentDir, settingsManager, resourceLoader: loader,
+    modelRuntime, model: modelRuntime.getModels("openai")[0], sessionManager: SessionManager.inMemory(root) });
+  try {
+    const errors = []; await session.bindExtensions({ mode: "json", onError: error => errors.push(error) });
+    const tool = session.agent.state.tools.find(tool => tool.name === "pbot_agent");
+    const created = (await tool.execute("idle", { action: "start", provider: "openai", model: "gpt-4.1",
+      noSkills: true, noContextFiles: true, noPromptTemplates: true })).structuredContent;
+    await until(() => agents.files.optional(created.agentId, "status.json", status)?.state === "idle");
+    await session.reload();
+    assert.equal(agents.host.alive(created.agentId), true);
+    await writeFile(workspaceConfigPath(root), '{"enabled":false}');
+    await session.reload();
+    await until(() => !agents.host.alive(created.agentId));
+    assert.equal(session.getCallableToolNames().some(name => name.startsWith("pbot_")), false);
+    assert.equal(agents.files.read(created.agentId, "descriptor.json", descriptor).agentId, created.agentId);
+    assert.deepEqual(agents.files.completions(created.agentId), []);
     assert.deepEqual(errors, []);
   } finally {
     await session.extensionRunner.emit({ type: "session_shutdown", reason: "quit" }); session.dispose();

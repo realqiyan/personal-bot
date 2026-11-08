@@ -66,6 +66,6 @@ test("workspace close cancels setup and invalidates access without changing user
   assert.equal(signal.aborted, true);
   assert.throws(() => f.instance.check());
   assert.equal(await readFile(join(f.root, "AGENTS.md"), "utf8"), "User instructions");
-  await assert.rejects(access(join(f.root, ".pbot")), { code: "ENOENT" });
+  assert.deepEqual(JSON.parse(await readFile(join(f.root, ".pbot/config.json"), "utf8")), { enabled: true });
   await assert.rejects(service.setup());
 });

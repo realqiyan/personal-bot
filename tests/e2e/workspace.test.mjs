@@ -7,13 +7,38 @@ import { packageVersion } from "../../dist/common/version.js";
 
 const readJson = async path => JSON.parse(await readFile(path, "utf8"));
 
+test("E2E: an unconfigured workspace stays inactive until native init starts it", { timeout: 60000 }, async t => {
+  const workspace = await rpcWorkspace(t, { workspaceEnabled: false });
+  const original = "User-owned workspace instructions\n";
+  await writeFile(join(workspace.root, "AGENTS.md"), original);
+  const pi = await workspace.start();
+  const before = await pi.inspect();
+  assert.equal(before.tools.some(name => name.startsWith("pbot_")), false);
+  assert.deepEqual(before.skills, []);
+  await pi.command("/pbot status");
+  const status = () => JSON.parse(pi.records.findLast(record => record.type === "extension_ui_request" && record.method === "notify").message);
+  assert.equal(status().state, "disabled");
+  assert.equal(status().nextStep, "/pbot init");
+  await pi.command("/pbot init");
+  await pi.command("/pbot status");
+  assert.equal(status().state, "running");
+  assert.equal(status().enabled, true);
+  const after = await pi.inspect();
+  assert.ok(after.tools.includes("pbot_agent"));
+  assert.ok(after.skills.includes("provider-connections"));
+  assert.deepEqual(await readJson(join(workspace.root, ".pbot/config.json")), { enabled: true });
+  assert.equal(await readFile(join(workspace.root, "AGENTS.md"), "utf8"), original);
+  assert.equal((await pi.driver("context")).environment.workspaceRoot, workspace.root);
+  assert.equal(pi.records.some(record => record.type === "agent_start"), false);
+});
+
 test("E2E: startup reports a damaged Python environment, preserves history and leaves native Bash available", { timeout: 60_000 }, async t => {
   const workspace = await rpcWorkspace(t);
   let pi = await workspace.start();
   const resources = await pi.inspect();
   assert.deepEqual(resources.tools.filter(name => name.startsWith("pbot_")).sort(), ["pbot_agent", "pbot_history", "pbot_team", "pbot_team_message"]);
   assert.ok(resources.skills.length > 0);
-  assert.deepEqual(await readdir(workspace.root), []);
+  assert.deepEqual(await readdir(workspace.root), [".pbot"]);
   const context = await pi.driver("context");
   assert.equal(context.workspace, true);
   assert.equal(context.environment.workspaceRoot, workspace.root);
@@ -24,7 +49,7 @@ test("E2E: startup reports a damaged Python environment, preserves history and l
   await pi.command("/pbot init");
   assert.equal(await readFile(join(workspace.root, "AGENTS.md"), "utf8"), documents);
   assert.equal((await pi.driver("context")).environment.workspaceRoot, workspace.root);
-  await assert.rejects(readdir(join(workspace.root, ".pbot")), { code: "ENOENT" });
+  assert.deepEqual(await readdir(join(workspace.root, ".pbot")), ["config.json"]);
 
   await assert.rejects(pi.execute("pbot_python", { code: "print(42)" }));
   await assert.rejects(readdir(join(workspace.root, "scratch/runs")), { code: "ENOENT" });

@@ -18,6 +18,10 @@ import { registerDshHistoryTool } from "../../tools/history/dsh-tool.js";
 import { activatePython } from "../../integrations/python-activation.js";
 import { PythonEnvironmentService } from "../../services/workspace/python-environment-service.js";
 import { requireThat } from "../../common/validation.js";
+import { registerDshSkills } from "../../integrations/dsh/skills.js";
+import { readWorkspaceConfig, workspaceDisabledMessage } from "../../services/workspace/workspace-config.js";
+import type { WorkspaceConfiguration } from "../../model/workspace-config.js";
+import { initializeWorkspace } from "../../services/workspace/workspace-preparation.js";
 
 export const dshDependencies = ["agents", "sessions", "sessionPersistence", "sessionQuery", "llm", "tools", "systemPrompt", "skills", "fs", "attachments", "workingDirectory", "approval"];
 
@@ -45,6 +49,7 @@ export class DshWorkspace {
             { check: this.check, release: () => this.host.release(d.agentId, generation) });
           this.#experts.set(d.agentId, runtime);
           scope.effect(() => () => { if (this.#experts.get(d.agentId) === runtime) this.#experts.delete(d.agentId); });
+          registerDshSkills(scope, child);
           await dshResources(scope, child, root, "general-purpose", () => python.status, runtime.check);
           const teamTool = dshExpertTools(scope, child, d.options);
           if (teamTool) registerDshTeamMessageTool(scope, child, this.teams, runtime.actor, runtime.check);
@@ -67,6 +72,7 @@ export class DshWorkspace {
   async open() {
     this.check();
     this.#scope = await this.agent.ctx.plugin({ name: "pbot-coordinator", inject: dshDependencies, apply: async ctx => {
+      registerDshSkills(ctx, this.agent);
       await dshResources(ctx, this.agent, this.root, "coordinator", () => this.python.status, this.check);
       registerDshFileEvents(ctx, this.agent, this.root, false, this.check);
       registerDshAgentTool(ctx, this.agent, this.agents, this.owner, this.check);
@@ -108,7 +114,9 @@ export class DshWorkspace {
 /** The execution component owns Python; closing one Session must not undo its activation. */
 export class DshWorkspaces {
   readonly python = new PythonEnvironmentService(process.cwd());
-  readonly #parents = new Map<Agent, Promise<DshWorkspace>>();
+  readonly #parents = new Map<Agent, Promise<DshWorkspace | undefined>>();
+  readonly #initializing = new Map<string, Promise<void>>();
+  readonly #configurations = new Map<Agent, { root: string; configuration: WorkspaceConfiguration }>();
   readonly #parentEffects = new Map<Agent, () => Promise<void>>();
   readonly #histories = new Map<string, { work: DshHistoryWork; users: number }>();
   readonly #lifetime = new AbortController();
@@ -144,16 +152,29 @@ export class DshWorkspaces {
     const opening = (async () => {
       const root = await realpath(agent.session.header.cwd ?? process.cwd());
       this.#lifetime.signal.throwIfAborted();
+      const configuration = await readWorkspaceConfig(root);
+      this.#lifetime.signal.throwIfAborted();
+      this.#configurations.set(agent, { root, configuration });
+      if (!configuration.enabled) {
+        if (configuration.error) this.ctx.logger.warn(configuration.error);
+        const dispose = agent.ctx.effect(() => () => {
+          this.#parents.delete(agent); this.#configurations.delete(agent); this.#parentEffects.delete(agent);
+        });
+        this.#parentEffects.set(agent, dispose);
+        return undefined;
+      }
       const history = await this.history(root);
       let workspace: DshWorkspace | undefined;
       try {
         workspace = new DshWorkspace(this.ctx, root, agent, this.python, this.#lifetime.signal, history.work, history.release);
         const owned = workspace;
         const dispose = agent.ctx.effect(() => async () => {
-          this.#parents.delete(agent); this.#parentEffects.delete(agent); await owned.close();
+          this.#parents.delete(agent); this.#configurations.delete(agent); this.#parentEffects.delete(agent); await owned.close();
         });
         this.#parentEffects.set(agent, dispose);
-        await workspace.open(); this.#lifetime.signal.throwIfAborted(); return workspace;
+        await workspace.open(); this.#lifetime.signal.throwIfAborted();
+        void this.preparePython().catch(error => this.ctx.logger.warn(String(error)));
+        return workspace;
       } catch (error) {
         try {
           const dispose = this.#parentEffects.get(agent);
@@ -171,8 +192,43 @@ export class DshWorkspaces {
     this.#lifetime.signal.throwIfAborted();
     requireThat(this.ctx.agents.get(agent.id) === agent, "父会话已关闭。");
     const workspace = await this.open(agent);
+    const configuration = this.#configurations.get(agent)?.configuration;
+    requireThat(workspace, configuration ? workspaceDisabledMessage(configuration) : "pbot 工作区实例不可用。");
     workspace.check();
     return workspace;
+  }
+
+  async configuration(agent: Agent) {
+    this.#lifetime.signal.throwIfAborted();
+    requireThat(this.ctx.agents.get(agent.id) === agent, "父会话已关闭。");
+    await this.open(agent);
+    this.#lifetime.signal.throwIfAborted();
+    const current = this.#configurations.get(agent);
+    requireThat(current && this.ctx.agents.get(agent.id) === agent, "父会话已关闭。");
+    return current;
+  }
+
+  async initialize(agent: Agent): Promise<DshWorkspace> {
+    const { root } = await this.configuration(agent);
+    let pending = this.#initializing.get(root);
+    if (!pending) {
+      pending = (async () => {
+        await initializeWorkspace(root);
+        this.#lifetime.signal.throwIfAborted();
+        const configuration = await readWorkspaceConfig(root);
+        for (const [parent, current] of [...this.#configurations]) {
+          if (current.root !== root || this.ctx.agents.get(parent.id) !== parent) continue;
+          const workspace = await this.#parents.get(parent);
+          if (workspace) { this.#configurations.set(parent, { root, configuration }); continue; }
+          await this.#parentEffects.get(parent)?.();
+          await this.open(parent);
+        }
+      })();
+      this.#initializing.set(root, pending);
+    }
+    try { await pending; }
+    finally { if (this.#initializing.get(root) === pending) this.#initializing.delete(root); }
+    return this.get(agent);
   }
 
   preparePython() {
@@ -192,14 +248,15 @@ export class DshWorkspaces {
     this.#lifetime.abort();
     this.#closing = (async () => {
       try {
+        await Promise.allSettled(this.#initializing.values());
         const opened = await Promise.allSettled(this.#parents.values());
-        const closed = await Promise.allSettled(opened.filter(v => v.status === "fulfilled").map(v => v.value.close()));
+        const closed = await Promise.allSettled(opened.flatMap(value => value.status === "fulfilled" && value.value ? [value.value.close()] : []));
         const effects = await Promise.allSettled([...this.#parentEffects.values()].map(dispose => dispose()));
         const histories = await Promise.allSettled([...this.#histories.values()].map(value => value.work.close()));
         await this.python.close();
         const errors = [...new Set([...closed, ...effects, ...histories].flatMap(value => value.status === "rejected" ? [value.reason] : []))];
         if (errors.length) throw new AggregateError(errors, "部分 dsh 工作区未能完成关闭。");
-      } finally { this.#parents.clear(); this.#parentEffects.clear(); this.#histories.clear(); this.#restorePython?.(); this.#restorePython = undefined; }
+      } finally { this.#parents.clear(); this.#configurations.clear(); this.#parentEffects.clear(); this.#histories.clear(); this.#restorePython?.(); this.#restorePython = undefined; }
     })();
     return this.#closing;
   }

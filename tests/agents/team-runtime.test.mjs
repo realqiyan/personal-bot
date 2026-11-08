@@ -14,6 +14,7 @@ import { agentDirectory } from "../../dist/integrations/pi/pi-agents.js";
 import { schema } from "../../dist/common/validation.js";
 import { packageVersion } from "../../dist/common/version.js";
 import childEntry from "../../dist/extension/subagent-entry.js";
+import { initializeWorkspaceConfig } from "../../dist/services/workspace/workspace-config.js";
 import { host } from "../helpers/pi-host.mjs";
 
 function boundaryPreview(session, entries) {
@@ -121,6 +122,7 @@ test("main team tools use real SDK schemas, keep reads separate from notificatio
 
 for (const hasCycle of [true, false]) test("actual child reload seals accepted team work without replay: cycle=" + hasCycle, async t => {
   const root = await realpath(await mkdtemp(join(tmpdir(), "pbot-team-reload-"))), agents = new AgentFiles(join(root, "subagents"));
+  await initializeWorkspaceConfig(root);
   const owner = { sessionId: "parent", leaf: null, branch: [] }, v = saved(agents, root, owner);
   const files = new TeamFiles(agents), service = new TeamService(root, agents, files);
   files.setReady(v.agentId, v.generation, true);

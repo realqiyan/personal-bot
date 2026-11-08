@@ -1,14 +1,15 @@
-import { existsSync, mkdirSync, readdirSync, rmdirSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, mkdirSync, readdirSync, rmdirSync, unlinkSync } from "node:fs";
+import { dirname, join } from "node:path";
 import type { HistoryHost, HistoryRecord } from "../model/history.js";
-import { object } from "../common/json.js";
+import { canonical, object } from "../common/json.js";
 import { requireThat } from "../common/validation.js";
-import { readJsonFile, writeJsonFile } from "./atomic-json.js";
+import { internalPath, readJsonFile, syncDirectory, writeJsonFile } from "./atomic-json.js";
 import { fileId } from "./file-access.js";
 
 const strings = (value: unknown): value is string[] => Array.isArray(value) && value.every(item => typeof item === "string");
 function record(value: unknown): HistoryRecord {
-  requireThat(object(value) && typeof value.id === "string" && typeof value.sessionId === "string" &&
+  requireThat(object(value) && (value.host === "pi" || value.host === "dsh") &&
+    typeof value.id === "string" && typeof value.sessionId === "string" &&
     typeof value.name === "string" && Array.isArray(value.nodes), "历史索引无效。");
   for (const node of value.nodes) requireThat(object(node) && typeof node.id === "string" &&
     ["session", "exchange", "summary"].includes(String(node.kind)) && Number.isInteger(node.level) &&
@@ -20,21 +21,58 @@ function record(value: unknown): HistoryRecord {
   return result;
 }
 export class HistoryFiles {
+  #warnings: string[] = [];
   constructor(readonly directory: string, readonly host: HistoryHost = "pi") {}
-  list(workspace?: string) {
+  get warnings(): readonly string[] { return this.#warnings; }
+  list() {
+    this.#warnings = [];
     if (!existsSync(this.directory)) return [];
-    return readdirSync(this.directory).filter(name => name.endsWith(".json"))
-      .map(name => readJsonFile(this.directory, name, value => {
-        const result = record(value);
-        requireThat(this.host !== "dsh" || result.id.startsWith("dsh-"), "dsh 历史根 ID 缺少来源前缀。");
-        return result;
-      }))
-      .filter(value => workspace === undefined || ("workspace" in value && value.workspace === workspace));
+    const records: HistoryRecord[] = [];
+    for (const name of readdirSync(this.directory).filter(name => name.endsWith(".json"))) {
+      try {
+        const value = readJsonFile(this.directory, name, record);
+        requireThat(name === fileId(value.id) + ".json", "历史文件名与根 ID 不匹配。");
+        if (value.host === this.host) records.push(value);
+      } catch (error) { this.#warnings.push(join(this.directory, name) + ": " + String(error)); }
+    }
+    return records;
+  }
+  /** Publish each legacy archive with its directory's host before removing the old copy. */
+  migrate(root: string) {
+    const directory = join(root, "." + this.host, "pbot/history");
+    if (!existsSync(directory)) return;
+    this.control(() => {
+      if (!existsSync(directory)) return;
+      const legacyLock = join(directory, ".write");
+      mkdirSync(legacyLock, { mode: 0o700 });
+      try {
+        for (const name of readdirSync(directory).filter(name => name.endsWith(".json"))) {
+          const source = internalPath(directory, name), target = internalPath(this.directory, name);
+          requireThat(source !== target, "新旧历史目录指向同一位置。");
+          const value = readJsonFile(directory, name, value => {
+            requireThat(object(value) && (value.host === undefined || value.host === this.host), "旧历史归档与来源目录不匹配。");
+            return record({ ...value, host: this.host });
+          });
+          requireThat(name === fileId(value.id) + ".json", "历史文件名与根 ID 不匹配。");
+          if (!writeJsonFile(this.directory, name, value, record, true)) {
+            requireThat(canonical(readJsonFile(this.directory, name, record)) === canonical(value),
+              "历史归档迁移冲突，请核对新旧文件：" + name);
+          }
+          syncDirectory(this.directory);
+          unlinkSync(source); syncDirectory(directory);
+        }
+      } finally { rmdirSync(legacyLock); }
+      rmdirSync(directory);
+      const parent = dirname(directory);
+      syncDirectory(parent);
+      try { rmdirSync(parent); syncDirectory(dirname(parent)); }
+      catch (error) { if (!["ENOTEMPTY", "EEXIST"].includes((error as NodeJS.ErrnoException).code ?? "")) throw error; }
+    });
   }
   /** The callback is synchronous: no SDK reads or model work can hold this source's write lock. */
   control<T>(operation: () => T): T {
     mkdirSync(this.directory, { recursive: true, mode: 0o700 });
-    const lock = join(this.directory, ".write");
+    const lock = join(this.directory, ".write-" + this.host);
     try { mkdirSync(lock, { mode: 0o700 }); }
     catch (error) {
       if ((error as NodeJS.ErrnoException).code === "EEXIST") throw Object.assign(new Error("历史来源写锁被占用：" + this.host), { code: "PBOT_HISTORY_BUSY" });
@@ -43,7 +81,7 @@ export class HistoryFiles {
     try { return operation(); } finally { rmdirSync(lock); }
   }
   save(value: HistoryRecord) {
-    requireThat(this.host !== "dsh" || value.id.startsWith("dsh-"), "dsh 历史根 ID 缺少来源前缀。");
+    requireThat(value.host === this.host, "历史归档与来源不匹配。");
     mkdirSync(this.directory, { recursive: true, mode: 0o700 });
     writeJsonFile(this.directory, fileId(value.id) + ".json", value, record);
   }

@@ -19,7 +19,7 @@ test("smoke: loading the source package enables Personal Bot without creating wo
   assert.ok(resources.skills.length > 0);
   await pi.command("/pbot status");
   await pi.command("/pbot upgrade");
-  assert.deepEqual(await readdir(workspace.root), []);
+  assert.deepEqual(await readdir(workspace.root), [".pbot"]);
   assert.ok(!pi.records.some(record => record.type === "extension_error"));
   assert.deepEqual(await pi.stop(), { code: 0, signal: null });
 });
@@ -56,7 +56,7 @@ test("smoke: packed sources load tools and the standalone setup script without d
   assert.equal(JSON.parse(plan.stdout).python, join(temp, process.platform === "darwin"
     ? "Library/Application Support/pbot/python/.venv/bin/python" : "empty-data/pbot/python/.venv/bin/python"));
   await assert.rejects(readdir(join(temp, "empty-data")), { code: "ENOENT" });
-  assert.deepEqual(await readdir(workspace.root), []);
+  assert.deepEqual(await readdir(workspace.root), [".pbot"]);
   // Supply the already installed locked dependencies; do not download or install packages.
   await symlink(join(packageRoot, "node_modules"), join(packed, "node_modules"), "dir");
   const manifest = JSON.parse(await readFile(join(packed, "package.json"), "utf8"));
@@ -72,7 +72,7 @@ test("smoke: packed sources load tools and the standalone setup script without d
   assert.deepEqual(resources.tools.filter(name => name.startsWith("pbot_")).sort(), ["pbot_agent", "pbot_history", "pbot_team", "pbot_team_message"]);
   assert.ok(resources.skills.length > 0);
   assert.equal((await pi.driver("context")).environment.workspaceRoot, workspace.root);
-  assert.deepEqual(await readdir(workspace.root), []);
+  assert.deepEqual(await readdir(workspace.root), [".pbot"]);
   assert.deepEqual((await pi.tool("pbot_agent", { action: "list" })).agents, []);
   assert.ok(!pi.records.some(record => record.type === "extension_error"));
   assert.deepEqual(await pi.stop(), { code: 0, signal: null });
