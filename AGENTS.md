@@ -17,7 +17,7 @@ Personal Bot connects knowledge, research, and action. It provides a workspace-s
 - `resources/`: roles, skills, and references.
 - `tests/`: necessary Node tests using real local logic and the Pi/dsh SDKs.
 - `python/`: locked calculation dependencies, usage guidance, and native-library integration tests.
-- `docs/`: current architecture and validation limits.
+- `docs/`: current architecture and usage guides.
 - `scripts/`: build helpers and shared Python venv preparation.
 - `bin/pbot.mjs`: standalone installation CLI launcher.
 - `lib/`: generated CLI, dsh Host, and Web artifacts shipped in the npm package. Do not edit generated files.
@@ -25,7 +25,7 @@ Personal Bot connects knowledge, research, and action. It provides a workspace-s
 
 Keep the top-level layers. Group related files by domain within a layer: services use `agents/`, `workspace/`, `history/`, and `installation/`; integrations keep host protocols in `pi/` and `dsh/`, and installation adapters in `installation/`; tool contracts stay beside their domain tools. Tests use domain subdirectories under `tests/`.
 
-Read `docs/architecture-guidelines.md` for general design requirements. Read `docs/technical-design.md` for module boundaries and `docs/validation.md` for validation limits. Read `docs/capability-design.md` before changing native tool integration or execution boundaries. Personal Bot does not create or read workspace activation state, maintain a workspace format, or provide workspace upgrades. Leave existing user data, historical records, and backups untouched. Do not import old configuration automatically. Delete unused repository code. Never delete user workspaces or historical trading records.
+Read `docs/architecture-guidelines.md` for general design requirements and `docs/technical-design.md` for module boundaries. Read `docs/capability-design.md` before changing native tool integration or execution boundaries. Personal Bot does not create or read workspace activation state, maintain a workspace format, or provide workspace upgrades. Leave existing user data, historical records, and backups untouched. Do not import old configuration automatically. Delete unused repository code. Never delete user workspaces or historical trading records.
 
 Release versions use `MAJOR.MINOR.PATCH` from `package.json`; bundled components share that release. Subagent compatibility follows the minor line before 1.0, then the major line. Keep persisted subagent contracts unchanged within a line; do not add storage or upgrade version counters.
 
@@ -73,6 +73,15 @@ Use TypeScript ESM, two-space indentation, double quotes, semicolons, and `.js` 
 
 Use camelCase for variables and functions, PascalCase for types, and kebab-case for multiword filenames. Keep host details in their integration.
 
+## Communication and Documentation
+
+These rules apply to user-facing natural-language explanations. They do not change task requirements, operation permissions, required confirmations, or prescribed product output formats.
+
+- Answer the current question directly. Do not routinely append negative caveats such as “cannot prove,” “does not imply,” or “cannot guarantee,” invent unasked inferences to refute, or use disclaimers instead of an answer.
+- State each material uncertainty, condition, and risk once, clearly and where it matters. Keep necessary information without repeating qualifications after every finding, source, or recommendation.
+- Maintain current documentation by topic and reader need. Consolidate and rewrite existing sections instead of appending patches. Keep user guides focused on decisions and operations; put necessary implementation details in the relevant developer document.
+- Remove obsolete plans, duplicated explanations, incident timelines, and test diaries. Report test results in the task, PR, or CI output; do not maintain a chronological validation document. Git preserves change history.
+
 ## Tests
 
 Use `node:test` and `node:assert/strict`. Import compiled modules from dist. Test concrete correctness risks, not coverage counts or implementation structure.
@@ -81,7 +90,7 @@ Do not use mocks, stubs, fake models, simulated providers, real trades, or perso
 
 Do not test documentation, prompt text, labels, or message wording. Parsing and serialization may verify structured values when they form the logic contract.
 
-Real model and external provider acceptance requires an approved environment. Record remaining gaps; local tests do not prove those behaviors.
+Real model and external provider acceptance requires an approved environment. Report the actual checks and any material unresolved issues with the task results.
 
 ## Submission
 

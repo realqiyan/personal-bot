@@ -4,43 +4,24 @@ English | [简体中文](dsh.md)
 
 Personal Bot uses dsh's native Web interface for workspace materials, specialists, teams, history, and Python preparation. Pi and dsh share materials, roles, methods, and collaboration rules while owning their own native sessions, model settings, authentication, and MCP configuration.
 
-Install and update with `latest`; there is no exact dsh version pin for users. The current source declares a minimum host version of `>=0.2.2-rc.1` and uses `"*"` optional peers for dsh SDK packages supplied by the host. Development dependencies and the lockfile retain exact versions for reproducible checks. On 2026-11-07, npm's `latest` was `0.2.2-rc.1`, the currently tested baseline. The `latest` tag may name a prerelease; a version range does not establish acceptance of future releases. `personal-bot@0.2.6` uses the old exact host constraint; the minimum-version declaration starts with `0.2.7`. If an old package rejects your host version, use `0.2.7` or newer, or build the current source as described below.
-
-This guide separates terminal commands from `/pbot` commands entered in chat. After an upgrade, consult the installed version's help. Completed checks and remaining real-model acceptance work are recorded in the [implementation record](dsh-implementation-plan.md) and [validation](validation.md).
+Install and update with the latest dsh release. The minimum host version is `0.2.2-rc.1`. This guide separates terminal commands from `/pbot` chat commands; consult the installed version's help after updates.
 
 ## Installation and first start: CLI and browser
 
-You need Node.js 24.9+, npm, pnpm, and Python 3.11+ with venv/ensurepip. If a newer dsh release raises its Node.js requirement, follow its `engines` declaration. Pi and the standalone `pbot` installer still support Node.js 22.19+. Full development and acceptance for both hosts use Linux. `pbot setup` installs for Pi; dsh uses native plugins and profiles.
-
-In a terminal, check the requirements and install the latest dsh and pnpm, which native plugin management requires:
+You need Node.js 24.9+, npm, pnpm, and Python 3.11+ with venv/ensurepip. Follow dsh's engines if a newer release raises its runtime requirement. Install through native profiles and plugin management:
 
 ```bash
-node --version
-npm --version
-python3 --version
 npm view @deepseek-ai/dsh@latest version engines --json
 npm install -g @deepseek-ai/dsh@latest pnpm@latest
-dsh --version
-pnpm --version
-```
-
-Run this only when first creating a separate `pbot` Web profile:
-
-```bash
+# First creation only; this replaces an existing profile of the same name.
 dsh --profile pbot --from-default-profile web --dump-config
-```
-
-`pbot` is a profile name you choose; use the same name in subsequent commands. `--from-default-profile web` **replaces an existing profile of the same name**. Here, `--dump-config` prints the configuration and exits after creation; it does not make the entire command read-only. Do not repeat it during updates.
-
-Install Personal Bot and start the profile:
-
-```bash
 dsh plugin --profile pbot add personal-bot@latest
-dsh plugin --profile pbot list personal-bot --depth 0
 dsh --profile pbot
 ```
 
-dsh starts the Web server, prints a URL containing an access token, and normally opens a browser. Over SSH or with `--no-open`, open the reachable address yourself. The URL contains an access credential; do not share it publicly. In Web, select your workspace and main session, configure models and authentication through native settings, then enter these commands in chat:
+`pbot` is a profile name you choose; use it consistently. Do not repeat `--from-default-profile` when updating an existing profile.
+
+dsh starts the Web server and normally opens a browser. Over SSH or with `--no-open`, open the printed URL yourself; keep its access token private. Select a workspace and main session, configure models and authentication, then enter in chat:
 
 ```text
 /pbot status
@@ -48,9 +29,9 @@ dsh starts the Web server, prints a URL containing an access token, and normally
 /pbot
 ```
 
-`status` shows the workspace, release, model, Python, specialists, teams, and history preparation state. `init` optionally creates missing material directories and a missing root `AGENTS.md`. Select the bare `/pbot` action to open management. Existing files are preserved, and initialization is not required for activation. These operations do not call a model. Loading the plugin automatically prepares and activates the current user's shared Python venv and may download locked dependencies. If preparation fails, repair the base environment and run `/pbot python setup`.
+`status` inspects state; optional `init` creates missing material directories and root AGENTS while preserving existing files; bare `/pbot` opens management. Loading the plugin prepares the user's shared Python venv. If preparation fails, repair the prerequisites and run `/pbot python setup`.
 
-One profile can manage multiple workspaces. pbot binds to the root directory present when the main session is created. Later native cwd changes affect relative path resolution, not the root for materials and history. The current Web default uses the host account's system Documents directory. Use the native workspace picker to select a directory; test deployments can configure `workspace-controller.documentsDirectory`. Setting `HOME` or changing the launch directory alone does not change the system Documents policy.
+One profile can manage multiple workspaces. Choose a directory through the native workspace picker; the default is the system Documents directory. pbot binds to the root at main-session creation. Later cwd changes affect relative path resolution.
 
 ## Daily startup and terminal commands
 
@@ -87,7 +68,7 @@ The three `--dump-*` options are mutually exclusive. Configuration output may co
 | `--trusted-host app.example` | Add a hostname or host:port accepted by the native Host/Origin check |
 | `--tls-cert /path/server-chain.pem --tls-key /path/server-key.pem` | Supply a certificate chain and unencrypted PEM private key together to enable listener HTTPS |
 
-For remote deployment, follow the [native dsh Web documentation](https://github.com/deepseek-ai/deepseek-harness/tree/main/packages/bundle/web-app) for proxy, network access, and authentication. Startup or tool visibility does not prove model authentication or successful task execution.
+For proxy, network access, and authentication settings, see the [native dsh Web documentation](https://github.com/deepseek-ai/deepseek-harness/tree/main/packages/bundle/web-app).
 
 ## Updating, inspecting, and removing plugins
 
@@ -102,7 +83,7 @@ dsh plugin --profile pbot list personal-bot --depth 0
 dsh --profile pbot
 ```
 
-`update personal-bot --latest` selects only Personal Bot for an update to the current `latest`, even when that is outside the saved version range. Without `--latest`, update respects the existing declaration. The profile's native lockfile records the resolved version; that does not require users to stay on it indefinitely. After updating, check the version and environment with `/pbot status`. Previous specialists need explicit resumption. Disabling or reloading the plugin can also release specialists.
+`update personal-bot --latest` selects only Personal Bot for an update to the current `latest`, even when that is outside the saved version range. Without `--latest`, update respects the existing declaration. After updating, check the version and environment with `/pbot status`. Previous specialists need explicit resumption. Disabling or reloading the plugin can also release specialists.
 
 Package arguments after `dsh plugin --profile pbot` are forwarded to pnpm. Select the correct profile:
 
@@ -137,17 +118,42 @@ dsh plugin --profile pbot add /absolute/path/to/personal-bot-<version>.tgz
 dsh --profile pbot
 ```
 
-The local path replaces the registry installation command; do not install a second copy of the plugin. Rebuild and install a new tarball for subsequent source updates. To switch back to the registry, explicitly run `dsh plugin --profile pbot add personal-bot@latest`; do not rely on update to convert a local file source. Installing an older registry package does not apply unpublished source changes.
+Rebuild and install a new tarball to update a local source. To switch to the registry, run `dsh plugin --profile pbot add personal-bot@latest`.
 
 ## Desktop application
 
-In DeepSeek Harness, open **Plugins → Add plugin**, enter `personal-bot@latest`, and install and enable it. For development acceptance, enter an absolute path to a local `.tgz` instead. Desktop supplies its own runtime and package management; you do not need to start the npm dsh CLI separately.
+In DeepSeek Harness, install and enable `personal-bot@latest` through **Plugins → Add plugin**, or enter an absolute local tarball path. Desktop provides its runtime and package manager. Update the host and plugins through the application.
 
-The CLI's `pbot` profile and Electron's `desktop` profile are separate. The ordinary npm dsh CLI does not manage `desktop`, and CLI profile installations do not appear in the application automatically. Update the desktop host through its own update mechanism and update plugins through its native Plugins page.
+Desktop uses its own desktop profile, separate from the CLI's pbot profile. It reads the login shell environment, where Python 3.11+ must be on PATH. After installation, select a workspace and main session and inspect the environment with `/pbot status`.
 
-The application reads the login shell environment. Required Python executables must be visible on that PATH; a terminal's PATH may differ from the backend's actual environment. After installation, select a workspace and main session, then use `/pbot status` and the bare `/pbot` action to inspect the environment and management pages.
+## Task Conductor
 
-The macOS desktop application `0.2.2-rc.1`, with bundled Node.js 24.21.0, has been tested using a tarball: four tabs, attachments, full records, team failure and pause, history queries, and refresh. Isolated Python preparation and five native-library tests passed. This does not establish a fresh registry installation or successful model workflows; see [validation](validation.md).
+Use optional `task-conductor-plugin` for schedules, recurring workflows, and DAGs. Install the plugin and service separately; configuration and updates follow the [upstream integration guide](https://github.com/realqiyan/task-conductor/blob/master/docs/host-integrations.md).
+
+The dsh integration is part of the unpublished Task Conductor 0.1.6 candidate. Until publication, build the plugin and service from the same source:
+
+```bash
+cd /absolute/path/to/task-conductor
+npm ci --ignore-scripts
+npm pack
+npm run pack:plugin
+```
+
+Install using the actual generated tarball paths:
+
+```bash
+dsh plugin --profile pbot add /absolute/path/to/task-conductor-plugin-<version>.tgz
+npm install -g /absolute/path/to/task-conductor-<version>.tgz
+task-conductor setup
+```
+
+For an existing service, follow the [upstream upgrade steps](https://github.com/realqiyan/task-conductor/blob/master/docs/upgrades.md) and preserve its service directory and data. Desktop users install the same plugin tarball through the application's Plugins page.
+
+Restart the host and read `/using-task-conductor` in the main session. Use `/task-conductor status` to inspect the connection and `/task-conductor connect` after configuration repairs. The plugin creates a native MCP connection; adjust any existing connection with the same name through the upstream guide.
+
+Notifications return to the session that submitted the task. Service tasks continue when pages or hosts close. Query and stop the current run and future recurrences separately.
+
+To execute nodes with dsh, follow the upstream [custom ACP instructions](https://github.com/realqiyan/task-conductor/blob/master/plugin/skills/using-task-conductor/references/custom-acp.md). Register `dsh-acp` with dsh's canonical absolute executable path and `["--profile", "acp"]` arguments. Configure node models, tools, authentication, and Python separately.
 
 ## Management interface and lifecycle
 
@@ -164,9 +170,9 @@ Wide windows use side navigation; narrow windows use top navigation. Specialists
 
 Pages query native Remotes without starting specialists, acknowledging model notifications, or generating summaries. Human commands retain native audit records. Closing the panel cancels uploads not yet accepted. Closing, refreshing, or reconnecting a page does not stop accepted work. If an outcome is unclear, inspect status and records before taking further action.
 
-Disabling the server component, releasing its parent Agent, or fully quitting Desktop pauses scheduling and releases the specialists it owns. Reopening a page, restarting the host, or enabling the plugin reads saved records; continuing work requires explicit resumption. Closing a browser and releasing the server-side parent Agent are different events.
+Disabling the server component, releasing its parent Agent, or fully quitting Desktop pauses scheduling and releases the specialists it owns. Reopening a page, restarting the host, or enabling the plugin reads saved records; continuing work requires explicit resumption.
 
-The main session needs a one-time native approval for write, edit, or apply_patch outside the original workspace. Those tools reject such changes from specialists. These checks do not isolate Bash, Python, MCP, or other extensions.
+The main session needs a one-time native approval for write, edit, or apply_patch outside the original workspace. Those tools reject such changes from specialists. Bash, Python, MCP, and extensions use actual account permissions; see [tools and execution](capability-design.md).
 
 ## Chat command reference
 
@@ -215,7 +221,7 @@ A start without initial text or files creates an idle specialist and makes no mo
 | `tools` | A nonempty array of native capability tool names, not the `run_code` transport name; team members must retain `pbot_team_message` |
 | `noSkills` | Defaults to false; true disables model skill discovery and the skill tool; explicit user skill commands retain native behavior |
 
-Specialist creation and resume apply the parent's native preset, including its file tools, AGENTS files, and skill discovery, before applying specialist tool restrictions. The Host supplies bundled skills; project and user skills retain native precedence and update watching. An explicit complete persona can replace pbot's shared and role instructions. Users selecting that persona must maintain its full behavior requirements. See [model context](model-context.md).
+Specialist creation and resume apply the parent's native preset, including its file tools, AGENTS files, and skill discovery, before applying specialist tool restrictions. An explicit complete persona supplies its full behavior requirements through the host.
 
 Pi-only `noExtensions`, `noPromptTemplates`, and `noContextFiles` are rejected. `send.delivery` is `steer` by default, to supplement current work, or `followUp`, for after current work. `send/resume` do not accept files, prompts, or model-change options. A team reservation blocks private send; pause the team and let in-flight work finish first.
 
@@ -234,7 +240,7 @@ After confirming that the specialist has stopped, resume with a new request:
 /pbot agent {"action":"resume","agentId":"AGENT_ID","message":"Check the new material and report only what changed."}
 ```
 
-Report read selects the latest cycle by default. Offset defaults to 0; limit defaults to 16000, with a range of 1–16000 UTF-16 code units. For subsequent pages, keep the returned `cycle.cycleId` and pass `nextOffset` as offset; null means the current report is fully read. An idle state does not prove success: inspect `cycle.state` and the actual result. Human read commands do not acknowledge model completion notifications. A successfully submitted model-tool read result or actual consumption of a notification does.
+Report read selects the latest cycle by default. Offset defaults to 0; limit defaults to 16000, with a range of 1–16000 UTF-16 code units. For subsequent pages, keep the returned `cycle.cycleId` and pass `nextOffset` as offset; null means the current report is fully read. Inspect `cycle.state` and the report for work results. Human reads preserve the model's completion notification.
 
 ## Human chat and full records
 
@@ -245,7 +251,7 @@ Report read selects the latest cycle by default. Offset defaults to 0; limit def
 /pbot records {"agentId":"AGENT_ID","offset":0,"limit":30}
 ```
 
-Relative chat file paths use the specialist's cwd fixed at creation. Choose either server files or local input attachments, up to 32 per request. Image formats and byte limits follow native admission rules. Use native input controls for uploads; do not send a JSON `attachments` field. Chat automatically pauses the specialist's team first and rejects input if pausing fails. After a successful pause, it can steer in-flight work. A queued result means only that the input was queued. Human intervention creates interactive/mixed cycles that are not automatically published. Shared specialist context is not a confidentiality boundary. The specialist must be live; resume it first if stopped.
+Relative chat file paths use the specialist's cwd fixed at creation. Choose either server files or local input attachments, up to 32 per request. Image formats and byte limits follow native admission rules. Use native input controls for uploads; do not send a JSON `attachments` field. Chat automatically pauses the specialist's team first and rejects input if pausing fails. After a successful pause, it can steer in-flight work. A queued result means only that the input was queued. Human intervention creates interactive/mixed cycles that are not automatically published. Create a new specialist when you need a separate confidential context. The specialist must be live; resume it first if stopped.
 
 `records` reads complete events, distinct from the final report returned by agent read. It can read stopped specialists without resuming them or acknowledging notifications.
 
@@ -295,11 +301,11 @@ Pause does not stop specialists. Wait until status reports `activeCount=0` befor
 /pbot team {"action":"close","teamId":"TEAM_ID"}
 ```
 
-There is no team resume action; continue by starting a new run with a new instruction. A paused team may still have in-flight requests. Unresolved results can include failures, unknown outcomes, or mixed input and do not authorize automatic retries. Only normally completed, pure team responses are automatically published. See [specialist collaboration](agent-collaboration.md) for the full rules.
+There is no team resume action; continue by starting a new run with a new instruction. A paused team may still have in-flight requests. Unresolved results can include failures, unknown outcomes, or mixed input; query reports and actual status before continuing. Only normally completed, pure team responses are automatically published. See [specialist collaboration](agent-collaboration.md) for the full rules.
 
 `/pbot post` requires teamId and nonblank text of at most 24000 characters. Optional `replyTo` references an existing message seq, ≥1. A stored result means only that the message was saved; it does not wake a model or add a round. Closed teams reject new posts. Human authors are user; the model tool `pbot_team_message` requires `action:"post"` or `action:"read"`, and the service determines coordinator/member authorship.
 
-Public-message read defaults afterSeq to 0 and returns later messages. Seq starts at 1 and can select one message. Offset defaults to 0; a nonzero offset requires seq. Limit defaults to 16000, range 1–16000 UTF-16 code units across message bodies, not a message count. Finish a truncated body using its seq and `nextOffset`, then continue the list with the list's `nextAfterSeq` as afterSeq. Reaching the end of the list does not establish that the last message body has been fully read.
+Public-message read defaults afterSeq to 0 and returns later messages. Seq starts at 1 and can select one message. Offset defaults to 0; a nonzero offset requires seq. Limit defaults to 16000, range 1–16000 UTF-16 code units across message bodies, not a message count. Finish a truncated body using its seq and `nextOffset`, then continue the list with the list's `nextAfterSeq` as afterSeq.
 
 ## History queries
 
@@ -330,4 +336,4 @@ Pi maintains `.pi/pbot/history/`, and dsh maintains `.dsh/pbot/history/`. Both q
 | `pbot_team_message` | read, post; read uses team-read paging, and post takes teamId/text/optional replyTo |
 | `pbot_history` | search, read |
 
-Models use the actual tool schemas; people use the commands or management pages above. Chat and records are human management entries without model tools of the same names. Tool availability, queued input, native protocol success, and completed business work are separate facts. Act within the user's authorization and verify the actual result.
+Models use the actual tool schemas; people use the commands or management pages above. Chat and records are human management entries without model tools of the same names.

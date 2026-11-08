@@ -22,7 +22,7 @@ Pi 加载 Personal Bot、原生 `/reload`，或 dsh 加载 pbot Host 组件时�
 
 ## 失败与手工重试
 
-环境异常时提醒，并在状态中保留错误。pbot 的其他能力仍可使用，但不把 Python 标记为就绪，也不替模型自动换用系统 Python 执行研究。原生 Bash 仍然可用，这不是命令黑名单或系统隔离。
+环境异常时提醒，并在状态中保留错误。pbot 的其他能力仍可使用，但不把 Python 标记为就绪，也不替模型自动换用系统 Python 执行研究。原生 Bash 仍然可用。
 
 检查错误后可执行：
 
@@ -34,7 +34,7 @@ Pi 加载 Personal Bot、原生 `/reload`，或 dsh 加载 pbot Host 组件时�
 
 安装只接受 wheel，不编译 C 库、不安装系统软件，不绕过系统 Python 的安装保护。没有匹配 wheel、网络不可用、权限不足或环境损坏时停止。TA-Lib wheel 包含底层库，但并非所有系统和架构都有匹配 wheel。pip 安装配置被忽略，避免包被重定向到其他目标。
 
-多个 pbot 进程同时启动时，通过共享排他锁串行准备，后取得锁的进程重新检查。锁文件不删除。该锁不管理普通 Python 进程；更换插件版本或手工重试前，应停止使用该环境的脚本。不同插件版本可能要求不同依赖，不宜同时使用。不能承诺自动更新不会影响已运行的外部脚本。
+多个 pbot 进程同时启动时，通过共享排他锁串行准备，后取得锁的进程重新检查。锁文件不删除。该锁不管理普通 Python 进程；更换插件版本或手工重试前，应停止使用该环境的脚本。不同插件版本可能要求不同依赖，不宜同时使用。
 
 ## 独立准备
 
@@ -51,7 +51,7 @@ python3 scripts/setup-python.py --check  # 只检查，不创建或安装
 
 setup 安装 numpy、pandas、TA-Lib、backtesting、scipy、statsmodels、matplotlib、scikit-learn、pyarrow、openpyxl、seaborn 和 Bokeh。按任务导入，环境与项目运行见[计算参考](../resources/references/compute.md)，需要技术指标或回测时再读[指标与回测](../resources/references/compute-finance.md)。市场规则、费用、成交时点和数据切分由具体研究确定，原生 Backtest 不自动提供 A 股 T+1、整手或涨跌停约束。
 
-激活后直接执行 `python scripts/analyze.py` 或 `python -m analysis.main`。工作目录、模块导入、参数和结果位置遵循项目约定。项目构建或测试明确要求另一环境时，按项目约定执行。pbot 不复制源码、不生成输入文件或计算记录、不管理研究进程的超时。Python 与 Bash 不是文件或网络沙箱，也不授予交易权限。
+激活后直接执行 `python scripts/analyze.py` 或 `python -m analysis.main`。工作目录、模块导入、参数和结果位置遵循项目约定。项目构建或测试明确要求另一环境时，按项目约定执行。pbot 不复制源码、不生成输入文件或计算记录、不管理研究进程的超时。Python 与 Bash 使用实际账户权限，操作范围见[工具与执行](../docs/capability-design.md)。
 
 在已激活环境中验证：
 
@@ -60,7 +60,7 @@ python -m pip check
 python -B -m unittest discover -s python/tests -v
 ```
 
-Node 测试使用真实本地文件、进程、临时 venv 与 Pi/dsh 原生 Bash，验证检查、错误、取消和激活恢复；不下载依赖。完整安装与库测试使用准备好的真实环境，不能以损坏环境的启动测试替代成功安装验收。Python 集成测试验证原生库配合与文件往返，不证明市场规则或策略有效；macOS 的 dsh 桌面应用已在临时 HOME 中完成真实依赖安装、就绪激活、pip check 与 5 项原生库测试；真实模型使用这些库的行为仍需验收。
+Node 测试检查环境探测、错误、取消与激活恢复，使用临时 venv 和原生 Bash。上述 Python 测试在已准备的环境中检查原生库配合与文件往返。
 
 依赖版本独立于插件版本。更新锁文件须检查最低 Python 3.11 与目标环境的兼容性，不只按开发机选择最新版。
 

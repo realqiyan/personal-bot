@@ -1,25 +1,26 @@
 # 维护脚本
 
-## Python 环境准备
+## 构建
 
-`setup-python.py` 创建当前用户的共享 venv，按 requirements.lock 安装依赖。Personal Bot 加载后自动调用；也可独立执行，或通过 /pbot python setup 重试。
+| 命令 | 作用 |
+| --- | --- |
+| `npm run build` | 清理 dist，编译测试模块，再构建 CLI 与 dsh 产物 |
+| `npm run build:cli` | 清理 lib，编译独立安装器、Pi 检查桥接与启动保护 |
+| `npm run build:dsh` | 编译 Host，将 TypeBox 与许可证纳入 lib，再构建原生 Web Loader 模块 |
 
-脚本不接受解释器路径，不修改工作区资料或历史记录。路径、激活和失败处理见 [Python 说明](../python/README.md)。
+完整构建与 prepack 先构建 CLI，再构建 dsh。宿主 SDK 保持 external；dsh 编译模块引用包内 TypeBox，原模块位置保留。Pi 扩展由宿主直接加载 src。
 
-## 安装 CLI 构建
+## 安装包检查
 
-`npm run build:cli` 调用 `build-cli.mjs`，清理生成目录 lib，再按 tsconfig.cli.json 编译独立 CLI、Pi 检查桥接和启动保护。bin/pbot.mjs 转交已生成的入口。npm test 的构建与 prepack 都执行此步骤；扩展运行仍由 Pi 加载 src 源码。消费者直接使用发布包中的 lib，无需安装开发依赖。
+先运行 `npm pack`，再将生成的 tarball 路径传给检查脚本：
 
-## dsh 构建
+| 命令 | 检查内容 | 环境 |
+| --- | --- | --- |
+| `node scripts/check-consumer.mjs <tarball>` | 独立 CLI、Pi 扩展、技能、工具与资料初始化 | CI 使用 Node.js 22.19.0，脚本安装锁定的 Pi SDK |
+| `node scripts/check-dsh-consumer.mjs <tarball>` | dsh 原生插件安装、独立 CLI 与 Host 导入；检查无需单独安装 TypeBox 或宿主 SDK | Node.js 24.9+、仓库开发依赖和 PATH 中的 pnpm |
 
-`npm run build:dsh` 调用 `build-dsh.mjs`，由 tsconfig.dsh.json 编译 Host 与浏览器入口，再用 esbuild 将 Web 代码包装为当前开发基线的原生包根 Loader 模块。宿主 SDK 保持 external；完整 build 和 prepack 先构建 CLI、再构建 dsh，统一输出到 lib。
+脚本使用隔离的用户目录、宿主配置与工作目录，完成后清理临时目录。两项检查均不调用模型；Pi 使用预置故障目录跳过 Python 依赖下载，dsh 通过原生 schema 收集导入 Host。
 
-## 发布包消费者检查
+## Python 准备
 
-`node scripts/check-consumer.mjs <tarball>` 在临时目录安装实际发布包，先检查独立 CLI 与宿主 SDK 缺省状态，再安装 package.json 中锁定的 Pi SDK，验证扩展、工具、技能和资料初始化。CI 使用 Node.js 22.19.0 执行，完整开发依赖、dsh 构建和全量测试仍使用 Node.js 24.9+。检查使用独立用户目录与损坏 Python 目标，不下载计算依赖或调用模型；结束后删除本次临时目录。
-
-## 构建清理
-
-`clean-dist.mjs` 由 npm run build 调用，仅清理仓库内生成的 dist/，供 TypeScript 重新编译测试导入。
-
-本包不提供工作区升级命令或历史转换脚本。插件安装和更新由对应宿主的原生包管理或用户维护的源码目录负责。
+`setup-python.py` 按 `python/requirements.lock` 准备用户共享 venv。Personal Bot 加载时自动调用，也可运行独立脚本或 `/pbot python setup`。路径、依赖与排障见 [Python 说明](../python/README.md)。

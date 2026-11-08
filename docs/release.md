@@ -40,13 +40,13 @@ npm pack
 
 prepack 依次执行 `npm run check`、`npm run build:cli`、`npm run build:dsh`。核对包清单包含 bin、lib（含 dsh Host/Web 产物）、src、resources（含 dsh bundle patch）、Python 锁文件、setup 脚本和 npm-shrinkwrap.json，排除 dist、node_modules、凭据与运行数据。核对包根与 `./dsh` 导出指向 `./lib/dsh.js`、`./client` 指向 `./lib/client.js`，以及 dsh bundle/client 元数据完整。
 
-Pi/dsh 宿主包保持 optional peerDependencies，避免独立 CLI 安装时隐式下载宿主 SDK。dsh SDK peer 范围为 `"*"`，最低宿主要求由 `engines.dsh` 声明；用户安装跟随 `latest`，开发依赖及锁文件保留精确版本。发布验收记录实际 dsh/pnpm 版本，不把最低版本声明视为未来版本已验收。共享契约库 TypeBox 是范围为 `"*"` 的必需 peer，开发依赖锁定版本；Pi 原生加载器提供它，dsh 安装时由包管理器补齐。另在独立 npm cache/prefix 中验证 tarball 的 npm exec 与全局 pbot --version，检查未额外安装 Pi/dsh SDK。
+依赖与产物规则见[技术设计](technical-design.md#工具与分发)，安装包检查入口见[维护脚本](../scripts/README.md)。
 
-在独立 Pi 配置和临时工作区验收安装；加载扩展会准备用户级 Python 环境，因此验收同时使用独立用户数据目录。再按[dsh 使用说明](dsh.md)，在当前 dsh `latest` 的隔离 Web profile 中通过原生插件命令安装同一 tarball，并记录实际宿主版本，核对 Host 启用、包根 Web 客户端加载、`/pbot` 四页签及原生 Remote 查询。验证范围与剩余缺口见[验证](validation.md)。
+使用隔离的用户目录、宿主配置和临时工作区检查候选包，避免自动 Python 准备影响日常环境。Pi 检查扩展、技能、工具与初始化；dsh 检查 Host、Web 管理页和 Remote 查询。实际版本、结果与未决问题在发布 PR 或 CI 输出中说明。
 
 ## GitHub 发布
 
-[CI](../.github/workflows/ci.yml) 在 Node 24.x 安装完整开发依赖、执行检查和测试，再生成候选 tarball；独立 Node 22.19.0 作业安装同一 tarball，检查 CLI 不隐式安装宿主 SDK，再显式安装锁定的 Pi SDK，验证扩展、工具、技能和资料初始化。独立消费者作业仅验证 Pi/CLI，不安装 dsh 开发依赖，不调用模型；全量测试中的 dsh 本地 SDK 测试不代表候选包的包根 Web 加载和 Remote 传输已自动验收。dsh 原生安装与界面按上述步骤单独验证。[发布工作流](../.github/workflows/publish.yml)要求：
+[CI](../.github/workflows/ci.yml) 在 Node 24.x 执行全量检查、构建候选包并检查 dsh 原生安装和 Host 导入；独立 Node 22.19.0 作业检查同一 tarball 的 CLI 与 Pi 加载。[发布工作流](../.github/workflows/publish.yml)要求：
 
 - tag 为 v<稳定版本>，包与锁文件版本一致。
 - 提交已进入远端默认分支。
@@ -93,8 +93,8 @@ npm view personal-bot dist-tags --json --registry=https://registry.npmjs.org
 
 在独立 npm cache/prefix 中从公开 registry 全新安装发布版本，验证 npx 入口与全局 pbot 命令。再在独立 Pi 配置和临时工作区执行 `pi install --local npm:personal-bot`，核对安装版本、扩展加载、技能发现和 /pbot status。
 
-按[dsh 使用说明](dsh.md)，使用当前 dsh 和 pnpm，在独立 profile 中通过原生插件命令安装公开 registry 的目标版本，记录实际宿主与插件版本，核对 Host 启用、包根 Web 客户端加载、`/pbot` 管理页及 Remote 查询。安装与无模型检查不代表成功模型工作流已验收，结果记录在[验证](validation.md)。
+按[dsh 使用说明](dsh.md)，在独立 profile 安装公开 registry 的目标版本，核对 Host 启用、Web 管理页和 Remote 查询。
 
 上传结果不明时先查询 registry。若上传完成但后续查询失败，手动运行 Publish npm，选择原版本 tag 并保持 verify_only=true。该模式重新执行检查与 registry 查询，不上传；目标版本已不是 latest 时会失败。不要直接重跑原上传作业，也不要移动已发布 tag。
 
-已发布版本不可覆盖。问题修复由维护者选择新版本、弃用说明或 dist-tag 调整。2026-11-06，提交 `1625a78af324de412ba12b0689de6c9ebde61698` 的 0.2.6 已通过 OIDC 发布及公开版本/latest 查询；公开 registry 只读核对确认该版本存在、latest 为 0.2.6，且包含 dsh Host/Web 入口。0.2.6 从公开 registry 全新安装的 npx、Pi 与 dsh 验收仍待完成，证据及范围见[CI 与发布记录](validation.md#ci-与发布2026-11-06)。
+已发布版本不可覆盖。问题修复由维护者选择新版本、弃用说明或 dist-tag 调整。

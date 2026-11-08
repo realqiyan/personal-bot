@@ -4,43 +4,24 @@
 
 Personal Bot 使用 dsh 原生 Web 界面，提供工作区资料、专家、团队、历史查询和 Python 环境。它与 Pi 共用资料、角色、方法及协作规则，各自管理原生会话、模型配置、认证与 MCP。
 
-用户安装和更新使用 `latest`，不精确锁定 dsh 版本。当前源码的最低宿主要求为 `>=0.2.2-rc.1`，dsh SDK 使用 `"*"` optional peer，由宿主提供；开发依赖与锁文件保留精确版本，以便复现检查。2026-11-07 核对时，npm 的 `latest` 为 `0.2.2-rc.1`，也是目前已验证的基线。`latest` 标签可能指向预发布版；版本范围不证明未来版本已通过验收。`personal-bot@0.2.6` 使用旧的精确宿主约束，最低版本声明从 `0.2.7` 起生效；遇到旧包兼容拒绝时，使用 `0.2.7` 或更新版本，或按下文构建当前源码。
-
-本文分别介绍终端命令和聊天框中的 `/pbot` 命令。升级后以实际安装版的帮助为准。已完成检查及真实模型验收缺口见[实施记录](dsh-implementation-plan.md)和[验证](validation.md)。
+安装和更新使用 dsh 最新版，最低宿主版本为 `0.2.2-rc.1`。本文区分终端命令与聊天框中的 `/pbot` 命令，升级后可查看实际安装版的帮助。
 
 ## 安装与首次启动（CLI + 浏览器）
 
-需要 Node.js 24.9+、npm、pnpm，以及 Python 3.11+ 和 venv/ensurepip。新版 dsh 若提高 Node.js 要求，以其 `engines` 为准；Pi 扩展和独立 `pbot` 安装器仍支持 Node.js 22.19+。完整双宿主开发与验收使用 Linux。`pbot setup` 面向 Pi，dsh 使用原生插件和 profile。
-
-在终端检查要求，安装最新 dsh 与插件管理所需的 pnpm：
+需要 Node.js 24.9+、npm、pnpm，以及 Python 3.11+ 和 venv/ensurepip。新版本的 Node.js 要求以 dsh 的 engines 为准。安装使用原生插件与 profile：
 
 ```bash
-node --version
-npm --version
-python3 --version
 npm view @deepseek-ai/dsh@latest version engines --json
 npm install -g @deepseek-ai/dsh@latest pnpm@latest
-dsh --version
-pnpm --version
-```
-
-仅首次创建独立的 `pbot` Web profile 时执行：
-
-```bash
+# 仅首次创建；会覆盖已有同名 profile
 dsh --profile pbot --from-default-profile web --dump-config
-```
-
-`pbot` 是可自选的 profile 名称，后续命令应保持一致。`--from-default-profile web` **会覆盖已有同名 profile**；这里的 `--dump-config` 只让创建后打印配置并退出，不会把整个命令变成只读操作。更新时不要重复执行。
-
-安装 Personal Bot 并启动：
-
-```bash
 dsh plugin --profile pbot add personal-bot@latest
-dsh plugin --profile pbot list personal-bot --depth 0
 dsh --profile pbot
 ```
 
-dsh 启动 Web 服务，输出带访问令牌的 URL，通常会自动打开浏览器。SSH 环境或使用 `--no-open` 时需手动打开实际可访问的地址；该 URL 含访问凭据，不要公开分享。在 Web 中选择工作区和主会话，通过原生设置配置模型与认证，然后在聊天输入框执行：
+`pbot` 是可自选的 profile 名称，后续命令应保持一致。已有 profile 更新时不要重复执行 `--from-default-profile`。
+
+dsh 启动 Web 服务并通常自动打开浏览器。SSH 或 `--no-open` 模式下手动打开输出的 URL；该地址含访问令牌，应妥善保管。选择工作区和主会话，配置模型与认证，再在聊天框执行：
 
 ```text
 /pbot status
@@ -48,9 +29,9 @@ dsh 启动 Web 服务，输出带访问令牌的 URL，通常会自动打开浏�
 /pbot
 ```
 
-`status` 查看工作区、版本、模型、Python、专家、团队和历史整理状态；`init` 可选地补建缺失的资料目录与根 `AGENTS.md`；选择裸 `/pbot` 动作打开管理界面。已有文件保持不变，初始化不是启用条件。这些操作不调用模型。加载插件会自动准备并激活当前用户共享的 Python venv，可能下载锁定依赖；失败时修复基础环境，再运行 `/pbot python setup`。
+`status` 查看状态；`init` 可选地补建资料目录和根 AGENTS，保留已有文件；裸 `/pbot` 打开管理界面。加载插件会自动准备当前用户共享的 Python venv。准备失败时修复基础环境，再运行 `/pbot python setup`。
 
-一个 profile 可以管理多个工作区。pbot 绑定主会话建立时的根目录；之后改变原生 cwd 只影响相对路径解析，不改变资料与历史的根目录。当前 Web 默认工作区使用宿主账户的系统 Documents 目录；需要指定目录时使用原生工作区选择器，测试部署可配置 `workspace-controller.documentsDirectory`。仅设置 `HOME` 或改变启动 cwd 不等于改变系统 Documents 策略。
+一个 profile 可管理多个工作区。通过原生工作区选择器指定目录；默认使用系统 Documents。pbot 绑定主会话创建时的根目录，后续 cwd 变化只影响相对路径解析。
 
 ## 日常启动与终端命令
 
@@ -87,7 +68,7 @@ dsh --profile pbot --port 8080 --no-open
 | `--trusted-host app.example` | 增加原生 Host/Origin 检查允许的主机名或主机名与端口 |
 | `--tls-cert /path/server-chain.pem --tls-key /path/server-key.pem` | 成对指定证书链与未加密 PEM 私钥，为监听服务启用 HTTPS |
 
-远程部署的代理、网络访问和认证遵循 [dsh 原生 Web 文档](https://github.com/deepseek-ai/deepseek-harness/tree/main/packages/bundle/web-app)。启动成功或工具可见不代表模型认证与业务执行成功。
+远程部署的代理、网络访问与认证设置见 [dsh 原生 Web 文档](https://github.com/deepseek-ai/deepseek-harness/tree/main/packages/bundle/web-app)。
 
 ## 更新、查询与移除插件
 
@@ -102,7 +83,7 @@ dsh plugin --profile pbot list personal-bot --depth 0
 dsh --profile pbot
 ```
 
-`update personal-bot --latest` 只选择 Personal Bot 更新到当前 `latest`，允许越过原先保存的版本范围；不带 `--latest` 的 update 受已有声明限制。profile 的原生锁文件保存实际解析版本，不意味着手册要求长期停在该版本。更新后用 `/pbot status` 核对版本与环境，旧专家需显式恢复。停用或重载插件也可能释放专家。
+`update personal-bot --latest` 只选择 Personal Bot 更新到当前 `latest`，允许越过原先保存的版本范围；不带 `--latest` 的 update 受已有声明限制。更新后用 `/pbot status` 核对版本与环境，旧专家需显式恢复。停用或重载插件也可能释放专家。
 
 `dsh plugin --profile pbot` 后面的包管理参数交给 pnpm，必须选对 profile：
 
@@ -137,25 +118,19 @@ dsh plugin --profile pbot add /absolute/path/to/personal-bot-<version>.tgz
 dsh --profile pbot
 ```
 
-这里的本地路径替代 registry 安装命令，不需要安装第二份插件。以后重新构建并安装新 tarball；若要切回 registry 来源，显式运行 `dsh plugin --profile pbot add personal-bot@latest`，不要依赖 update 转换本地文件来源。当前源码的未发布改动不会因为安装旧的 registry 包而生效。
+本地来源更新时重新构建并安装 tarball。切回 registry 来源时运行 `dsh plugin --profile pbot add personal-bot@latest`。
 
 ## 桌面应用
 
-在 DeepSeek Harness 的“插件 → 添加插件”中输入 `personal-bot@latest` 并安装、启用。开发验收也可输入本地 `.tgz` 的绝对路径。桌面应用提供自己的运行时和包管理入口，无需另行启动 npm dsh CLI。
+在 DeepSeek Harness 的“插件 → 添加插件”中安装并启用 `personal-bot@latest`，也可输入本地 tarball 的绝对路径。应用提供运行时和包管理，宿主与插件分别通过应用更新。
 
-CLI 的 `pbot` profile 与 Electron 管理的 `desktop` profile 分开；普通 npm dsh CLI 不管理 `desktop`，也不会把 CLI profile 的插件安装同步到应用。宿主更新使用桌面应用自身的更新方式，插件通过应用的原生插件页面更新。
-
-应用会读取登录 Shell 环境，所需 Python 应在该环境的 PATH 中可见；终端的 PATH 不一定等于应用后端实际使用的 PATH。安装后选择工作区和主会话，用 `/pbot status` 与裸 `/pbot` 检查环境和管理页。
-
-已在 macOS 桌面应用 `0.2.2-rc.1`（内置 Node.js 24.21.0）通过 tarball 验证四页签、附件、完整记录、团队失败暂停、历史查询及刷新；隔离 Python 准备和 5 项原生库测试通过。这不代表从 registry 全新安装或成功模型流程已验收，见[验证记录](validation.md)。
+桌面应用使用独立的 desktop profile；CLI 的 pbot profile 分开管理。应用从登录 Shell 读取环境，Python 3.11+ 应在该 PATH 中可见。安装后选择工作区和主会话，用 `/pbot status` 检查环境。
 
 ## Task Conductor
 
-需要周期任务、重复流程、DAG 或宿主退出后继续执行时，可在同一 dsh profile 安装 `task-conductor-plugin`。它提供原生 Host 入口与 bundle patch、共享的 `using-task-conductor` 技能、原生 MCP 连接和会话通知。Personal Bot 不增加调度工具或 MCP 客户端；`pbot setup` 仍只安装 Pi 环境。
+周期任务、重复流程和 DAG 使用可选的 `task-conductor-plugin`。插件与服务分别安装，配置和更新见[上游接入指南](https://github.com/realqiyan/task-conductor/blob/master/docs/host-integrations.md)。
 
-### 安装未发布接入
-
-dsh 接入包含于尚未发布的 Task Conductor `0.1.6` 候选版本。发布前从该版本的同一源码检出构建插件和配套服务：
+dsh 接入包含于尚未发布的 Task Conductor 0.1.6 候选版本。发布前从同一源码构建插件和服务：
 
 ```bash
 cd /absolute/path/to/task-conductor
@@ -164,58 +139,21 @@ npm pack
 npm run pack:plugin
 ```
 
-根目录的 `npm pack` 通过 prepack 构建服务，`pack:plugin` 单独打包接入资产；只需插件 tarball 时可只执行后者。把下面路径替换为实际产物的绝对路径，在已有 `pbot` Web profile 安装插件：
+使用实际生成的 tarball 路径安装：
 
 ```bash
-dsh plugin --profile pbot add /absolute/path/to/task-conductor/task-conductor-plugin-<version>.tgz
-dsh plugin --profile pbot list task-conductor-plugin --depth 0
-```
-
-使用桌面应用时，在应用原生“插件 → 添加插件”中安装并启用同一 tarball。CLI 与桌面 profile 分开，安装一个不会同步到另一个。已有同名插件时切换其来源，只保留一份；后续源码更新重新打包并安装，不能用 registry `update --latest` 获取尚未发布的改动。
-
-插件安装不安装或初始化服务。新安装配套服务时，在终端使用本地服务包，再由上游技能指导 setup：
-
-```bash
-npm install -g /absolute/path/to/task-conductor/task-conductor-<version>.tgz
+dsh plugin --profile pbot add /absolute/path/to/task-conductor-plugin-<version>.tgz
+npm install -g /absolute/path/to/task-conductor-<version>.tgz
 task-conductor setup
 ```
 
-已有服务按[上游升级说明](https://github.com/realqiyan/task-conductor/blob/master/docs/upgrades.md)核对安装位置和活动工作、停服并备份，再更新同一安装；保留原有 home、数据和历史。协调模型在 Task Conductor 中单独配置，凭据通过终端或私有文件提供。内部协调者继续使用服务依赖的 `pi-durable`，以 dsh 为宿主无需安装 Pi 交互 CLI。
+已有服务按[上游升级步骤](https://github.com/realqiyan/task-conductor/blob/master/docs/upgrades.md)更新，保留原服务目录与数据。桌面用户在应用的插件页安装同一插件包。
 
-### 主会话连接与通知
+重启宿主后，在主会话读取 `/using-task-conductor`；用 `/task-conductor status` 查看连接，修复配置后用 `/task-conductor connect` 重连。插件创建原生 MCP 连接，已有同名连接先按上游指南调整来源。
 
-重启相应 dsh 宿主，打开主会话，在聊天框调用 `/using-task-conductor`，或让模型通过原生 skill 工具读取同名技能。技能由插件的原生文件系统 provider 提供，详细安装、任务契约和排障方法均以上游技能为准。
+任务通知回到提交任务的原会话。关闭页面或宿主后服务任务继续运行，当前 run 与未来周期分别查询、停止。
 
-聊天命令 `/task-conductor status` 查看当前会话连接与通知归属；完成 setup、注册执行端或修复连接后，用 `/task-conductor connect` 重连。默认连接使用宿主 PATH 中的 `task-conductor` 和默认服务 home。自定义安装时，在启动宿主的环境中设置 `TASK_CONDUCTOR_PREFLIGHT_COMMAND` 为实际程序绝对路径、`TASK_CONDUCTOR_PREFLIGHT_HOME` 为原服务目录，使插件连接、检查与通知使用同一服务。
-
-插件为每个根 Agent 建立使用该会话 cwd 的原生 MCP 连接。通过 dsh 的工具发现使用实际名称，例如 `mcp__task-conductor__executor_list` 和 `mcp__task-conductor__task_list`；`task-conductor` 中的连字符保留。普通专家不会因共享 profile 而获得一份独立的协调连接。避免另行注册同名手工 MCP；已有连接按[上游接入说明](https://github.com/realqiyan/task-conductor/blob/master/docs/host-integrations.md)调整来源。原生技能仍可用于服务未就绪时的设置和排障。
-
-提交任务时使用目标项目的绝对 `workspace`。通知归属于提交任务的原生持久 Session；恢复原会话后可以补收待处理事件，同项目其他会话不会代收。关闭页面、主会话或 dsh 不停止已提交的服务任务，需通过 Task Conductor 查询和控制；取消当前 run 与停止未来周期分别操作。
-
-### 使用 dsh 执行节点
-
-以 dsh 为主会话宿主和用 dsh 执行任务节点是两项独立配置。节点通过现有自定义 ACP 注册机制接入，使用 ID `dsh-acp`；`dsh` 不是内置执行端 ID。dsh 的原生命令为 `dsh --profile acp`，可用 `dsh --profile acp --help` 查看当前版本帮助，无需 `--stdio` 参数。
-
-在 Task Conductor 管理员 CLI 或 Web 中注册本机 dsh 的规范绝对可执行路径。使用解析符号链接后的实际路径，以下 JSON 中的路径须替换：
-
-```json
-{
-  "id": "dsh-acp",
-  "command": "/absolute/canonical/path/to/dsh/lib/bin.js",
-  "args": ["--profile", "acp"]
-}
-```
-
-将无秘密的 JSON 保存到选定文件后，在已运行的同一服务实例注册并查询：
-
-```bash
-task-conductor executor register --file /absolute/private/dsh-acp.json --yes
-task-conductor executor show dsh-acp
-```
-
-自定义服务目录时，每次管理命令附加相同 `--home`。注册即时生效，不启动模型任务。可选 `cwd` 只设置进程启动目录，省略时采用任务 workspace；ACP 会话仍使用任务 workspace。节点通过 `executorId: "dsh-acp"` 选择该执行端，按上游技能的[自定义 ACP 方法](https://github.com/realqiyan/task-conductor/blob/master/plugin/skills/using-task-conductor/references/custom-acp.md)准备和管理。
-
-ACP 节点使用后台继承的环境与 dsh 的 `acp` profile，模型认证、工具、技能和 Python 需要单独准备；它们不自动继承当前 Web 主会话或 pbot 共享 venv。服务内协调模型也不会因选择 `dsh-acp` 而改变。连接和注册检查不证明成功模型调用或完整任务交付，真实运行范围以上游验证记录为准。
+使用 dsh 执行任务节点时，按上游[自定义 ACP 方法](https://github.com/realqiyan/task-conductor/blob/master/plugin/skills/using-task-conductor/references/custom-acp.md)注册 `dsh-acp`，提供 dsh 的规范绝对可执行路径和 `["--profile", "acp"]` 参数。节点的模型、工具、认证和 Python 环境单独配置。
 
 ## 管理界面与生命周期
 
@@ -232,9 +170,9 @@ ACP 节点使用后台继承的环境与 dsh 的 `acp` profile，模型认证、
 
 页面通过原生 Remote 查询，不启动专家、领取模型通知或生成摘要。人工命令会保留原生审计记录。关闭面板会取消尚未接纳的上传；关闭、刷新或重连页面不停止已经接纳的工作。结果不明确时先查询状态与记录，再决定后续动作。
 
-服务端组件停用、所属父 Agent 释放或整个桌面应用退出，会暂停安排并释放其拥有的专家。重新打开页面、重启宿主或启用插件只读取保存记录，需要明确恢复才继续工作。浏览器关闭与服务端父 Agent 释放不是同一事件。
+服务端组件停用、所属父 Agent 释放或整个桌面应用退出，会暂停安排并释放其拥有的专家。重新打开页面、重启宿主或启用插件只读取保存记录，需要明确恢复才继续工作。
 
-主会话使用原生 write、edit、apply_patch 修改原工作区外文件时要求一次原生批准；专家的这些工具拒绝越界修改。这些检查不隔离 Bash、Python、MCP 或其他扩展。
+主会话使用原生 write、edit、apply_patch 修改原工作区外文件时要求一次原生批准；专家的这些工具拒绝越界修改。Bash、Python、MCP 和扩展使用实际账户权限，详见[工具与执行](capability-design.md)。
 
 ## 聊天命令总表
 
@@ -283,7 +221,7 @@ ACP 节点使用后台继承的环境与 dsh 的 `acp` profile，模型认证、
 | `tools` | 非空的原生能力工具名数组，不用 `run_code` 传输名；团队成员需保留 `pbot_team_message` |
 | `noSkills` | 默认 false；true 关闭该专家的模型技能目录与 skill 工具，用户显式技能命令仍按宿主处理 |
 
-专家创建和恢复时应用父会话的原生 preset，保留其文件工具、AGENTS 和技能发现，再应用专家工具限制。包内技能由 Host 提供，项目和用户技能沿用原生优先级与更新监听。显式使用 complete persona 时，宿主可能覆盖 pbot 的公共约定与角色；选择这种 persona 时需自行维护完整行为要求，详见[模型上下文](model-context.md)。
+专家创建和恢复时应用父会话的原生 preset，保留其文件工具、AGENTS 和技能发现，再应用专家工具限制。显式 complete persona 由宿主按其完整配置提供行为要求。
 
 Pi 专属的 `noExtensions`、`noPromptTemplates`、`noContextFiles` 在 dsh 中拒绝。`send.delivery` 为 `steer`（默认，补充当前工作）或 `followUp`（当前工作之后）。`send/resume` 不支持 files、prompts 或模型切换参数。成员被团队占用时私人 send 被拒绝，应先 pause 并等在途工作结束。
 
@@ -302,7 +240,7 @@ Pi 专属的 `noExtensions`、`noPromptTemplates`、`noContextFiles` 在 dsh 中
 /pbot agent {"action":"resume","agentId":"AGENT_ID","message":"核对新增资料，只报告变化。"}
 ```
 
-报告 read 默认选择最近周期，offset 默认 0，limit 默认及上限均为 16000，最小 1，单位为 UTF-16 代码单元。续读固定返回的 `cycle.cycleId`，并把 `nextOffset` 传回 offset；null 表示当前报告读完。`idle` 不等于成功，需核对 `cycle.state` 和实际结果。人工命令 read 不领取模型完成通知；模型工具成功提交 read 结果或实际消费通知才确认领取。
+报告 read 默认选择最近周期，offset 默认 0，limit 默认及上限均为 16000，最小 1，单位为 UTF-16 代码单元。续读固定返回的 `cycle.cycleId`，并把 `nextOffset` 传回 offset；null 表示当前报告读完。工作结果查看 `cycle.state` 与报告；人工读取保留模型的完成通知。
 
 ## 人工对话与完整记录
 
@@ -313,7 +251,7 @@ Pi 专属的 `noExtensions`、`noPromptTemplates`、`noContextFiles` 在 dsh 中
 /pbot records {"agentId":"AGENT_ID","offset":0,"limit":30}
 ```
 
-chat 的相对文件路径以专家创建时固定的 cwd 为基准。服务器 files 与本机输入框附件二选一，每次最多 32 个；图片格式及字节上限遵循宿主准入。上传附件使用原生输入框，不传 JSON `attachments` 字段。chat 自动先暂停所属团队，暂停失败不接纳输入；成功后可对在途工作 steer。返回 queued 仅表示入队。人工接管的 interactive/mixed 周期不自动公开，共享专家上下文不构成保密隔离。专家必须存活，停止后先 resume。
+chat 的相对文件路径以专家创建时固定的 cwd 为基准。服务器 files 与本机输入框附件二选一，每次最多 32 个；图片格式及字节上限遵循宿主准入。上传附件使用原生输入框，不传 JSON `attachments` 字段。chat 自动先暂停所属团队，暂停失败不接纳输入；成功后可对在途工作 steer。返回 queued 仅表示入队。人工接管的 interactive/mixed 周期不自动公开；需要独立保密上下文时新建专家。专家必须存活，停止后先 resume。
 
 `records` 读取完整事件，不等同于 `agent read` 的最终报告；停止后可冷读，不恢复专家或领取通知。
 
@@ -363,11 +301,11 @@ pause 不停止专家；等待 status 的 `activeCount=0` 后才可 close：
 /pbot team {"action":"close","teamId":"TEAM_ID"}
 ```
 
-没有 team resume；继续时用新 instruction 发起 run。paused 仍可能有在途请求；unresolved 还可能包含失败、未知或混合输入，并不代表可自动重试。正常完成的纯团队答复才自动公开。完整规则见[专家协作](agent-collaboration.md)。
+没有 team resume；继续时用新 instruction 发起 run。paused 仍可能有在途请求；unresolved 可包含失败、未知或混合输入，继续前先查询报告与实际状态。正常完成的纯团队答复才自动公开。完整规则见[专家协作](agent-collaboration.md)。
 
 `/pbot post` 必填 teamId、非空 text（最多 24000 字符），可选 `replyTo` 引用已有消息 seq（≥1）。返回 stored 只表示保存，不唤醒模型或增加轮次；关闭团队不能再 post。人工作者为 user；模型 `pbot_team_message` 必须带 `action:"post"` 或 `action:"read"`，作者由服务确定为 coordinator/member。
 
-公共消息 read 的 afterSeq 默认 0，只返回后续消息；seq 从 1 开始，可指定单条。offset 默认 0，非零时必须同时指定 seq。limit 默认及上限为 16000，最小 1，是正文合计的 UTF-16 代码单元数，不是消息条数。先按消息的 `nextOffset` 固定 seq 读完正文，再将列表的 `nextAfterSeq` 传回 afterSeq 继续列表；列表结束不代表最后一条正文已读全。
+公共消息 read 的 afterSeq 默认 0，只返回后续消息；seq 从 1 开始，可指定单条。offset 默认 0，非零时必须同时指定 seq。limit 默认及上限为 16000，最小 1，是正文合计的 UTF-16 代码单元数，不是消息条数。先按消息的 `nextOffset` 固定 seq 读完正文，再将列表的 `nextAfterSeq` 传回 afterSeq 继续列表。
 
 ## 历史查询
 
@@ -398,4 +336,4 @@ Pi 维护 `.pi/pbot/history/`，dsh 维护 `.dsh/pbot/history/`。两者共同�
 | `pbot_team_message` | read、post；read 分页同 team read，post 使用 teamId/text/可选 replyTo |
 | `pbot_history` | search、read |
 
-模型使用实际工具 schema；人工使用上面的命令或管理页。chat、records 是人工管理入口，没有同名模型工具。工具可用、输入入队、原生协议成功和业务完成是不同事实；按用户授权执行，并核对实际结果。
+模型使用实际工具 schema；人工使用上面的命令或管理页。chat、records 是人工管理入口，没有同名模型工具。

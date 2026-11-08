@@ -69,7 +69,7 @@ Pi 主会话通过包清单发现技能，遵守原生 `--no-skills` 与包级�
 
 dsh 专家通过原生 composeFrom 应用父会话 preset，再限制其工具。包内技能在 Host 层注册一次，项目/用户技能与更新监听交给原生 provider；公共约定和角色在 system-prompt/assemble 当次刷新，遵守宿主 complete persona 覆盖。团队简报随首个已接纳团队上下文提供，不放在先于 pre-step 求值的动态 system section。
 
-同一会话中不变的 section 由宿主沿用；这不代表后续模型请求不再携带有效系统提示。团队公共消息按结构化来源与序号去重，压缩后需要的原文通过 read 续取。目录用途常驻，维护方法、接入、计算和调度细节按需读取。具体入口与审查取舍见[模型上下文](model-context.md)。
+同一会话中不变的 section 由宿主沿用，有效系统内容随后续请求传递。团队公共消息按结构化来源与序号去重，压缩后需要的原文通过 read 续取。目录用途常驻，维护方法、接入、计算和调度细节按需读取。具体加载方式见[模型上下文](model-context.md)。
 
 公共约定说明工作方式与资料位置，角色说明分工与交付，技能提供专业方法与必要的本地操作约定，工具定义参数与结果语义。委派包含文件修改时说明范围和责任；不重复加入通用授权、证据或验收要求。工具按 action 校验必填与允许字段，返回具体参数错误；status 不读取报告正文。Pi 附件组装保留绝对来源及原生读取结果；dsh 使用原生文件存储与图片准入，Web 通用文件走原生 Session 上传凭证，命令图片使用原生编码图片输入。资料保存由模型按公共约定与维护技能处理，沉淀方法、口径与结论，可再次查询的数据按需获取。布局见[文件存储](file-storage.md)。
 
@@ -119,6 +119,8 @@ Web 拥有草稿、上传和查询；接纳后的命令归服务端。命令不�
 
 Pi 将工具纳入 pbot namespace，codemode 按契约组合；dsh 注册原生工具，并在宿主可表达的 schema 之外继续校验完整领域契约。原生 CLI/MCP 与可选 Task Conductor 的接入和授权见[工具与执行](capability-design.md)。
 
-扩展以 TypeScript 源码分发，由 Pi 加载；dist 仅供测试导入。安装 CLI 使用现有 TypeScript 工具链单独生成 lib，由 bin/pbot.mjs 启动，消费者无需编译或预装 Pi。dsh Host 与 Web 也编译到 lib，客户端由原生包根 Loader 发现；Pi 的入口仍由包清单明确指向 src。宿主 SDK 均为 optional peer，不捆绑另一份运行时。dsh 用户安装跟随 `latest`，`engines.dsh` 声明最低版本 `>=0.2.2-rc.1`，dsh SDK peer 范围为 `"*"`；开发依赖和锁文件仍保留精确版本，验收只证明记录中的实际版本。TypeBox 声明为范围为 `"*"` 的必需 peer：Pi 通过原生加载器提供；dsh 安装时由包管理器补齐。开发依赖锁定 TypeBox 版本，不随包捆绑。Pi/CLI 保持 Node.js 22.19+，dsh 与完整开发使用 Node.js 24.9+。安装检查子进程在发现真实宿主后使用该宿主的 SDK 读取配置和切换来源声明。发布版本以 package.json 为准，包内组件共用该版本。子会话兼容线在 1.0 前按次版本、1.0 起按主版本判断，跨线会话不能直接恢复。
+Pi 入口指向 src，由宿主加载 TypeScript 源码；独立 CLI 与 dsh Host/Web 编译到 lib，dist 供测试使用。宿主 SDK 使用 optional peer，dsh SDK 范围为 "*"，最低宿主版本由 engines.dsh 声明；开发依赖和锁文件保留精确版本。TypeBox 同样为 optional peer：Pi 通过宿主加载器提供，dsh 构建携带库及许可证，并保留原模块路径以定位资源。
 
-开发验证见[验证](validation.md)，分发流程见[npm 发布](release.md)。
+Pi/CLI 支持 Node.js 22.19+，dsh 与完整开发使用 Node.js 24.9+。安装检查发现真实宿主后，在子进程中使用其 SDK 读取配置或切换来源。包内组件共用 package.json 的发布版本；子会话兼容线在 1.0 前按次版本、之后按主版本判断。
+
+构建与安装包检查见[维护脚本](../scripts/README.md)，分发流程见[npm 发布](release.md)。

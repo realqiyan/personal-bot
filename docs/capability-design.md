@@ -34,18 +34,10 @@ Bash、Python、MCP 和扩展拥有其实际账户与凭据权限。dsh 的原�
 
 ## 可选 Task Conductor
 
-Task Conductor 通过原生 MCP 提供周期任务、重复流程和 DAG，独立管理任务定义与运行状态。Pi 和 dsh 使用同一接入包及 `using-task-conductor` 技能，分别由自己的原生机制加载。安装入口见[项目 README](../README.zh-CN.md#可选安装-task-conductor)；dsh 接入包含于 Task Conductor `0.1.6` 候选版本，发布前使用源码与配套本地 tarball，具体步骤见 [dsh 指南](dsh.md#task-conductor)。
+Task Conductor 通过原生 MCP 提供周期任务、重复流程和 DAG，独立管理任务定义与运行状态。两种宿主使用 `task-conductor-plugin` 和 `using-task-conductor` 技能。安装见[项目 README](../README.zh-CN.md#可选安装-task-conductor)，服务配置见[上游接入指南](https://github.com/realqiyan/task-conductor/blob/master/docs/host-integrations.md)。
 
-dsh 接入由 Task Conductor 插件的原生 Host 入口、包导出和 bundle patch 装配，共享技能通过原生 SkillFilesystem 提供。插件为每个根 Agent 建立独立的原生 MCP 连接，stdio 使用该会话 cwd；工具保留 `mcp__task-conductor__<tool>` 命名。Personal Bot 只提供按需参考入口，不增加包装工具、私有 MCP 客户端或安装平台，`pbot setup` 仍面向 Pi。
+Personal Bot 提供按需参考入口，工具调用、连接和通知由 Task Conductor 插件与宿主管理。通知绑定提交任务的原生持久会话，恢复原会话后继续接收。
 
-通知 origin 绑定 dsh 原生持久 Session。插件轮询服务事件，将通知送入原会话，在确认原生接收并 flush 持久记录后才向服务 ack；恢复同一会话可继续领取。页面查询和另一主会话不代替原会话接收，宿主关闭不撤销服务中的任务。
+提交任务时明确输入、工作目录、工具与认证前提、输出；周期任务还需频率、时区、执行范围与每轮数据时点。项目资料保存任务定义、taskId、runId、节点 ID 和结果位置，实时状态向服务查询。
 
-服务内部协调者继续使用 `pi-durable`，独立配置模型与认证；dsh 宿主不要求 Pi 交互 CLI。dsh 节点通过已有自定义 ACP 注册机制接入，管理员 CLI/Web 注册规范绝对程序路径与 `["--profile", "acp"]`，ID 为 `dsh-acp`；不预留新的内置 `dsh`。该节点的 profile、工具与环境由执行端管理，不从主会话复制。
-
-提交任务时明确输入、cwd、工具与认证前提和输出；周期任务还需明确频率、时区、执行范围及每轮数据时点。项目资料保存任务定义、taskId、runId、节点 ID 和结果位置，实时状态向 Task Conductor 查询。
-
-pbot 子会话绑定父会话，Task Conductor 可在所属宿主会话关闭后继续。两者分别查询和停止；取消当前 run 与停止未来周期也是两个操作。
-
-外部节点需单独配置工具、技能、Python 环境和认证，不自动继承主会话能力。需要人工确认的业务不安排无人值守执行。提交结果不明时先按原标识查询，避免重复创建。
-
-外部工具与真实任务的验收范围见[验证](validation.md)。
+服务任务可在宿主关闭后继续。pbot 专家、外部任务、当前 run 和未来周期分别查询、停止。外部节点单独配置工具、技能、Python 与认证；需要人工确认的业务保留人工交互。提交结果不明时按原标识查询，避免重复创建。

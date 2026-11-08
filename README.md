@@ -4,13 +4,13 @@ English | [简体中文](README.zh-CN.md)
 
 **A personal assistant connecting knowledge, research, and action.**
 
-Personal Bot provides a workspace-scoped [Pi](https://pi.dev) extension and a native dsh Web integration. It supports learning, project work, research, decision support, investment analysis, and explicitly authorized operations. See the [dsh guide](docs/dsh.en.md) for installation, commands, and acceptance limits.
-
-The model handles analysis, coordination, and native tools. Personal Bot adds workspace materials, specialist collaboration, and Python environment preparation. It does not create a second main agent or start tasks or trades automatically.
+Personal Bot provides a workspace-scoped [Pi](https://pi.dev) extension and a native dsh Web integration for organizing materials, project work, research, specialist collaboration, and authorized operations. The model handles analysis and coordination; the plugin adds workspace materials, specialist sessions, history search, and a shared Python environment.
 
 ## Install
 
-The Pi installer supports Linux and macOS. It requires Node.js 22.19+, npm, and Python 3.11+ with venv/ensurepip. Run in an interactive terminal:
+### Pi setup wizard
+
+Linux and macOS require Node.js 22.19+, npm, and Python 3.11+ with venv/ensurepip. Run in an interactive terminal:
 
 ```bash
 npx personal-bot@latest setup
@@ -18,37 +18,53 @@ npx personal-bot@latest setup
 npx personal-bot@latest setup --workspace ~/pbot-workspace
 ```
 
-The wizard selects an existing or new directory, installs or updates the shared Pi executable, and installs pbot in that workspace. It offers `task-conductor-plugin` and `pi-web-access`, both selected by default on the first installation. Later runs preselect existing packages. Each normal npm package updates to its latest stable version. Local sources, Git sources, and pinned versions are kept unless you choose to switch. Deselecting a plugin or removing it from the maintained catalog does not uninstall it.
+The wizard selects or creates a directory, installs or updates Pi, and installs Personal Bot for that workspace. Task Conductor and Pi Web Access are selected by default on the first installation; later runs preselect installed plugins. Ordinary npm sources update to the latest stable version. Local, Git, and pinned sources are kept by default, with an option to switch. Deselecting a plugin preserves its installation.
 
-Missing tmux is installed through an existing Homebrew or supported Linux package manager. Missing Python prerequisites produce repair instructions. pbot prepares its shared Python venv on startup. After installation, the wizard offers to start Pi and run `/pbot init`; the existing command owns workspace material creation. Pi handles project trust, login, and model selection. Installation does not call a model.
+Missing tmux is installed through an existing Homebrew or supported Linux package manager. Missing Python prerequisites produce repair instructions. After installation, the wizard can start Pi and run `/pbot init`. Follow Pi's prompts for project trust, login, and model selection.
 
-For a persistent short command, install the package separately:
+For a persistent short command, install the CLI globally:
 
 ```bash
 npm install -g personal-bot@latest
 pbot setup
 ```
 
-This global npm installation provides the command; it does not register a global Pi extension. `pbot setup` uses the globally installed installer version. Update it with npm, or use `npx personal-bot@latest setup` for the latest installer. The npx command does not install itself globally.
+Update this command through npm; Pi manages the workspace extension. If installation fails, fix the cause and rerun setup. Completed steps and existing materials are preserved. An optional plugin failure still allows you to start Pi.
 
-A core failure stops startup. If a configured Git or local directory source is missing or has no identifiable package name, setup stops and asks you to repair the source through Pi; it preserves the declaration. Existing standalone extension files remain supported. An optional plugin failure allows the other plugins to proceed and is reported before you choose whether to start Pi. Completed steps remain in place; fix the cause and rerun setup. There is no automatic rollback across package managers. See the [installation design](docs/installation-design.md) for scope and recovery rules.
+### Existing Pi installation
 
-### Install directly with Pi
-
-If Pi is already installed, run from your workspace root:
+Run from the workspace root:
 
 ```bash
 pi install --local npm:personal-bot
 pi
 ```
 
-`--local` saves the package declaration in the project's `.pi/settings.json`. Review and grant project trust when Pi prompts you, and start Pi from the workspace root. Loading Personal Bot enables its roles, skills, tools, and shared Python environment preparation. There is no separate activation switch.
+`--local` saves the declaration in the project's `.pi/settings.json`. Start Pi from that workspace root. Loading the package enables roles, skills, tools, and Python preparation. Use a global extension installation only when you want it in every Pi session. Manage existing sources with `pi list` or `pi config`, keeping one active source per package.
 
-Use `pi install` without `--local` only when you want the extension in every Pi session. Use Pi package management or `pi config` to adjust an existing installation's scope. Do not load both the npm and source installations. The development and test baseline is Pi 1.5.0; installer acceptance limits are recorded in [validation](docs/validation.md).
+### dsh
 
-### Install from source
+You need Node.js 24.9+, npm, pnpm, and Python 3.11+. Follow the installed dsh release's `engines` if it requires a newer runtime. Use its native profiles and plugin manager:
 
-To try the installer from source:
+```bash
+npm install -g @deepseek-ai/dsh@latest pnpm@latest
+# First creation only; this replaces an existing profile of the same name.
+dsh --profile pbot --from-default-profile web --dump-config
+dsh plugin --profile pbot add personal-bot@latest
+dsh --profile pbot
+```
+
+In the browser, select a workspace and main session, then configure models and authentication. Enter `/pbot` in chat to open management, `/pbot status` to inspect state, or `/pbot init` to prepare materials.
+
+For later starts, run `dsh --profile pbot`. Stop active specialists and the server before updating the plugin:
+
+```bash
+dsh plugin --profile pbot update personal-bot --latest
+```
+
+The desktop application installs `personal-bot@latest` through its native Plugins page and uses a separate desktop profile. See the [dsh guide](docs/dsh.en.md) ([中文](docs/dsh.md)) for launcher options, updates, and chat commands.
+
+### Use from source
 
 ```bash
 git clone https://github.com/realqiyan/personal-bot.git
@@ -58,151 +74,75 @@ npm run build:cli
 node bin/pbot.mjs setup
 ```
 
-To load only the source extension:
-
-```bash
-cd /path/to/workspace
-pi install --local /absolute/path/to/personal-bot
-pi
-```
-
-Replace the example paths with your actual paths. A local installation loads the source directory directly, so keep that directory and its dependencies available.
-
-### Use with dsh
-
-Use the latest dsh release with Node.js 24.9+ (or the newer minimum declared by that release), npm, pnpm, and Python 3.11+. `pbot setup` installs for Pi; dsh uses its native profiles and plugin manager. Run in a terminal:
-
-```bash
-npm install -g @deepseek-ai/dsh@latest pnpm@latest
-dsh --version
-pnpm --version
-# First creation only: this replaces an existing profile of the same name.
-dsh --profile pbot --from-default-profile web --dump-config
-dsh plugin --profile pbot add personal-bot@latest
-dsh --profile pbot
-```
-
-The last command starts the Web server and normally opens a browser. Select your workspace and main session there, then configure models and authentication in dsh's native settings. In the chat input, use `/pbot` to open the workspace, specialist, team, and history tabs; `/pbot status` checks the workspace and Python environment; `/pbot init` optionally creates missing material directories. Loading the plugin and these checks do not call a model.
-
-For subsequent starts, run `dsh --profile pbot`. After stopping active specialists and the server, update the host and plugin separately:
-
-```bash
-npm install -g @deepseek-ai/dsh@latest
-dsh plugin --profile pbot update personal-bot --latest
-dsh plugin --profile pbot list personal-bot --depth 0
-dsh --profile pbot
-```
-
-Do not repeat `--from-default-profile` during updates. For the desktop application, install and manage `personal-bot@latest` through its native Plugins page; the npm CLI's `pbot` profile and the application's `desktop` profile are separate.
-
-The [full English guide](docs/dsh.en.md) ([中文](docs/dsh.md)) covers launcher options, plugin inspection and removal, source tarballs, every `/pbot` subcommand, JSON parameters, and examples. Specialists use native Agent/Session instances in the server process; refreshing a page does not stop accepted work. Pi and dsh query shared history archives while owning their own sessions, models, authentication, and MCP configuration. The tested dsh baseline is `0.2.2-rc.1`; `latest` can change and does not imply that future releases have passed acceptance. See the [validation record](docs/validation.md).
+To load only the Pi source extension, run `pi install --local /absolute/path/to/personal-bot` from the workspace and keep that source directory and its dependencies available. For dsh, follow the [source installation steps](docs/dsh.en.md#installing-from-source).
 
 ### Optional: Task Conductor
 
-For scheduled tasks, recurring workflows, or DAGs, use the optional `task-conductor-plugin` and its shared `using-task-conductor` skill. The plugin and the `task-conductor` service are installed separately. Follow the [upstream integration guide](https://github.com/realqiyan/task-conductor/blob/master/docs/host-integrations.md) for service setup, connection settings, and updates.
+Use `task-conductor-plugin` for schedules, recurring workflows, DAGs, and tasks that continue after the host exits. Install the plugin and its service separately, following the [upstream integration guide](https://github.com/realqiyan/task-conductor/blob/master/docs/host-integrations.md).
 
-**Pi:** Check `pi list` for an existing installation and its resource settings. For the published Pi integration, run from the workspace root:
+Pi users run `pi install --local npm:task-conductor-plugin` from the workspace, reload, then read `/skill:using-task-conductor`. dsh users follow the [Task Conductor setup](docs/dsh.en.md#task-conductor) and read `/using-task-conductor` in the main session.
 
-```bash
-pi install --local npm:task-conductor-plugin
-```
-
-For unreleased plugin changes, use `pi install --local /absolute/path/to/task-conductor/plugin` instead. Keep one source enabled. Run `/reload` in Pi, then `/skill:using-task-conductor`. The skill covers service installation, `task-conductor setup`, and Pi's native MCP registration. `--local` limits plugin loading; choose MCP scope separately and reuse existing connections.
-
-**dsh:** The native Host integration is included in the unpublished Task Conductor `0.1.6` release candidate. Until publication, build the plugin and matching service from that source, then install the plugin tarball into your existing Web profile:
-
-```bash
-cd /absolute/path/to/task-conductor
-npm run pack:plugin
-dsh plugin --profile pbot add /absolute/path/to/task-conductor/task-conductor-plugin-<version>.tgz
-dsh plugin --profile pbot list task-conductor-plugin --depth 0
-```
-
-Use the actual tarball path printed by the packaging command. Restart `dsh --profile pbot`, open the main session, and invoke `/using-task-conductor`. The plugin provides the shared skill through native filesystem discovery and creates a native MCP connection for each root main session, using that session's working directory. Tools retain names such as `mcp__task-conductor__executor_list`; avoid adding a duplicate manual connection. The desktop application's native Plugins page accepts the same local tarball; its profile is separate. See the [dsh Task Conductor guide](docs/dsh.md#task-conductor) for the matching local service build and setup.
-
-The service keeps its own coordinator model configuration and `pi-durable` runtime. Using dsh as the host does not require the interactive Pi CLI. To also run task nodes with dsh, register the canonical absolute dsh executable through Task Conductor's admin CLI or Web interface as custom executor `dsh-acp`, with arguments `["--profile", "acp"]`. Follow the upstream skill's [custom ACP instructions](https://github.com/realqiyan/task-conductor/blob/master/plugin/skills/using-task-conductor/references/custom-acp.md); `dsh` is not a built-in executor ID. Nodes use their own dsh profile, authentication, tools, and environment.
-
-Notifications return to the originating persistent host session; resume that session to receive pending events. Closing Pi or dsh does not stop service tasks. Update the plugin and service separately, following upstream instructions to check active work, stop the service, and back up its data. Keep credentials in your terminal or private files. Use the skill's native tool discovery and read-only connection checks; these do not establish successful model execution or task delivery.
-
-## Optional workspace preparation
-
-Personal Bot works without initialization. Run `/pbot init` only if you want the standard material layout. It creates missing material directories and a missing root `AGENTS.md`; it does not overwrite files or start model tasks. In Pi, the new `AGENTS.md` enters native context after `/reload` or the next startup. The bundled directory guide is available from the first task.
-
-Keep goals, markets, preferences, and working agreements in ordinary documents. Ask the assistant to organize them as needed. For external tools, provide the CLI/MCP name, purpose, official documentation, or configuration location—not credential values.
+Notifications return to the session that submitted the task. Service tasks continue after Pi or dsh closes. Query and stop the current run and future recurrences separately.
 
 ## Daily use
 
-Describe the task directly: organize project materials, compare research findings, delegate an independent review, or run calculations. No fixed workflow is required. The command table and process details below describe Pi; see the [dsh guide](docs/dsh.en.md) for its Web interface and commands.
+Describe the task directly: organize materials, compare findings, delegate a review, or run calculations. These commands are for Pi; dsh commands are in its guide.
 
 | Command | Purpose |
 | --- | --- |
 | `/pbot` | Open the workspace menu |
 | `/pbot init` | Create missing material directories and root `AGENTS.md` |
-| `/pbot status` | Show workspace path, Personal Bot version, and Python environment status |
-| `/pbot history [text]` | Search historical exchanges and summaries; read originals and navigate their parents and children |
-| `/pbot agents` | Inspect specialists; enter sessions, send instructions, rename, or stop tasks |
-| `/pbot teams` | Inspect teams and public messages; start rounds, pause, close, or open members |
-| `/pbot python setup` | Retry shared venv preparation and activation; no path argument needed |
+| `/pbot status` | Inspect workspace, version, and Python state |
+| `/pbot history [text]` | Search exchanges and summaries, then read originals |
+| `/pbot agents` | Inspect, enter, rename, stop, or send instructions to specialists |
+| `/pbot teams` | Inspect teams and public messages; start rounds, pause, or close |
+| `/pbot python setup` | Retry shared Python preparation |
 | `/reload` | Pi's native command to reload extensions and resources |
 
-- **Native tools:** Use CLI commands through Bash with their current help. Keep concise provider guides and evidence references. Configure MCP for the current project by default: run `pi mcp add --local <server> ...` from the workspace root to write `.pi/mcp.json`, then inspect the configuration source with `/mcp`. Change user-level configuration only when cross-project use is explicitly requested. No Personal Bot registration, parameter binding, or permission table is needed. See the [connection skill](resources/skills/provider-connections/SKILL.md).
-- **History:** No session naming is required. Browse with `/pbot history`, or ask the assistant to look something up. `pbot_history` searches originals and summaries and follows parent/child references. Groups of four consecutive exchanges form a summary tree. Originals are searchable first; after a main interaction ends, the current Pi model builds pending summaries one at a time, including older discovered sessions. This makes extra model calls. New input cancels this work; a later idle period resumes it. Loading and searching make no model calls. Exchanges and summaries are stored in the workspace at `.pi/pbot/history/` and remain searchable when copied to another machine. Existing user-level indexes are copied into the workspace, keeping the old copies. See [history](docs/history.md).
-- **Research and analysis:** Ask the assistant to synthesize evidence, explain conflicts, check calculations and definitions, or identify assumptions to validate first.
-- **Independent sub-sessions:** Personal Bot supports tmux and independent Pi sessions; install tmux on the system to use them. `pbot_agent start` returns immediately; without a message, prompts, or files it creates an idle process without calling a model. Task completion produces a notification. Options cover models, directories, files, tools, and resources. Operations include send, follow-up, rename, status, read, stop, and explicit resume; there is no foreground/background flag or wait operation. `/pbot agents` shows active agents and can open their TUI. Main-session reload preserves running agents; exit or session switching stops them and retains history. Sub-sessions use native CLI/MCP within their delegated scope. See [specialist collaboration](docs/agent-collaboration.md).
-- **Teams:** `pbot_team` groups existing agents for `roundRobin` discussion or `parallel` rounds. Members exchange original messages through `pbot_team_message`; ordinary posts do not wake models. A running team reserves its members. Pause and drain in-flight work before private messages; reload pauses teams without replaying requests. The first release uses fixed membership and bounded rounds, not dynamic ask/reply wake-ups. See [specialist collaboration](docs/agent-collaboration.md).
-- **Scheduled and durable tasks:** The main session uses optional Task Conductor directly through native MCP, its `using-task-conductor` skill, and actual tool contracts. Without it, ordinary Personal Bot features still work, but scheduling is unavailable. Personal Bot adds no durable task scheduler or forwarding layer. Query and stop external tasks separately from sub-sessions. Cancelling the current run does not stop future recurrences, and closing Pi or dsh does not imply that external tasks stopped.
-- **Python:** All workspaces share one dedicated venv for the current user. Loading Personal Bot creates or updates it with locked dependencies and activates it in the current Pi process. Main and specialist sessions use `python` or `python3` through Bash. Failures are reported; fix the cause and retry with `/pbot python setup`. System Python, external terminals, existing scripts, and historical results are not changed. Shared dependency updates affect other workspaces, so stop relevant scripts before changing plugin versions or retrying setup. See the [Python guide](python/README.md) and [computation reference](resources/references/compute.md).
-- **Material maintenance:** Ask to organize project materials, reproduce a report using its previous definitions, or review delivery and close a task. The [project maintenance skill](resources/skills/project-maintenance/SKILL.md) updates the current task and affected materials within your requested scope. Current guidance is consolidated by topic, with reusable methods and analysis definitions extracted from project conclusions. Sources and important decisions remain traceable. Cleanup removes unnecessary temporary outputs within scope, not formal materials, history, or backups.
+- **Material preparation:** `/pbot init` is optional. It creates missing items and preserves existing files. In Pi, a new root AGENTS file loads after `/reload` or the next startup.
+- **Native tools:** Use CLI tools through Bash and MCP through the host's configuration. Add Pi project connections with `pi mcp add --local <server> ...` and inspect their source with `/mcp`. See the [connection skill](resources/skills/provider-connections/SKILL.md).
+- **History:** Pi and dsh query shared workspace archives. Originals are searchable first; after a main interaction, the current model fills pending summaries through additional model calls. New input cancels that work first. See [history](docs/history.md).
+- **Specialists and teams:** Delegate independent work, continue a conversation, or organize ordered discussions and parallel rounds. Pi specialists require tmux; dsh uses native sessions. A running team reserves its members. Pause and drain in-flight work before private tasks. See [specialist collaboration](docs/agent-collaboration.md).
+- **Python:** All workspaces share one venv for the current user. Loading the plugin prepares it and activates it in the host process. Use `python` or `python3` through Bash. Stop scripts using the environment before dependency updates. See the [Python guide](python/README.md) for paths, troubleshooting, and licenses.
+- **Material maintenance:** Ask the assistant to organize a project, repeat an analysis with its existing definitions, or check a delivery. The [maintenance skill](resources/skills/project-maintenance/SKILL.md) updates current guidance and extracts reusable methods while preserving formal materials, history, and backups.
 
-Main and child transcripts use Pi's native session storage. Use `pi --resume` to select a chat explicitly; `pi --continue` may select the most recently active child. Enter managed children through `/pbot agents`; stopped children reopen their saved session idle, without calling a model. Use `pbot_agent resume` to restart with a new instruction. Never open a second writer for a running child's session file. Do not resend a potentially side-effecting operation merely because a session resumed.
-
-Personal Bot maintains no separate provider-call ledger or result wrapper. Native tools own their results and large-output handling; project conclusions cite relevant sources and results. If an outcome is unclear, query native status first. Complete result retention is not guaranteed after a process crash.
+Use `pi --resume` to select the main session explicitly; `pi --continue` can select the most recently active child. Enter managed specialists through `/pbot agents`. Opening a stopped specialist's saved session leaves it idle; use resume with a new instruction to continue work. Keep one writer per running session.
 
 ## Workspace materials
 
 | Location | Purpose |
 | --- | --- |
-| `AGENTS.md` | Material navigation and working agreements |
-| `areas/`, `projects/` | Long-term goals, task definitions, conclusions, and deliverables |
+| `AGENTS.md` | Navigation and working agreements |
+| `areas/`, `projects/` | Long-term goals, tasks, conclusions, and deliverables |
 | `knowledge/` | Reusable concepts, methods, and analysis definitions |
-| `.pi/pbot/history/`, `.dsh/pbot/history/` | Saved exchanges, summaries, and node links, maintained by source and queried together |
-| `providers/` | Provider guides, coverage gaps, and validation evidence |
-| `scratch/` | Temporary scripts, query and calculation data, downloads, and runtime environments |
-| `agents/`, `.agents/skills/` | Workspace additions to coordinator/general-purpose roles and workspace skills |
+| `.pi/pbot/history/`, `.dsh/pbot/history/` | Exchanges, summaries, and node links |
+| `providers/` | External tool guidance, data definitions, and sources |
+| `scratch/` | Temporary scripts, calculation data, downloads, and environments |
+| `agents/`, `.agents/skills/` | Role additions and workspace skills |
 
-Fetch data that can be queried again when needed, using the recorded definitions.
+Existing layouts and agreements take precedence. Fetch queryable data when needed using the recorded definitions. Stop writes in the old instance before copying a workspace; concurrent writes from multiple machines to a synchronized directory are unsupported. See [file storage](docs/file-storage.md).
 
-Personal Bot stores no private activation state in the workspace. Pi owns its configuration; reload when required by Pi. Stop the old instance before copying a workspace. Concurrent writes from multiple machines to a synchronized directory are not supported. See [file storage](docs/file-storage.md) for storage and copying boundaries.
+## Updates and operating scope
 
-## Updates and historical data
+Current release: **0.2.9**. Update through the host's native package manager. For a local Pi source, update the checkout, run `npm ci --ignore-scripts` when dependencies change, then reload or restart. Stop active specialists before changing versions. Recreate specialists across compatibility lines; existing materials, history, and backups are preserved.
 
-Current release: **0.2.8**. Personal Bot maintains no workspace format, initialization state, or workspace upgrade mechanism. Update the plugin through its native host package manager. For a local Pi installation, update the source, run `npm ci --ignore-scripts` if dependencies changed, then reload or restart Pi.
+Operations follow the user's request, existing agreements, and required confirmations. Bash, Python, MCP, and extensions use the actual account and credential permissions. Enforce hard limits through read-only credentials, service controls, or restricted environments. Trades, transfers, and ledger changes require authorization for those operations. After cancellation, timeout, or disconnection, query native status before retrying to avoid duplicate execution.
 
-Stop active sub-sessions before changing versions. Sub-session compatibility follows the minor version before 1.0 and the major version from 1.0 onward. Sessions from another compatibility line cannot be resumed directly.
-
-Pi stores child JSONL transcripts in its native session directory or the location selected by native configuration. In the current Pi agent directory, `pbot/subagents/` holds only control records and session references; `pbot/teams/` holds public team records. Version 0.2.0 does not support the old session location. It does not migrate or delete 0.1.x history, and excludes old records from current lists and background scheduling. Stop active children with the old version before updating, then create new agents. The shared Python environment uses the user-level `pbot/python/.venv`; see the [Python guide](python/README.md) for exact system paths. Personal Bot does not import other applications' sessions, configuration, or environments, or modify their data. Configure MCP and CLI environments explicitly through native mechanisms. Preserve user materials, historical evidence, and backups.
-
-## Trust and risks
-
-- Personal Bot provides no per-tool permission system or unified approval gate. CLI, MCP, Bash, Python, and extensions have the permissions of their actual accounts and credentials. They are not sandboxed. Use read-only credentials, service-side controls, or a restricted environment for hard limits.
-- Tool availability is not user authorization. Research, connection setup, and validation do not authorize trades, transfers, or ledger changes.
-- Protocol success does not prove business completion. Cancellation, timeout, and session recovery do not undo external side effects. Check native status before retrying an operation that may have been sent.
-- Task Conductor nodes do not automatically inherit the main session's tools, environment, or skills. Do not schedule unattended operations without user authorization or when the native service requires human confirmation.
-
-See [native tools and execution boundaries](docs/capability-design.md). Real models, external services, and full TUI/RPC interactions still require an approved acceptance environment. Local tests do not prove readiness for live trading.
+Task Conductor nodes need their own tools, environment, skills, and authentication. Preserve human interaction for operations that require confirmation. See [tools and execution](docs/capability-design.md).
 
 ## Development and documentation
+
+Development for both hosts uses Linux and Node.js 24.9+. After installing locked dependencies, run:
 
 ```bash
 npm run check
 npm test
 git diff --check
+npm pack --dry-run
 ```
 
-Full development and acceptance for both hosts require Linux and Node.js 24.9+. `npm test` includes smoke and E2E tests and generates `dist/` for tests and `lib/` for the CLI and dsh Host/Web entries. Pi still loads the extension source directly. Inspect package contents with `npm pack --dry-run`. See [validation](docs/validation.md) for test groups and limits.
+`npm test` includes smoke and E2E tests and generates `dist/` for tests and `lib/` for distribution. Pi loads source at runtime.
 
-The README is available in English and Simplified Chinese. Detailed design documents and bundled guides are currently primarily in Chinese.
-
-- [Development documentation](docs/README.md): architecture, tools, collaboration, storage, and validation.
-- [npm releases](docs/release.md): configuration, authorization, publishing, and installation acceptance.
-- [Domain terminology](CONTEXT.md) · [Python environment, native libraries, and licenses](python/README.md).
+- [Documentation index](docs/README.md): current architecture, usage, and development guidance.
+- [npm release](docs/release.md): candidate checks, configuration, and publication.
+- [Domain terms](CONTEXT.md).
