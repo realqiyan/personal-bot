@@ -135,7 +135,7 @@ Existing layouts and agreements take precedence. Fetch queryable data when neede
 
 ## Updates and operating scope
 
-Current release: **0.2.10**. Update through the host's native package manager. For a local Pi source, update the checkout, run `npm ci --ignore-scripts` when dependencies change, then reload or restart. Stop active specialists before changing versions. Recreate specialists across compatibility lines; existing materials, history, and backups are preserved.
+Current release: **0.2.11**. Update through the host's native package manager. For a local Pi source, update the checkout, run `npm ci --ignore-scripts` when dependencies change, then reload or restart. Stop active specialists before changing versions. Recreate specialists across compatibility lines; existing materials, history, and backups are preserved.
 
 Operations follow the user's request, existing agreements, and required confirmations. Bash, Python, MCP, and extensions use the actual account and credential permissions. Enforce hard limits through read-only credentials, service controls, or restricted environments. Trades, transfers, and ledger changes require authorization for those operations. After cancellation, timeout, or disconnection, query native status before retrying to avoid duplicate execution.
 

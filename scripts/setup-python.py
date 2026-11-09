@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 import stat
 import subprocess
 import sys
@@ -54,6 +55,7 @@ def locked_packages():
 
 
 def inspect_environment(target):
+    """Return the shared venv description; None means it must be created or rebuilt."""
     if target.is_symlink():
         raise ValueError("共享环境目录不能是符号链接。")
     if not target.exists():
@@ -63,7 +65,16 @@ def inspect_environment(target):
         raise ValueError("共享环境位置已被非 venv 数据占用；不会覆盖或删除。")
     if re.search(r"include-system-site-packages\s*=\s*true", config.read_text(), re.I):
         raise ValueError("共享 venv 不能继承系统 site-packages。")
-    info = json.loads(subprocess.check_output([str(target / "bin/python"), "-I", "-B", "-c", INSPECT], text=True))
+    try:
+        probe = subprocess.run([str(target / "bin/python"), "-I", "-B", "-c", INSPECT],
+                               capture_output=True, text=True)
+    except OSError:
+        # The base interpreter was removed, so the environment cannot run.
+        return None
+    if probe.returncode != 0:
+        # The base interpreter was upgraded, or the copied executable is damaged.
+        return None
+    info = json.loads(probe.stdout)
     if Path(info["prefix"]).resolve() != target.resolve() or info["prefix"] == info["basePrefix"]:
         raise ValueError("解释器不属于共享 venv；不会修改其他 Python 环境。")
     if info["version"][:2] < [3, 11]:
@@ -76,11 +87,15 @@ def plan(target):
     required = locked_packages()
     current = inspect_environment(target)
     installed = (current or {}).get("packages", {})
+    changes = [{"package": name, "from": installed.get(name), "to": version}
+               for name, version in required.items() if installed.get(name) != version]
+    if current is None:
+        action = "rebuild" if target.exists() else "create"
+    else:
+        action = "update" if changes else "verify"
     return {
-        "directory": str(target), "python": str(target / "bin/python"),
-        "current": current, "required": required,
-        "changes": [{"package": name, "from": installed.get(name), "to": version}
-                    for name, version in required.items() if installed.get(name) != version],
+        "action": action, "directory": str(target), "python": str(target / "bin/python"),
+        "current": current, "required": required, "changes": changes,
     }
 
 
@@ -94,7 +109,10 @@ def setup(target):
         # Concurrent startups wait, then inspect again rather than apply stale plans.
         fcntl.flock(fd, fcntl.LOCK_EX)
         actual = plan(target)
-        if actual["current"] is None:
+        if actual["action"] == "rebuild":
+            print("共享 venv 的解释器无法运行，重建共享环境。", file=sys.stderr)
+            shutil.rmtree(target)
+        if actual["action"] in ("create", "rebuild"):
             venv.EnvBuilder(with_pip=True).create(target)
         python = str(target / "bin/python")
 
@@ -126,6 +144,11 @@ def setup(target):
 
 
 def main():
+    # venv records the invoking path as its home; resolve first so a symlinked launcher
+    # (for example a relocatable CPython managed by another tool) yields a usable base.
+    real = os.path.realpath(sys.executable) if sys.executable else ""
+    if real and real != sys.executable:
+        os.execv(real, [real, "-I", "-B", os.path.abspath(__file__), *sys.argv[1:]])
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--check", action="store_true", help="只检查共享环境，不创建或安装")
     args = parser.parse_args()
@@ -139,6 +162,9 @@ if __name__ == "__main__":
     try:
         main()
     except (Exception, KeyboardInterrupt) as error:
+        if isinstance(error, subprocess.CalledProcessError) and error.output:
+            print(error.output if isinstance(error.output, str) else error.output.decode(errors="replace"),
+                  file=sys.stderr, end="")
         print(str(error), file=sys.stderr)
-        print("共享 Python 环境未就绪。请检查 Python 3.11+、venv/ensurepip、网络、安装权限和 wheel；修复后执行 /pbot python setup 或重启。不会删除现有环境、改用系统环境安装或编译 C 库。", file=sys.stderr)
+        print("共享 Python 环境未就绪。请检查 Python 3.11+、venv/ensurepip、网络、安装权限和 wheel；修复后执行 /pbot python setup 或重启。不改用系统环境安装或编译 C 库；共享 venv 解释器无法运行时会重建，其他数据不删除。", file=sys.stderr)
         sys.exit(1)

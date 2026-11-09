@@ -6,7 +6,7 @@
 
 工作区的 `.pbot/config.json` 设置 `enabled: true` 后，Pi 加载或原生 `/reload` 时自动执行 setup；dsh 在首个已启用工作区加载时准备环境。无需另行确认或指定 Python 路径。同一系统用户的两种宿主共用该环境：
 
-1. 共享 venv 不存在时创建，不使用系统 site-packages。
+1. 共享 venv 不存在时创建，不使用系统 site-packages；解释器无法启动时重新创建。
 2. 按 `requirements.lock` 补齐或对齐依赖，允许升级或降级；已匹配时不重新安装。
 3. 检查依赖关系、全部预装库导入和简单 TA-Lib 计算。
 4. 成功后将 venv 的 `bin` 放到当前宿主进程 PATH 前端，设置 `VIRTUAL_ENV`，移除 `PYTHONHOME`、`PYTHONPATH` 并禁用用户 site-packages。主会话与专家的原生 Bash 继承该环境。
@@ -16,7 +16,7 @@
 | Linux | `${XDG_DATA_HOME:-~/.local/share}/pbot/python/.venv`；仅使用绝对 XDG_DATA_HOME |
 | macOS | `~/Library/Application Support/pbot/python/.venv` |
 
-首次准备从当前 PATH 选择 python3，无该命令时使用 python；需要 Python 3.11+ 和 venv/ensurepip。系统 Python 只用于创建独立 venv，不在系统环境中安装依赖。现有环境不自动替换基础解释器，也不删除额外安装的包。
+首次准备从当前 PATH 选择 python3，无该命令时使用 python；需要 Python 3.11+ 和 venv/ensurepip。系统 Python 只用于创建独立 venv，不在系统环境中安装依赖。已有 venv 按锁文件对齐，保留额外安装的包。基础解释器被移除或升级、导致共享 venv 的解释器无法启动时，setup 用当前 Python 3.11+ 重建该 venv，原有包随之移除；非 venv 数据、符号链接和其他 Python 环境不会被覆盖或删除。
 
 首次安装可能需要数分钟和网络。`/pbot init` 创建共用启用配置并启动环境准备；手工设置 enabled 为 true 后重载也会准备环境。不需要 Personal Bot 的工作区可保留配置缺失或设置 enabled 为 false，再重载或重启宿主；也可通过宿主原生配置取消加载整个插件。`/pbot status` 显示环境状态。所属激活生命周期关闭时恢复本扩展修改的进程环境变量；dsh 按整个 pbot 组件共享激活，不随某个浏览器页面或单个工作区关闭而恢复，不覆盖期间其他代码对变量的新修改。外部终端和 shell 配置不变。
 
@@ -30,7 +30,7 @@
 /pbot python setup
 ```
 
-无需路径和额外确认，执行同一准备逻辑，成功后激活。也可重启 pbot。安装限时 15 分钟，超时或关闭会取消准备；不会自动回滚或循环重试。失败留下的环境保留，不通过删除、重建或更换基础解释器修复。缺少 pip 时仅尝试该 venv 的 ensurepip。
+无需路径和额外确认，执行同一准备逻辑，成功后激活。也可重启 pbot。安装限时 15 分钟，超时或关闭会取消准备；不会自动回滚或循环重试。失败留下的环境保留，下次 setup 继续按锁文件补齐。共享 venv 解释器无法启动时自动重建；其他损坏不自动删除环境，可自行删除该目录后重试。缺少 pip 时仅尝试该 venv 的 ensurepip。
 
 安装只接受 wheel，不编译 C 库、不安装系统软件，不绕过系统 Python 的安装保护。没有匹配 wheel、网络不可用、权限不足或环境损坏时停止。TA-Lib wheel 包含底层库，但并非所有系统和架构都有匹配 wheel。pip 安装配置被忽略，避免包被重定向到其他目标。
 

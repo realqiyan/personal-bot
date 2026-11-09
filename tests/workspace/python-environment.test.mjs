@@ -42,6 +42,7 @@ test("read-only checks resolve one user environment without creating it", async 
   const { root, directory, environment } = await fixture(t);
   const proposed = await check(environment);
   assert.equal(proposed.directory, directory);
+  assert.equal(proposed.action, "create");
   assert.equal(proposed.current, null);
   assert.equal(proposed.python, join(directory, "bin/python"));
   assert.ok(proposed.required["ta-lib"]);
@@ -75,6 +76,22 @@ test("check identifies the actual venv and rejects inherited system packages", a
   const config = join(directory, "pyvenv.cfg");
   await writeFile(config, (await readFile(config, "utf8")).replace("include-system-site-packages = false", "include-system-site-packages = true"));
   await assert.rejects(check(environment));
+});
+
+test("a venv whose interpreter cannot start is planned for rebuild", async t => {
+  const { directory, environment } = await fixture(t);
+  await exec(python, ["-m", "venv", "--without-pip", directory]);
+  const interpreter = join(directory, "bin/python");
+  await rm(interpreter);
+  await symlink("/nonexistent/pbot/base-python", interpreter);
+  assert.equal((await check(environment)).action, "rebuild");
+  await rm(interpreter);
+  await writeFile(interpreter, "#!/bin/sh\nexit 1\n", { mode: 0o755 });
+  const proposed = await check(environment);
+  assert.equal(proposed.action, "rebuild");
+  assert.equal(proposed.current, null);
+  assert.ok(proposed.changes.length > 0);
+  assert.ok((await readdir(directory)).includes("pyvenv.cfg"), "a read-only check keeps the environment");
 });
 
 test("setup waits for another installer and close cancels the wait without activation", async t => {

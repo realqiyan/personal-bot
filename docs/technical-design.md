@@ -111,7 +111,7 @@ Web 拥有草稿、上传和查询；接纳后的命令归服务端。命令不�
 
 所有工作区共用当前用户的 venv。PythonEnvironmentService 调用 scripts/setup-python.py，按 python/requirements.lock 创建或对齐依赖，完成 pip check、库导入和基础计算检查后标记就绪。安装仅使用 wheel。
 
-共享锁串行化跨进程 setup，同一服务合并重叠请求。失败或取消时保留环境并报告状态，其他扩展功能继续可用；可通过 `/pbot python setup` 重试。
+共享锁串行化跨进程 setup，同一服务合并重叠请求。失败或取消时保留环境并报告状态，其他扩展功能继续可用；可通过 `/pbot python setup` 重试。共享 venv 的解释器无法运行时（基础解释器被移除或升级），在锁内重建该 venv；非 venv 数据、符号链接和其他环境仍拒绝覆盖。
 
 各宿主装配在当前进程激活 PATH、VIRTUAL_ENV 和 Python 路径变量，供主会话与专家的 Bash 继承；同一 dsh 进程内的工作区共用准备与激活生命周期。关闭时恢复仍由本实例持有的变量。环境更新会影响其他工作区，更新前应停止相关脚本。
 
