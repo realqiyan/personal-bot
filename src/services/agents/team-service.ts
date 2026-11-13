@@ -108,7 +108,8 @@ export class TeamService {
     if (changed) this.files.save(team);
   }
   pauseAll(owner: AgentOwner, reason: string) {
-    this.check(); this.agents.control(() => { for (const team of this.records(owner.sessionId)) this.pauseRecord(team, reason); });
+    if (!this.records(owner.sessionId).length) return;
+    this.agents.control(() => { for (const team of this.records(owner.sessionId)) this.pauseRecord(team, reason); });
   }
   recover(owner: AgentOwner) {
     if (this.#recovered.has(owner.sessionId)) return;
@@ -201,7 +202,7 @@ export class TeamService {
     });
   }
   advance(owner: AgentOwner, views: TeamAgent[], completions: AgentCompletion[]): TeamInput[] {
-    this.check();
+    if (!this.records(owner.sessionId).length) return [];
     return this.agents.control(() => {
       const inputs: TeamInput[] = [], records = this.records(owner.sessionId), links = this.files.links(records);
       for (const team of records) {

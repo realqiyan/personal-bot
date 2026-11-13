@@ -69,6 +69,22 @@ async function fixture(t, count = 3, options = {}) {
     advance: () => service.advance(owner, views, completions) };
 }
 
+test("sessions without teams keep scanning while another session holds the control lock", async t => {
+  const f = await fixture(t, 1), idleOwner = { ...owner, sessionId: "another-parent" };
+  const restored = new TeamService(f.root, f.agents, f.files);
+  f.agents.control(() => {
+    restored.recover(idleOwner);
+    restored.pauseAll(idleOwner, "Interrupted");
+    assert.deepEqual(restored.advance(idleOwner, [], []), []);
+    assert.throws(() => restored.advance(owner, f.views, []), { code: "PBOT_CONTROL_BUSY" });
+    assert.throws(() => restored.pauseAll(owner, "Interrupted"), { code: "PBOT_CONTROL_BUSY" });
+  });
+  f.service.run(f.team.teamId, owner, { instruction: "Work after contention", mode: "roundRobin" }, f.views);
+  assert.equal(restored.advance(owner, f.views, []).length, 1);
+  restored.pauseAll(owner, "Interrupted");
+  assert.equal(f.files.read(f.team.teamId).runs[0].state, "paused");
+});
+
 test("round robin preserves raw reports, fixed order and subagent descriptors", async t => {
   const f = await fixture(t, 2);
   const before = await Promise.all(f.views.map(v => readFile(join(f.agents.directory(v.agentId), "descriptor.json"), "utf8")));

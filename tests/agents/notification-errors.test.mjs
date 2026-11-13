@@ -12,6 +12,18 @@ import { agentOwner } from "../../dist/integrations/pi/agent-context.js";
 import { packageVersion } from "../../dist/common/version.js";
 import { host } from "../helpers/pi-host.mjs";
 
+function saveUnreadableReport(session, files, root) {
+  const owner = agentOwner(session.extensionRunner.createToolContext("local", undefined));
+  const agentId = randomUUID(), generation = randomUUID(), cycleId = randomUUID();
+  files.create({ agentId, release: packageVersion, workspace: session.sessionManager.getCwd(), cwd: session.sessionManager.getCwd(),
+    parentSessionId: owner.sessionId, parentLeaf: owner.leaf, createdAt: 1, options: {} },
+  { generation, name: "report", sequence: 1, stop: true, startedAt: 1 });
+  files.bindSession(agentId, join(root, "missing.jsonl"));
+  files.write(agentId, "completions/" + cycleId + ".json", { cycleId, generation, startedAt: 1,
+    finishedAt: 2, state: "completed", leaf: "missing-leaf", requestIds: ["request"], source: "parent" }, cycle, true);
+  return agentId;
+}
+
 function preview(session, entries) {
   const manager = SessionManager.inMemory(session.sessionManager.getCwd(), undefined,
     [session.sessionManager.getHeader(), ...structuredClone(session.sessionManager.getEntries())]);
@@ -29,16 +41,8 @@ test("unreadable completion reports reach the model once and respect abort", asy
   const files = new AgentFiles(agentDirectory());
   try {
     await session.extensionRunner.emit({ type: "session_tree" });
-    await mkdir(join(files.root, ".control"));
     await session.extensionRunner.emit({ type: "agent_settled", aborted: true });
-    const owner = agentOwner(session.extensionRunner.createToolContext("local", undefined));
-    const agentId = randomUUID(), generation = randomUUID(), cycleId = randomUUID();
-    files.create({ agentId, release: packageVersion, workspace: session.sessionManager.getCwd(), cwd: session.sessionManager.getCwd(),
-      parentSessionId: owner.sessionId, parentLeaf: owner.leaf, createdAt: 1, options: {} },
-    { generation, name: "report", sequence: 1, stop: true, startedAt: 1 });
-    files.bindSession(agentId, join(root, "missing.jsonl"));
-    files.write(agentId, "completions/" + cycleId + ".json", { cycleId, generation, startedAt: 1,
-      finishedAt: 2, state: "completed", leaf: "missing-leaf", requestIds: ["request"], source: "parent" }, cycle, true);
+    saveUnreadableReport(session, files, root);
     const boundary = () => session.extensionRunner.emitBoundary({ type: "agent_before_settle", outcome: "completed" }, entries => preview(session, entries));
     assert.equal((await boundary()).continue, false);
     await session.extensionRunner.emitInput("Continue", undefined, "interactive");
@@ -68,9 +72,16 @@ for (const delivered of [false, true]) test(`a persistent control lock recovers 
   const root = await mkdtemp(join(tmpdir(), "pbot-pause-error-")), previous = process.env.PI_CODING_AGENT_DIR;
   process.env.PI_CODING_AGENT_DIR = root;
   const { session, errors } = await host(t);
-  const lock = join(agentDirectory(), ".control");
+  const files = new AgentFiles(agentDirectory()), teams = new TeamFiles(files), lock = join(files.root, ".control");
+  const ctx = session.extensionRunner.createToolContext("local", undefined), owner = agentOwner(ctx);
   const boundary = () => session.extensionRunner.emitBoundary({ type: "agent_before_settle", outcome: "completed" }, entries => preview(session, entries));
   try {
+    const memberId = randomUUID(), memberGeneration = randomUUID(), teamId = randomUUID();
+    files.create({ agentId: memberId, release: packageVersion, workspace: ctx.cwd, cwd: ctx.cwd,
+      parentSessionId: owner.sessionId, parentLeaf: owner.leaf, createdAt: 1, options: {} },
+    { generation: memberGeneration, name: "member", sequence: 0, stop: true, startedAt: 1 });
+    teams.save({ teamId, release: packageVersion, workspace: ctx.cwd, parentSessionId: owner.sessionId, parentLeaf: owner.leaf,
+      name: "saved", brief: "Pending team control", members: [{ agentId: memberId, role: "review" }], closed: false, runs: [], messages: [] }, true);
     await mkdir(lock);
     await session.extensionRunner.emit({ type: "agent_settled", aborted: true });
     await session.extensionRunner.emitInput("Continue", undefined, "interactive");
@@ -97,6 +108,8 @@ for (const delivered of [false, true]) test(`a persistent control lock recovers 
     session.sessionManager.appendCustomMessageEntry(entry.customType, entry.content, entry.display, entry.details);
     assert.equal((await boundary()).entries.length, 0);
     await session.extensionRunner.emit({ type: "agent_settled", aborted: true });
+    await rename(join(teams.root, teamId), join(root, "retired-team"));
+    await rename(files.directory(memberId), join(root, "retired-member"));
     await rm(lock, { recursive: true });
     // Recovery must be visible even when there are no agents or teams, and respect abort.
     await session.extensionRunner.emit({ type: "session_tree" });
@@ -117,8 +130,7 @@ for (const delivered of [false, true]) test(`a persistent control lock recovers 
     await session.extensionRunner.emitInput("Continue", undefined, "interactive");
     assert.equal((await boundary()).entries.length, 0);
     await session.extensionRunner.emit({ type: "agent_settled", aborted: true });
-    const files = new AgentFiles(agentDirectory()), ctx = session.extensionRunner.createToolContext("local", undefined);
-    const owner = agentOwner(ctx), agentId = randomUUID(), generation = randomUUID(), cycleId = randomUUID();
+    const agentId = randomUUID(), generation = randomUUID(), cycleId = randomUUID();
     files.create({ agentId, release: packageVersion, workspace: ctx.cwd, cwd: ctx.cwd,
       parentSessionId: owner.sessionId, parentLeaf: owner.leaf, createdAt: 1, options: {} },
     { generation, name: "stopped", sequence: 0, stop: true, startedAt: 1 });
@@ -145,14 +157,12 @@ test("a delivered read failure is reported again when the service requires reloa
   const root = await mkdtemp(join(tmpdir(), "pbot-reload-error-")), previous = process.env.PI_CODING_AGENT_DIR;
   process.env.PI_CODING_AGENT_DIR = root;
   const { session, errors } = await host(t);
-  const files = new AgentFiles(agentDirectory()), lock = join(files.root, ".control");
+  const files = new AgentFiles(agentDirectory());
   const broken = join(new TeamFiles(files).root, "unreadable");
   const boundary = () => session.extensionRunner.emitBoundary({ type: "agent_before_settle", outcome: "completed" }, entries => preview(session, entries));
   try {
-    await mkdir(lock);
     await session.extensionRunner.emit({ type: "agent_settled", aborted: true });
-    await mkdir(broken, { recursive: true });
-    await writeFile(join(broken, "team.json"), "{");
+    const agentId = saveUnreadableReport(session, files, root);
     await session.extensionRunner.emitInput("Continue", undefined, "interactive");
     const first = await boundary(), entry = first.entries[0];
     assert.equal(first.valid, true); assert.equal(first.continue, true);
@@ -160,7 +170,9 @@ test("a delivered read failure is reported again when the service requires reloa
     session.sessionManager.appendCustomMessageEntry(entry.customType, entry.content, entry.display, entry.details);
     assert.equal((await boundary()).entries.length, 0);
     await session.extensionRunner.emit({ type: "agent_settled", aborted: true });
-    await rm(lock, { recursive: true });
+    await rename(files.directory(agentId), join(root, "unreadable-report"));
+    await mkdir(broken, { recursive: true });
+    await writeFile(join(broken, "team.json"), "{");
     // The scanner now reaches the damaged record and disables this service instance.
     await session.extensionRunner.emit({ type: "session_tree" });
     await session.extensionRunner.emitInput("Continue", undefined, "interactive");
@@ -184,7 +196,6 @@ test("a delivered read failure is reported again when the service requires reloa
     assert.equal((await boundary()).entries.length, 0);
     assert.deepEqual(errors.map(error => error.event), ["session_shutdown"]);
   } finally {
-    await rm(lock, { recursive: true, force: true });
     await session.extensionRunner.emit({ type: "agent_settled", aborted: true });
     if (previous === undefined) delete process.env.PI_CODING_AGENT_DIR; else process.env.PI_CODING_AGENT_DIR = previous;
     await rm(root, { recursive: true, force: true });
