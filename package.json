@@ -1,6 +1,6 @@
 {
   "name": "personal-bot",
-  "version": "0.2.11",
+  "version": "0.2.12",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/realqiyan/personal-bot.git"
@@ -82,9 +82,11 @@
     "test": "npm run build && node --test --test-concurrency=1 tests/*/*.test.mjs",
     "test:smoke": "npm run build && node --test --test-concurrency=1 tests/smoke/*.test.mjs",
     "test:e2e": "npm run build && node --test --test-concurrency=1 tests/e2e/*.test.mjs",
+    "test:e2e:acp": "npm run build && node --test --test-concurrency=1 tests/e2e/acp-defaults.e2e.mjs",
     "prepack": "npm run check && npm run build:cli && npm run build:dsh"
   },
   "peerDependencies": {
+    "@anthropic-ai/claude-agent-sdk": "*",
     "@deepseek-ai/cordis": "~4.1.0",
     "@deepseek-ai/dsh-agent": "*",
     "@deepseek-ai/dsh-agent-preset-registry": "*",
@@ -116,6 +118,9 @@
     "typebox": "*"
   },
   "peerDependenciesMeta": {
+    "@anthropic-ai/claude-agent-sdk": {
+      "optional": true
+    },
     "@deepseek-ai/cordis": {
       "optional": true
     },
@@ -205,11 +210,13 @@
     }
   },
   "dependencies": {
+    "@agentclientprotocol/sdk": "2.6.0",
     "ajv": "8.17.1",
     "ajv-formats": "3.0.1",
     "semver": "7.8.5"
   },
   "devDependencies": {
+    "@anthropic-ai/claude-agent-sdk": "0.3.322",
     "@deepseek-ai/cordis": "4.1.0",
     "@deepseek-ai/dsh": "0.2.2-rc.1",
     "@deepseek-ai/dsh-agent": "0.2.2-rc.1",

@@ -1,5 +1,8 @@
+import type { AcpCommands } from "./acp.js";
+
 export interface WorkspaceConfig {
   enabled?: boolean;
+  acp?: AcpCommands;
 }
 
 export interface WorkspaceConfiguration {
@@ -7,4 +10,5 @@ export interface WorkspaceConfiguration {
   present: boolean;
   enabled: boolean;
   error?: string;
+  acp?: AcpCommands;
 }

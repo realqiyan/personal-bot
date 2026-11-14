@@ -84,7 +84,7 @@ npm run build:cli
 node bin/pbot.mjs setup
 ```
 
-只加载 Pi 源码扩展时，在工作区执行 `pi install --local /absolute/path/to/personal-bot`，并保留该目录和依赖。dsh 的源码打包安装见[专门说明](docs/dsh.md#从源码安装)。
+只加载 Pi 源码扩展时，在工作区执行 `pi install --local /absolute/path/to/personal-bot`，并保留该目录和依赖。使用 ACP 成员前先运行完整的 `npm run build`。dsh 的源码打包安装见[专门说明](docs/dsh.md#从源码安装)。
 
 ### 可选安装 Task Conductor
 
@@ -112,7 +112,7 @@ Pi 用户从工作区运行 `pi install --local npm:task-conductor-plugin`，重
 - **初始化与资料准备**：`/pbot init` 补建资料并启用工作区，保留已有资料与其他配置字段。Pi 首次启用时自动重载；已启动时补建的根 AGENTS 经 `/reload` 加载。
 - **原生工具**：CLI 通过 Bash 使用，MCP 使用宿主配置。Pi 新增项目连接时执行 `pi mcp add --local <server> ...`，通过 `/mcp` 查看来源。接入方法见[技能](resources/skills/provider-connections/SKILL.md)。
 - **历史回溯**：Pi 与 dsh 共同查询工作区归档。原文先可查询，主交互结束后用当前模型补齐摘要，会产生额外模型调用；新输入优先取消整理。详见[历史对话](docs/history.md)。
-- **专家与团队**：可独立委派、持续对话，或组织轮流讨论和并行轮次。Pi 专家需要 tmux；dsh 使用原生会话。团队运行时占用成员，切换私人工作前先暂停并等待在途工作结束。详见[专家协作](docs/agent-collaboration.md)。
+- **专家与团队**：可独立委派、持续对话，或组织轮流讨论和并行轮次。默认 Pi 专家需要 tmux，dsh 使用原生会话；两种主会话也可通过 ACP 调用 Pi、dsh 和 Claude Code，支持独立对话、报告及恢复。ACP 的 model、thinking 均可单独省略，省略项使用目标宿主默认值。团队运行时占用成员，切换私人工作前先暂停并等待在途工作结束。详见[专家协作](docs/agent-collaboration.md)。
 - **Python**：所有已启用工作区共用当前用户的一份 venv，启用后自动准备并在宿主进程激活，通过 Bash 使用 `python` 或 `python3`。更新依赖前停止使用该环境的脚本。路径、排障与许可见 [Python 说明](python/README.md)。
 - **资料维护**：可请助手整理项目、按既有口径重做分析或检查交付。按[维护技能](resources/skills/project-maintenance/SKILL.md)更新当前说明、提炼方法，保留正式资料、历史与备份。
 
@@ -135,7 +135,7 @@ Pi 主会话恢复用 `pi --resume` 明确选择；`pi --continue` 可能选中�
 
 ## 更新与操作范围
 
-当前版本为 **0.2.11**。通过宿主原生包管理更新；本地 Pi 来源更新源码，依赖变化后运行 `npm ci --ignore-scripts`，再重载或重启。更换版本前停止活动专家；不同兼容线的专家需重新创建，旧资料、历史和备份保留。
+当前版本为 **0.2.12**。通过宿主原生包管理更新；本地 Pi 来源更新源码，依赖变化后运行 `npm ci --ignore-scripts`，再重载或重启。更换版本前停止活动专家；不同兼容线的专家需重新创建，旧资料、历史和备份保留。
 
 操作按用户请求、已有约定和必要确认执行。Bash、Python、MCP 和扩展使用实际账户与凭据权限；硬限制应由只读凭据、服务端控制或受限环境提供。交易、转账和账本修改需要相应授权。取消、超时或断连后，先查原生状态再决定是否重试，避免重复执行。
 

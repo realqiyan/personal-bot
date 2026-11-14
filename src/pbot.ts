@@ -1,5 +1,6 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { PiAgents, agentDirectory } from "./integrations/pi/pi-agents.js";
+import { AgentBackends } from "./integrations/acp/agents.js";
 import { PythonEnvironmentService } from "./services/workspace/python-environment-service.js";
 import { AgentService } from "./services/agents/agent-service.js";
 import { TeamService } from "./services/agents/team-service.js";
@@ -20,8 +21,8 @@ export default function pbot(pi: ExtensionAPI) {
   // The explicitly loaded child entry owns the child; normal discovery never grants main privileges.
   if (process.env.PBOT_SUBAGENT_RUN_ID) return;
   const confirmations = new Confirmations(), registry = new ToolRegistry(pi);
-  const lifecycle = new Lifecycle(root => {
-    const agents = new AgentService(root, agentDirectory(), new PiAgents());
+  const lifecycle = new Lifecycle((root, configuration) => {
+    const agents = new AgentService(root, agentDirectory(), new AgentBackends(new PiAgents(), agentDirectory(), configuration.acp));
     const history = new HistoryService(root, new HistoryFiles(join(root, ".pbot/history")), new PiHistory(root, () =>
       agents.files.list().filter(agent => agent.workspace === root).flatMap(agent => {
         const file = agents.files.optional(agent.agentId, "session-ref.json", sessionRef)?.file;

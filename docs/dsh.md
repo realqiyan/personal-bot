@@ -184,12 +184,13 @@ task-conductor setup
 | `/pbot python setup` | 重试共享 Python 环境准备并在当前 Host 进程激活 |
 | `/pbot agent {"action":"list"}` | 专家管理，全部 action 见下表 |
 | `/pbot chat {"agentId":"AGENT_ID","text":"补充要求"}` | 人工对话，可附文件；自动先暂停所属团队 |
-| `/pbot records {"agentId":"AGENT_ID"}` | 读取专家完整原生事件记录 |
+| `/pbot records {"agentId":"AGENT_ID"}` | 读取原生专家事件，或 ACP 专家的任务与报告 |
+| `/pbot approval {"agentId":"AGENT_ID","requestId":"REQUEST_ID","optionId":"OPTION_ID"}` | 回答工作区页列出的专家确认请求；optionId 为 null 时取消 |
 | `/pbot team {"action":"list"}` | 团队管理与公共消息读取 |
 | `/pbot post {"teamId":"TEAM_ID","text":"公开信息"}` | 以人工用户身份发布公共消息，不唤醒模型 |
 | `/pbot history {"action":"search"}` | 查询历史归档；也支持 read |
 
-`chat`、`post`、`records` 不带 `action`。dsh 没有 `/pbot help`、`/pbot agents` 或 `/pbot teams` 子命令；后两个复数入口属于 Pi。
+`chat`、`post`、`records`、`approval` 不带 `action`。dsh 没有 `/pbot help`、`/pbot agents` 或 `/pbot teams` 子命令；后两个复数入口属于 Pi。
 
 ## 专家命令
 
@@ -197,7 +198,7 @@ task-conductor setup
 
 | action | 除 action 外必填字段 | 可选字段 | 用途 |
 | --- | --- | --- | --- |
-| `start` | 无 | `name`, `message`, `prompts`, `files`, `provider`, `model`, `thinking`, `cwd`, `tools`, `noSkills` | 创建专家，接纳后返回，不等待完成 |
+| `start` | 无 | `backend`, `name`, `message`, `prompts`, `files`, `provider`, `model`, `thinking`, `cwd`, `tools`, `noSkills` | 创建专家，接纳后返回，不等待完成 |
 | `list` | 无 | 无 | 列出当前父会话的专家 |
 | `status` | `agentId` | 无 | 查看执行与最近周期状态，不读报告正文 |
 | `send` | `agentId`, `message` | `delivery` | 向存活专家追加委派任务 |
@@ -206,7 +207,7 @@ task-conductor setup
 | `stop` | `agentId` | 无 | 请求停止并保留历史；可能仍处于 stopping |
 | `resume` | `agentId`, `message` | 无 | 已停止专家携新要求恢复，不重放旧任务 |
 
-`start` 不带初始文字或文件时只创建待命专家，不调用模型；但仍须继承或显式提供有效的 provider/model 选择。先在 dsh 中选模型。每个父会话最多 50 个存活、启动中或释放中的专家；专家使用同进程独立 Agent/Session，不需 tmux，也不继承父聊天历史。
+`start` 不带初始文字或文件时只创建待命专家，不调用模型。默认原生专家须继承或显式提供有效的 provider/model；先在 dsh 中选模型。显式 backend 为 pi、dsh 或 claude 时，通过 ACP 使用目标宿主配置和独立 worker，不继承父侧模型默认值。每个父会话最多 50 个存活、启动中或释放中的专家。原生专家使用同进程独立 Agent/Session，不需 tmux。ACP 准备与能力范围见[专家协作](agent-collaboration.md#acp-成员)。
 
 | 启动参数 | 说明 |
 | --- | --- |
@@ -221,7 +222,7 @@ task-conductor setup
 
 专家创建和恢复时应用父会话的原生 preset，保留其文件工具、AGENTS 和技能发现，再应用专家工具限制。显式 complete persona 由宿主按其完整配置提供行为要求。
 
-Pi 专属的 `noExtensions`、`noPromptTemplates`、`noContextFiles` 在 dsh 中拒绝。`send.delivery` 为 `steer`（默认，补充当前工作）或 `followUp`（当前工作之后）。`send/resume` 不支持 files、prompts 或模型切换参数。成员被团队占用时私人 send 被拒绝，应先 pause 并等在途工作结束。
+Pi 专属的 noExtensions、noPromptTemplates、noContextFiles 仅对 backend 为 pi 的 ACP 成员可用，原生 dsh 与其他目标拒绝。`send.delivery` 为 `steer`（默认，补充当前工作）或 `followUp`（当前工作之后）。`send/resume` 不支持 files、prompts 或模型切换参数。成员被团队占用时私人 send 被拒绝，应先 pause 并等在途工作结束。
 
 ```text
 /pbot agent {"action":"start","name":"证据核对"}
@@ -242,16 +243,16 @@ Pi 专属的 `noExtensions`、`noPromptTemplates`、`noContextFiles` 在 dsh 中
 
 ## 人工对话与完整记录
 
-`/pbot chat` 必填 `agentId`，可选 `text`、`delivery` 和 `files`；必须至少有非空文字、服务器文件或原生输入框附件之一。text 最多 24000 字符，delivery 为 `steer`（默认）或 `followUp`。它使用 `text`，不是 agent 命令的 `message`。
+`/pbot chat` 必填 `agentId`，可选 `text`、`delivery` 和 `files`；必须至少有非空文字、服务器文件或原生输入框附件之一。text 最多 24000 字符，delivery 为 steer 或 followUp；原生专家默认 steer，ACP 专家默认 followUp。它使用 `text`，不是 agent 命令的 `message`。
 
 ```text
 /pbot chat {"agentId":"AGENT_ID","text":"核对附件中的口径。","delivery":"steer","files":["projects/review/notes.txt"]}
 /pbot records {"agentId":"AGENT_ID","offset":0,"limit":30}
 ```
 
-chat 的相对文件路径以专家创建时固定的 cwd 为基准。服务器 files 与本机输入框附件二选一，每次最多 32 个；图片格式及字节上限遵循宿主准入。上传附件使用原生输入框，不传 JSON `attachments` 字段。chat 自动先暂停所属团队，暂停失败不接纳输入；成功后可对在途工作 steer。返回 queued 仅表示入队。人工接管的 interactive/mixed 周期不自动公开；需要独立保密上下文时新建专家。专家必须存活，停止后先 resume。
+原生 chat 的相对文件路径以专家创建时固定的 cwd 为基准，ACP chat 的相对路径以原工作区根目录为基准。服务器 files 与本机输入框附件二选一，每次最多 32 个；图片格式及字节上限遵循宿主准入。上传附件使用原生输入框，不传 JSON `attachments` 字段。chat 自动先暂停所属团队，暂停失败不接纳输入；成功后可对在途工作 steer。返回 queued 仅表示入队。人工接管的 interactive/mixed 周期不自动公开；需要独立保密上下文时新建专家。专家必须存活，停止后先 resume。
 
-`records` 读取完整事件，不等同于 `agent read` 的最终报告；停止后可冷读，不恢复专家或领取通知。
+原生专家的 records 读取完整事件；ACP 专家返回 kind 为 acp 的任务与报告记录列表，记录类型为 acp/input 和 acp/report。两者停止后均可冷读，不恢复专家或领取通知。列表与正文使用相同分页参数；ACP 列表字段为 records，原生列表字段为 events。
 
 | 读取方式 | 请求字段与默认值 | 续读 |
 | --- | --- | --- |

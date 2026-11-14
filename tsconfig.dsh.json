@@ -4,5 +4,5 @@
     "outDir": "lib",
     "sourceMap": false
   },
-  "include": ["src/dsh.ts", "src/ui/dsh/index.ts"]
+  "include": ["src/dsh.ts", "src/ui/dsh/index.ts", "src/extension/acp-worker.ts", "src/extension/dsh/acp-member.ts"]
 }

@@ -29,7 +29,7 @@ export function dshStatus(workspaces: DshWorkspaces, workspace: DshWorkspace): J
   return json({ host: "dsh", release: packageVersion, enabled: true, state: "running", workspaceRoot: workspace.root, sessionId: workspace.agent.id,
     model: workspace.agent.model.current() ?? null, python: workspaces.python.status,
     controlError: workspace.controlError ?? null, history: workspace.history.status,
-    agents, teams: workspace.teams.list(workspace.owner, agents) });
+    agents, permissions: workspace.agents.pendingPermissions(workspace.owner), teams: workspace.teams.list(workspace.owner, agents) });
 }
 
 /** Status remains available when this workspace has not opted in. */
@@ -74,6 +74,7 @@ export class PbotManagement extends TypertRemoteService {
     requireThat(validExpert(input), "专家记录查询参数无效。");
     const args = input as Static<typeof expertSchema>;
     const view = workspace.agents.status(args.agentId, workspace.owner);
+    if (view.transport === "acp") return json(await workspace.agents.recordPage(args.agentId, workspace.owner, args));
     using observation = await this.ctx.sessionQuery.observeSession(SessionId(view.agentId), { projectionMode: "none", signal: current.signal });
     workspace.check(); current.signal.throwIfAborted();
     const header = observation.header;

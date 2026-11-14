@@ -15,6 +15,9 @@ const chatSchema = Type.Object({ agentId: Type.String({ minLength: 1 }), text: T
   delivery: Type.Optional(Type.Union([Type.Literal("steer"), Type.Literal("followUp")])),
   files: Type.Optional(Type.Array(Type.String({ minLength: 1 }), { maxItems: 32 })) }, { additionalProperties: false });
 const validChat = schema(chatSchema);
+const approvalSchema = Type.Object({ agentId: Type.String({ minLength: 1 }), requestId: Type.String({ minLength: 1 }),
+  optionId: Type.Union([Type.String({ minLength: 1 }), Type.Null()]) }, { additionalProperties: false });
+const validApproval = schema(approvalSchema);
 const usage = '用法：/pbot status | init | python setup | agent {"action":…} | chat {"agentId":…,"text":…} | team {"action":…} | post {"teamId":…,"text":…} | history {"action":…} | records {"agentId":…}';
 
 export function registerDshCommand(ctx: Context, workspaces: DshWorkspaces, management: PbotManagement) {
@@ -60,7 +63,13 @@ export function registerDshCommand(ctx: Context, workspaces: DshWorkspaces, mana
         case "chat": {
           requireThat(validChat(input), "人工对话参数无效。");
           const args = input as Static<typeof chatSchema>;
-          result = await workspace.expert(args.agentId).interact(args.text ?? "", args.delivery, args.files, attachments, signal); break;
+          result = await workspace.interact(args.agentId, args.text ?? "", args.delivery, args.files, attachments, signal); break;
+        }
+        case "approval": {
+          requireThat(validApproval(input), "ACP 确认答复参数无效。");
+          const args = input as Static<typeof approvalSchema>;
+          workspace.agents.answerPermission(args.agentId, args.requestId, args.optionId, workspace.owner);
+          result = { answered: true }; break;
         }
         case "team": {
           requireThat(validTeam(input), "团队参数无效。");

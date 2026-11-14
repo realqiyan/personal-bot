@@ -34,6 +34,29 @@ export function registerAgentEvents(pi: ExtensionAPI, lifecycle: Lifecycle, conf
   // Only a lock-busy, not-yet-published input is retried in this runtime. Reload discards this map.
   const dispatching = new Map<string, TeamInput>();
   let pausePending = false;
+  const approving = new Map<string, AbortController>();
+  const collectPermissions = () => {
+    const instance = lifecycle.active, context = ctx, revision = epoch;
+    if (!instance || !context) return;
+    const requests = instance.agents.pendingPermissions(agentOwner(context));
+    const pending = new Set(requests.map(request => request.agentId + ":" + request.requestId));
+    for (const [key, controller] of approving) if (!pending.has(key)) { controller.abort(); approving.delete(key); }
+    for (const request of requests) {
+      const key = request.agentId + ":" + request.requestId;
+      if (approving.has(key)) continue;
+      const controller = new AbortController(); approving.set(key, controller);
+      void (async () => {
+        const allow = request.options.find(option => option.kind === "allow_once");
+        const reject = request.options.find(option => option.kind === "reject_once");
+        const accepted = context.hasUI && allow ? await confirmations.ask(context, request.name + " 请求确认", request.description,
+          AbortSignal.any([controller.signal, instance.signal()])) : false;
+        if (controller.signal.aborted || epoch !== revision || lifecycle.active !== instance || !ctx) return;
+        instance.agents.answerPermission(request.agentId, request.requestId, accepted ? allow!.optionId : reject?.optionId ?? null, agentOwner(ctx));
+      })().catch(error => { if (!controller.signal.aborted && epoch === revision) recordFailure(error); }).finally(() => {
+        if (approving.get(key) === controller) approving.delete(key);
+      });
+    }
+  };
   const pauseTeams = () => {
     const instance = lifecycle.active;
     if (!ctx || !instance) return;
@@ -104,6 +127,7 @@ export function registerAgentEvents(pi: ExtensionAPI, lifecycle: Lifecycle, conf
     try {
       instance.agentOwner = agentOwner(ctx);
       await instance.agents.refresh(instance.agentOwner);
+      collectPermissions();
       const completed = await instance.agents.completions(instance.agentOwner);
       if (!ctx || lifecycle.active !== instance || revision !== epoch) return;
       const values = instance.agents.list(instance.agentOwner);
@@ -163,14 +187,15 @@ export function registerAgentEvents(pi: ExtensionAPI, lifecycle: Lifecycle, conf
     return;
   };
   pi.on("session_start", (_event, context) => {
-    epoch++; ctx = context; paused = false; pausePending = false; controlBusySince = undefined; failure = undefined; recoveredFailure = undefined; confirmations.resume(); submitting.clear(); dispatching.clear();
+    epoch++; for (const controller of approving.values()) controller.abort(); approving.clear();
+    ctx = context; paused = false; pausePending = false; controlBusySince = undefined; failure = undefined; recoveredFailure = undefined; confirmations.resume(); submitting.clear(); dispatching.clear();
     if (timer) clearInterval(timer);
     if (lifecycle.active) { lifecycle.active.agentOwner = agentOwner(ctx); timer = setInterval(() => { void refresh(); }, 1000); timer.unref(); }
     return refresh();
   });
   pi.on("input", (_event, context) => { ctx = context; paused = false; confirmations.resume(); });
   pi.on("before_agent_start", (_event, context) => { ctx = context; });
-  pi.on("session_tree", (_event, context) => { epoch++; ctx = context; submitting.clear(); return refresh(); });
+  pi.on("session_tree", (_event, context) => { epoch++; for (const controller of approving.values()) controller.abort(); approving.clear(); ctx = context; submitting.clear(); return refresh(); });
   pi.on("turn_end", (event, context) => boundary(event.outcome, event.entries, context));
   pi.on("agent_before_settle", (event, context) => boundary(event.outcome, event.entries, context));
   pi.on("agent_settled", (event, context) => {
@@ -181,5 +206,5 @@ export function registerAgentEvents(pi: ExtensionAPI, lifecycle: Lifecycle, conf
     const keys = (event.details as { agentReadKeys?: string[] } | undefined)?.agentReadKeys;
     if (keys?.length) pi.appendEntry("pbot.agent-read", { keys, toolCallId: event.parentToolCallId ?? event.toolCallId });
   });
-  pi.on("session_shutdown", () => { epoch++; if (timer) clearInterval(timer); timer = undefined; submitting.clear(); dispatching.clear(); pausePending = false; ctx = undefined; });
+  pi.on("session_shutdown", () => { epoch++; for (const controller of approving.values()) controller.abort(); approving.clear(); if (timer) clearInterval(timer); timer = undefined; submitting.clear(); dispatching.clear(); pausePending = false; ctx = undefined; });
 }

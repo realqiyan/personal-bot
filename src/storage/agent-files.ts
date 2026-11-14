@@ -5,7 +5,9 @@ import { canonical, object } from "../common/json.js";
 import { requireThat } from "../common/validation.js";
 import { readJsonFile, writeJsonFile } from "./atomic-json.js";
 import { fileId, privateDirectory } from "./file-access.js";
-import type { AgentDescriptor, AgentLaunch, AgentMessage, AgentStatus, AgentCycle, AgentSessionRef, AgentSessionReference } from "../model/agent.js";
+import type { AgentDescriptor, AgentLaunch, AgentMessage, AgentStatus, AgentCycle, AgentSessionRef, AgentSessionReference, NativeAgentHost } from "../model/agent.js";
+import type { AcpSessionReference } from "../model/acp.js";
+import { acpReference } from "./acp-files.js";
 
 const text = (v: unknown): v is string => typeof v === "string" && v.length > 0;
 const number = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
@@ -46,7 +48,7 @@ export function status(v: unknown): AgentStatus {
 }
 export class AgentFiles {
   #failure: unknown;
-  constructor(readonly root: string, readonly host: AgentSessionReference["host"] = "pi") {}
+  constructor(readonly root: string, readonly host: NativeAgentHost = "pi") {}
   check() { if (this.#failure) throw this.#failure; }
   fail(error: unknown) { this.#failure = error; }
   directory(id: string) { return join(this.root, fileId(id)); }
@@ -61,14 +63,18 @@ export class AgentFiles {
     catch (error) { this.fail(error); throw error; }
     requireThat(published, "子会话文件已存在。");
   }
-  create(value: AgentDescriptor, run: AgentLaunch) {
+  create(value: AgentDescriptor, run: AgentLaunch, acp?: AcpSessionReference) {
     this.check();
     mkdirSync(this.root, { recursive: true, mode: 0o700 });
     mkdirSync(this.directory(value.agentId), { mode: 0o700 });
     for (const dir of ["inbox", "completions"]) privateDirectory(this.directory(value.agentId), dir);
     this.write(value.agentId, "descriptor.json", value, descriptor, true);
     this.write(value.agentId, "launch.json", run, launch, true);
-    if (this.host === "pi") this.write(value.agentId, "session-ref.json", { file: null }, sessionRef, true);
+    if (acp) {
+      for (const dir of ["reports", "permissions"]) privateDirectory(this.directory(value.agentId), dir);
+      this.write(value.agentId, "acp-session.json", acp, acpReference, true);
+    }
+    else if (this.host === "pi") this.write(value.agentId, "session-ref.json", { file: null }, sessionRef, true);
     else this.write(value.agentId, "native-session.json", { host: "dsh", sessionId: value.agentId }, dshSessionRef, true);
   }
   list() {
@@ -86,6 +92,8 @@ export class AgentFiles {
       .map(n => this.read(id, "completions/" + n, cycle)).sort((a, b) => (a.finishedAt ?? 0) - (b.finishedAt ?? 0));
   }
   reference(id: string): AgentSessionReference {
+    const acp = this.optional(id, "acp-session.json", acpReference);
+    if (acp) return acp;
     if (this.host === "pi") return { host: "pi", file: this.session(id) };
     const ref = this.read(id, "native-session.json", dshSessionRef);
     requireThat(ref.sessionId === id, "dsh 原生会话身份不匹配。");

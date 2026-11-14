@@ -1,3 +1,6 @@
+import type { AcpBackend, AcpModelSelection, AcpSessionReference } from "./acp.js";
+
+export interface AgentStartOptions extends AgentOptions { backend?: AcpBackend }
 export interface AgentOptions {
   name?: string; message?: string; files?: string[]; prompts?: string[];
   provider?: string; model?: string; thinking?: string; cwd?: string; tools?: string[];
@@ -11,7 +14,8 @@ export interface AgentDescriptor {
 /** null means no conversation input has been handed to Pi yet. */
 export interface AgentSessionRef { file: string | null }
 /** Native references are interpreted only by their owning host adapter. */
-export type AgentSessionReference = { host: "pi"; file: string | null } | { host: "dsh"; sessionId: string };
+export type NativeAgentHost = "pi" | "dsh";
+export type AgentSessionReference = { host: "pi"; file: string | null } | { host: "dsh"; sessionId: string } | AcpSessionReference;
 export interface AgentLaunch { generation: string; name: string; sequence: number; stop: boolean; startedAt: number }
 export interface AgentMessage { requestId: string; generation: string; sequence: number; message: string; delivery: "steer" | "followUp"; files: string[] }
 export interface AgentCycle {
@@ -26,6 +30,8 @@ export interface AgentStatus {
 }
 export interface AgentView extends AgentDescriptor {
   name: string; generation: string; state: AgentStatus["state"]; activity: string;
+  backend?: AcpBackend; transport?: "native" | "acp"; selection?: AcpModelSelection;
+  capabilities?: { steer: boolean; resume: boolean; team: boolean; transcript: boolean };
   cycle?: AgentCycle; error?: string; owned: boolean;
 }
 export interface AgentCompletion { agentId: string; name: string; cycle: AgentCycle; report: string }

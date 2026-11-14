@@ -1,16 +1,20 @@
 import { randomUUID } from "node:crypto";
-import { realpathSync } from "node:fs";
+import { realpathSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { packageVersion, releaseLine } from "../../common/version.js";
 import { requireThat } from "../../common/validation.js";
 import { AgentFiles, descriptor, launch, status, cycle } from "../../storage/agent-files.js";
 import { TeamFiles } from "../../storage/team-files.js";
 import type { TeamAgent, TeamInput } from "../../model/team.js";
-import type { AgentOwner, AgentOptions, AgentDescriptor, AgentCycle, AgentCompletion, AgentSessionReference } from "../../model/agent.js";
+import type { AgentOwner, AgentOptions, AgentStartOptions, AgentDescriptor, AgentCycle, AgentCompletion, AgentSessionReference, NativeAgentHost } from "../../model/agent.js";
+import type { AcpBackend, AcpSessionReference } from "../../model/acp.js";
+import { acpModelState, acpPermission, acpPermissionReply, acpReference } from "../../storage/acp-files.js";
 
 export interface AgentHost {
-  readonly kind: AgentSessionReference["host"];
-  available(): void;
+  readonly kind: NativeAgentHost;
+  available(backend?: AcpBackend): void;
+  prepare?(backend: AcpBackend, options: AgentOptions): AcpSessionReference;
+  validateOptions?(options: AgentOptions, backend?: AcpBackend): void;
   alive(id: string): boolean;
   validateSession(value: AgentDescriptor, reference: AgentSessionReference): void | Promise<void>;
   launch(value: AgentDescriptor, directory: string, generation: string, reference: AgentSessionReference, resume: boolean, signal: AbortSignal): void | Promise<void>;
@@ -51,15 +55,28 @@ export class AgentService {
     const current = saved?.generation === run.generation ? saved : undefined;
     const alive = this.alive(d.agentId), pending = this.#starting.get(d.agentId);
     const starting = pending && !pending.controller.signal.aborted;
+    const reference = this.files.optional(d.agentId, "acp-session.json", acpReference);
+    const model = reference ? this.files.optional(d.agentId, "acp-model.json", acpModelState) : undefined;
+    const selection = model?.generation === run.generation ? { ...(model.provider ? { provider: model.provider } : {}),
+      ...(model.model ? { model: model.model } : {}), ...(model.resolvedModel ? { resolvedModel: model.resolvedModel } : {}),
+      ...(model.thinking ? { thinking: model.thinking } : {}) } : undefined;
     return { ...d, name: run.name, generation: run.generation, owned: this.owned(d, owner), alive,
+      ...(reference?.host === "acp" ? { backend: reference.backend, transport: "acp" as const,
+        capabilities: { steer: false, resume: Boolean(reference.capabilities?.resume || reference.capabilities?.load), team: false, transcript: false },
+        ...(selection ? { selection } : {}) } : {}),
       state: alive ? starting ? "starting" : run.stop || pending?.controller.signal.aborted ? "stopping" : current?.state ?? "starting" : current?.state === "error" ? "error" : "stopped",
       activity: starting ? "启动" : alive ? current?.activity ?? "启动" : current?.error ?? "已停止",
       ...(current?.cycle ? { cycle: current.cycle } : {}), ...(current?.error ? { error: current.error } : {}) };
   }
-  async start(options: AgentOptions, owner: AgentOwner) {
-    this.check(); this.host.available();
-    options = Object.fromEntries(Object.entries(options).filter(([, v]) => v !== undefined));
-    requireThat(options.provider && options.model, "请选择可在专家会话使用的模型。");
+  async start(input: AgentStartOptions, owner: AgentOwner) {
+    this.check();
+    const { backend, ...supplied } = input;
+    this.host.available(backend);
+    const options: AgentOptions = Object.fromEntries(Object.entries(supplied).filter(([, v]) => v !== undefined));
+    this.host.validateOptions?.(options, backend);
+    requireThat(backend || options.provider && options.model, "请选择可在专家会话使用的模型。");
+    const reference = backend ? this.host.prepare?.(backend, options) : undefined;
+    requireThat(!backend || reference, "当前执行接入不支持 ACP 后端。");
     const prepared = this.files.control(() => {
       requireThat(this.list(owner).filter(v => v.alive).length < 50, "最多 50 个存活或启动中子会话；请先停止一个空闲会话。");
       const agentId = randomUUID();
@@ -68,7 +85,7 @@ export class AgentService {
       const d: AgentDescriptor = { agentId, release: packageVersion, workspace: this.root, cwd,
         parentSessionId: owner.sessionId, parentLeaf: owner.leaf, createdAt: Date.now(), options: { ...options, files, cwd } };
       const run = { generation: randomUUID(), name: options.name ?? agentId.slice(0, 8), sequence: 0, stop: false, startedAt: Date.now() };
-      this.files.create(d, run);
+      this.files.create(d, run, reference);
       const initial = [options.message, ...(options.prompts ?? [])].filter(Boolean).join("\n\n");
       const request = initial || files.length ? this.files.enqueue(agentId, initial, "steer", files) : undefined;
       this.#starting.set(agentId, { generation: run.generation, controller: new AbortController(), stage: "launch" });
@@ -99,12 +116,15 @@ export class AgentService {
     this.#launches.add(operation);
     try { await operation; } finally { this.#launches.delete(operation); }
   }
-  send(id: string, text: string, delivery: "steer" | "followUp", owner: AgentOwner) {
+  send(id: string, text: string, delivery: "steer" | "followUp", owner: AgentOwner, attachments: readonly string[] = []) {
     const d = this.get(id, owner);
     return this.files.control(() => {
       requireThat(this.alive(id) && this.#starting.get(id)?.stage !== "validate" && !this.files.read(id, "launch.json", launch).stop, "子会话已停止或仍在恢复校验，请等待显式恢复完成。");
       this.assertPrivate(id);
-      const request = this.files.enqueue(id, text, delivery);
+      const view = this.view(d, owner);
+      requireThat(!(view.transport === "acp" && delivery === "steer" && view.state !== "idle"), "该 ACP 后端运行中不支持 steer；请用 delivery: followUp 排队。");
+      const files = attachments.map(path => realpathSync(resolve(this.root, path)));
+      const request = this.files.enqueue(id, text, delivery, files);
       return { ...this.view(d, owner), requestId: request.requestId, messageStatus: "queued" as const };
     });
   }
@@ -160,7 +180,8 @@ export class AgentService {
     return this.restart(id, owner, text);
   }
   private async restart(id: string, owner: AgentOwner, text?: string) {
-    const d = this.get(id, owner); this.host.available();
+    const d = this.get(id, owner), reference = this.files.reference(id);
+    this.host.available(reference.host === "acp" ? reference.backend : undefined);
     const reserved = this.files.control(() => {
       requireThat(!this.alive(id), "子会话仍在运行。");
       this.assertPrivate(id);
@@ -239,6 +260,58 @@ export class AgentService {
   private report(d: AgentDescriptor, c: AgentCycle) {
     if (c.leaf === null) return "";
     return this.host.report(d, this.files.reference(d.agentId), c.leaf);
+  }
+  async recordPage(id: string, owner: AgentOwner, options: { seq?: number; offset?: number; limit?: number; textOffset?: number; textLimit?: number; format?: string } = {}) {
+    const d = this.get(id, owner), view = this.view(d, owner);
+    requireThat(view.transport === "acp", "该记录入口用于 ACP 成员。");
+    const messages = this.files.messages(id), cycles = this.cycles(id, owner).sort((a, b) => a.startedAt - b.startedAt);
+    const records: { seq: number; type: string; time: number; text: string; requestId?: string; cycleId?: string; state: string }[] = [];
+    const included = new Set<string>();
+    for (const c of cycles) {
+      for (const requestId of c.requestIds) {
+        const request = messages.find(message => message.requestId === requestId);
+        if (!request || included.has(requestId)) continue;
+        included.add(requestId);
+        records.push({ seq: records.length, type: "acp/input", time: c.startedAt, requestId, state: c.state,
+          text: [request.message, ...request.files.map(file => "附件：" + file)].filter(Boolean).join("\n\n") });
+      }
+      const report = await this.report(d, c); this.check();
+      records.push({ seq: records.length, type: "acp/report", time: c.finishedAt ?? c.startedAt, cycleId: c.cycleId, state: c.state,
+        text: [c.error, report].filter(Boolean).join("\n\n") });
+    }
+    const run = this.files.read(id, "launch.json", launch);
+    for (const request of messages.filter(message => message.generation === run.generation && !included.has(message.requestId))) {
+      records.push({ seq: records.length, type: "acp/input", time: run.startedAt, requestId: request.requestId, state: "queued",
+        text: [request.message, ...request.files.map(file => "附件：" + file)].filter(Boolean).join("\n\n") });
+    }
+    const cursor = run.generation + ":" + records.length + ":" + cycles.at(-1)?.state;
+    if (options.seq !== undefined) {
+      const record = records[options.seq]; requireThat(record, "ACP 记录位置不存在。");
+      const text = options.format === "json" ? JSON.stringify(record, null, 2) : record.text;
+      const offset = options.textOffset ?? 0, end = offset + (options.textLimit ?? 12000);
+      requireThat(offset <= text.length, "ACP 记录分页位置超出范围。");
+      return { kind: "acp", agent: view, cursor, seq: record.seq, offset, text: text.slice(offset, end), totalLength: text.length, nextOffset: end < text.length ? end : null };
+    }
+    const limit = options.limit ?? 30, offset = options.offset ?? Math.max(0, records.length - limit);
+    requireThat(offset <= records.length, "ACP 记录分页位置超出范围。");
+    return { kind: "acp", agent: view, cursor, total: records.length, offset, nextOffset: offset + limit < records.length ? offset + limit : null,
+      records: records.slice(offset, offset + limit).map(record => { const { text, ...fields } = record; return { ...fields, preview: text.slice(0, 800) }; }) };
+  }
+  pendingPermissions(owner: AgentOwner) {
+    return this.list(owner).filter(view => view.owned && view.alive && view.transport === "acp").flatMap(view =>
+      readdirSync(resolve(this.files.directory(view.agentId), "permissions")).filter(name => name.endsWith(".json") && !name.endsWith("-reply.json")).flatMap(name => {
+        const request = this.files.read(view.agentId, "permissions/" + name, acpPermission);
+        if (request.generation !== view.generation || this.files.optional(view.agentId, "permissions/" + request.requestId + "-reply.json", acpPermissionReply)) return [];
+        return [{ ...request, agentId: view.agentId, name: view.name }];
+      })).slice(0, 32);
+  }
+  answerPermission(id: string, requestId: string, optionId: string | null, owner: AgentOwner) {
+    this.get(id, owner);
+    const request = this.files.read(id, "permissions/" + requestId + ".json", acpPermission);
+    const run = this.files.read(id, "launch.json", launch);
+    requireThat(run.generation === request.generation && !run.stop && this.alive(id), "ACP 确认请求已失效。");
+    requireThat(optionId === null || request.options.some(option => option.optionId === optionId), "ACP 确认选项无效。");
+    this.files.write(id, "permissions/" + requestId + "-reply.json", { generation: run.generation, requestId, optionId }, acpPermissionReply, true);
   }
   private release(id: string) {
     let pending = this.#releasing.get(id);

@@ -1,0 +1,152 @@
+import { spawn } from "node:child_process";
+import { Readable, Writable } from "node:stream";
+import { setTimeout as delay } from "node:timers/promises";
+import * as acp from "@agentclientprotocol/sdk";
+import type { AcpModelSelection, AcpSessionReference } from "../../model/acp.js";
+import type { AgentOptions } from "../../model/agent.js";
+import { requireThat } from "../../common/validation.js";
+import { packageVersion } from "../../common/version.js";
+import { acpModelSelection, acpModelValue, acpThinkingValue } from "./model-selection.js";
+import type { ClaudeConfiguration } from "./claude.js";
+import { object } from "../../common/json.js";
+
+export function acpFailure(error: unknown): unknown {
+  return error instanceof acp.RequestError && error.data !== undefined
+    ? new Error(error.message + "：" + JSON.stringify(error.data), { cause: error }) : error;
+}
+
+export interface AcpCallbacks {
+  update(update: acp.SessionUpdate): void | Promise<void>;
+  selection?(selection: AcpModelSelection): void;
+  permission(request: acp.RequestPermissionRequest, signal: AbortSignal): Promise<acp.RequestPermissionResponse>;
+}
+
+/** One ACP v1 connection. The worker owns its process group and business state. */
+export async function openAcp(reference: AcpSessionReference, cwd: string, env: NodeJS.ProcessEnv,
+  callbacks: AcpCallbacks, signal: AbortSignal, systemPrompt?: string, claude?: ClaudeConfiguration) {
+  signal.throwIfAborted();
+  const child = spawn(reference.command, reference.args, { cwd, env, stdio: ["pipe", "pipe", "pipe"] });
+  const lifetime = new AbortController();
+  const cancel = AbortSignal.any([signal, lifetime.signal]);
+  const exited = new Promise<void>(resolve => child.once("close", () => resolve()));
+  child.once("error", error => lifetime.abort(error));
+  child.once("exit", (code, termination) => lifetime.abort(new Error("ACP 进程退出：" + (termination ?? code))));
+  child.stderr.resume();
+  child.stdin.on("error", () => {});
+  let sessionId: string | undefined;
+  let options: acp.SessionConfigOption[] = [];
+  let resolvedModel: string | undefined;
+  const selection = (): AcpModelSelection => ({ ...acpModelSelection(reference.backend, options, claude?.thinking),
+    ...(resolvedModel ? { resolvedModel } : {}) });
+  let updating = Promise.resolve();
+  const app = acp.client({ name: "personal-bot" })
+    .onRequest(acp.methods.client.session.requestPermission, async ctx => {
+      if (cancel.aborted || ctx.params.sessionId !== sessionId) return { outcome: { outcome: "cancelled" as const } };
+      return callbacks.permission(ctx.params, cancel);
+    })
+    .onNotification(acp.methods.client.session.update, ctx => {
+      // Load may replay before its response. Output from replay never becomes a new report.
+      if (ctx.params.sessionId !== sessionId || cancel.aborted) return;
+      updating = updating.then(async () => {
+        if (ctx.params.update.sessionUpdate === "config_option_update") {
+          const before = acpModelSelection(reference.backend, options);
+          options = ctx.params.update.configOptions;
+          if (acpModelSelection(reference.backend, options).model !== before.model) resolvedModel = undefined;
+          callbacks.selection?.(selection());
+        }
+        await callbacks.update(ctx.params.update);
+      });
+      void updating.catch(error => lifetime.abort(error));
+      return updating;
+    })
+    .onNotification("_claude/sdkMessage", (value: unknown) => value, ctx => {
+      if (reference.backend !== "claude" || !object(ctx.params) || ctx.params.sessionId !== sessionId || cancel.aborted) return;
+      const message = ctx.params.message;
+      if (!object(message) || message.type !== "system" || message.subtype !== "init" || typeof message.model !== "string" || !message.model) return;
+      const model = message.model;
+      updating = updating.then(() => { resolvedModel = model; callbacks.selection?.(selection()); });
+      void updating.catch(error => lifetime.abort(error));
+      return updating;
+    });
+  const connection = await app.connect(acp.ndJsonStream(Writable.toWeb(child.stdin), Readable.toWeb(child.stdout) as ReadableStream<Uint8Array>, { maxMessageBytes: 8 * 1024 * 1024 }));
+  const abort = () => connection.close(cancel.reason);
+  cancel.addEventListener("abort", abort, { once: true });
+  if (cancel.aborted) abort();
+  const connected = AbortSignal.any([cancel, connection.signal]);
+  let closing: Promise<void> | undefined;
+  const close = (): Promise<void> => closing ??= (async () => {
+    try {
+      if (sessionId && initialized?.agentCapabilities?.sessionCapabilities?.close && !connection.signal.aborted) {
+        await connection.agent.request(acp.methods.agent.session.close, { sessionId }, { cancellationSignal: AbortSignal.timeout(5000), stopWaitingOnCancel: true });
+      }
+    } finally {
+      cancel.removeEventListener("abort", abort);
+      connection.close(); child.stdin.end();
+      if (child.exitCode === null) child.kill("SIGTERM");
+      const grace = new AbortController();
+      try { await Promise.race([exited, delay(1500, undefined, { signal: grace.signal })]); }
+      finally { grace.abort(); }
+      if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+      child.stdout.destroy(); child.stderr.destroy();
+      await exited;
+    }
+  })();
+  let initialized: acp.InitializeResponse | undefined;
+  try {
+    initialized = await connection.agent.request(acp.methods.agent.initialize, {
+      protocolVersion: 1, clientCapabilities: {}, clientInfo: { name: "personal-bot", version: packageVersion },
+    }, { cancellationSignal: AbortSignal.any([cancel, AbortSignal.timeout(30_000)]), stopWaitingOnCancel: true });
+    requireThat(initialized.protocolVersion === 1, "目标宿主没有协商 ACP v1。");
+    const advertised = initialized.agentCapabilities;
+    const capabilities = { resume: Boolean(advertised?.sessionCapabilities?.resume), load: advertised?.loadSession === true,
+      close: Boolean(advertised?.sessionCapabilities?.close) };
+    const setup = { cwd, mcpServers: [],
+      ...(reference.backend === "claude" ? { _meta: { claudeCode: { options: { ...claude?.options, disallowedTools: ["Agent", "Task"] },
+        emitRawSDKMessages: [{ type: "system", subtype: "init" }] } } } : {}), ...(systemPrompt && advertised?.sessionCapabilities?.systemPrompt ? {
+      systemPrompt: { mode: "append" as const, content: [{ type: "text" as const, text: systemPrompt }] },
+    } : {}) };
+    if (reference.sessionId === null) {
+      const created = await connection.agent.request<acp.NewSessionResponse>(acp.methods.agent.session.new, setup, { cancellationSignal: AbortSignal.any([cancel, AbortSignal.timeout(30_000)]), stopWaitingOnCancel: true });
+      sessionId = created.sessionId; options = created.configOptions ?? [];
+    } else {
+      requireThat(capabilities.resume || capabilities.load, "目标 ACP 后端不支持恢复已有会话。");
+      const restored = capabilities.resume
+        ? await connection.agent.request<acp.ResumeSessionResponse>(acp.methods.agent.session.resume, { ...setup, sessionId: reference.sessionId }, { cancellationSignal: AbortSignal.any([cancel, AbortSignal.timeout(30_000)]), stopWaitingOnCancel: true })
+        : await connection.agent.request<acp.LoadSessionResponse>(acp.methods.agent.session.load, { ...setup, sessionId: reference.sessionId }, { cancellationSignal: AbortSignal.any([cancel, AbortSignal.timeout(30_000)]), stopWaitingOnCancel: true });
+      sessionId = reference.sessionId; options = restored.configOptions ?? [];
+    }
+    requireThat(sessionId, "ACP 后端没有返回会话 ID。");
+    const activeId = sessionId;
+    return {
+      sessionId: activeId, capabilities, signal: connected, close, images: advertised?.promptCapabilities?.image === true,
+      systemPrompt: Boolean(advertised?.sessionCapabilities?.systemPrompt),
+      selection,
+      async configure(requested: AgentOptions) {
+        requireThat(!requested.provider || requested.model, "ACP provider 需要同时指定目标 model。");
+        for (const kind of ["model", "thinking"] as const) {
+          const supplied = requested[kind];
+          if (supplied === undefined) continue;
+          const chosen = kind === "model" ? acpModelValue(reference.backend, options, supplied, requested.provider) : acpThinkingValue(options, supplied);
+          const changed = await connection.agent.request(acp.methods.agent.session.setConfigOption, { sessionId: activeId, ...chosen },
+            { cancellationSignal: AbortSignal.any([cancel, AbortSignal.timeout(30_000)]), stopWaitingOnCancel: true });
+          await updating;
+          options = changed.configOptions;
+          if (kind === "model") resolvedModel = undefined;
+          callbacks.selection?.(selection());
+        }
+        return selection();
+      },
+      async prompt(content: acp.ContentBlock[]) {
+        try {
+          const response = await connection.agent.request(acp.methods.agent.session.prompt, { sessionId: activeId, prompt: content });
+          await updating; cancel.throwIfAborted(); return response;
+        } catch (error) { throw acpFailure(error); }
+      },
+      async cancel() {
+        if (!connection.signal.aborted) await connection.agent.notify(acp.methods.agent.session.cancel, { sessionId: activeId });
+      },
+    };
+  } catch (error) {
+    await close().catch(() => {}); throw acpFailure(error);
+  }
+}

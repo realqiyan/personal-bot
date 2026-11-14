@@ -2,6 +2,9 @@ import { realpath } from "node:fs/promises";
 import { dshHomePath } from "@deepseek-ai/dsh-home-paths";
 import type { Agent } from "@deepseek-ai/dsh-agent";
 import type { Context } from "@deepseek-ai/cordis";
+import type { FileBlock, ImageBlock } from "@deepseek-ai/dsh-llm";
+import { AgentBackends } from "../../integrations/acp/agents.js";
+import type { AcpCommands } from "../../model/acp.js";
 import type { AgentOwner } from "../../model/agent.js";
 import { DshAgents } from "../../integrations/dsh/dsh-agents.js";
 import { dshResources, dshExpertTools } from "../../integrations/dsh/resources.js";
@@ -38,7 +41,7 @@ export class DshWorkspace {
   #closing: Promise<void> | undefined;
   constructor(readonly ctx: Context, readonly root: string, readonly agent: Agent,
     readonly python: PythonEnvironmentService, readonly component: AbortSignal,
-    private readonly historyWork: DshHistoryWork, private readonly releaseHistory: () => Promise<void>) {
+    private readonly historyWork: DshHistoryWork, private readonly releaseHistory: () => Promise<void>, acp?: AcpCommands) {
     this.history = historyWork.service;
     this.owner = { sessionId: agent.id, leaf: null, branch: [] };
     this.host = new DshAgents(ctx, agent, {
@@ -64,7 +67,8 @@ export class DshWorkspace {
       },
       stopping: async (child, generation) => { const runtime = this.#experts.get(child.id); if (runtime?.generation === generation) await runtime.stop(); },
     }, this.lifetime.signal);
-    this.agents = new AgentService(root, dshHomePath("pbot", "subagents"), this.host);
+    const directory = dshHomePath("pbot", "subagents");
+    this.agents = new AgentService(root, directory, new AgentBackends(this.host, directory, acp));
     this.teams = new TeamService(root, this.agents.files, this.agents.teamFiles);
   }
   check = () => { this.component.throwIfAborted(); this.lifetime.signal.throwIfAborted(); };
@@ -84,6 +88,20 @@ export class DshWorkspace {
       this.#events.start();
     } });
     this.check();
+  }
+  async interact(id: string, text: string, delivery: "steer" | "followUp" | undefined, files: readonly string[] = [],
+    attachments: readonly (ImageBlock | FileBlock)[] = [], signal: AbortSignal) {
+    const view = this.agents.status(id, this.owner);
+    if (view.transport !== "acp") return this.expert(id).interact(text, delivery, files, attachments, signal);
+    this.check(); signal.throwIfAborted();
+    requireThat(text.length <= 24000 && files.length + attachments.length <= 32 && (!files.length || !attachments.length), "人工消息或附件参数无效。");
+    const paths = [...files, ...attachments.map(attachment => {
+      const path = attachment.type === "image" ? this.ctx.attachments.imageHostPath(attachment.attachment) : this.ctx.attachments.fileHostPath(attachment.attachment);
+      requireThat(path, "该原生附件存储不提供 ACP 子进程可读取的文件路径。"); return path;
+    })];
+    requireThat(text.trim() || paths.length, "请输入消息或附加文件。");
+    this.teams.pauseMember(id, "成员由人工接管");
+    return this.agents.send(id, text || "请处理所附文件。", delivery ?? "followUp", this.owner, paths);
   }
   expert(id: string) {
     this.check(); const view = this.agents.status(id, this.owner), runtime = this.#experts.get(id);
@@ -166,7 +184,7 @@ export class DshWorkspaces {
       const history = await this.history(root);
       let workspace: DshWorkspace | undefined;
       try {
-        workspace = new DshWorkspace(this.ctx, root, agent, this.python, this.#lifetime.signal, history.work, history.release);
+        workspace = new DshWorkspace(this.ctx, root, agent, this.python, this.#lifetime.signal, history.work, history.release, configuration.acp);
         const owned = workspace;
         const dispose = agent.ctx.effect(() => async () => {
           this.#parents.delete(agent); this.#configurations.delete(agent); this.#parentEffects.delete(agent); await owned.close();

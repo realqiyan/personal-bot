@@ -17,7 +17,7 @@ try {
   await writeFile(join(consumer, "package.json"), JSON.stringify({ private: true, type: "module" }));
   npm(["install", "--ignore-scripts", "--no-audit", "--no-fund", tarball]);
   const require = createRequire(join(consumer, "package.json"));
-  for (const host of ["@earendil-works/pi-coding-agent", "@deepseek-ai/dsh", "@deepseek-ai/dsh-agent"]) {
+  for (const host of ["@earendil-works/pi-coding-agent", "@deepseek-ai/dsh", "@deepseek-ai/dsh-agent", "@anthropic-ai/claude-agent-sdk"]) {
     assert.throws(() => require.resolve(host), { code: "MODULE_NOT_FOUND" });
   }
   const packed = join(consumer, "node_modules/personal-bot");

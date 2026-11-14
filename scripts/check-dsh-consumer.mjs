@@ -25,7 +25,7 @@ try {
   // Resolve from the installed package, outside the repository and its development dependencies.
   const packed = join(profile, "node_modules/personal-bot");
   const require = createRequire(join(packed, "package.json"));
-  for (const host of ["@deepseek-ai/cordis", "@deepseek-ai/dsh-agent", "@earendil-works/pi-coding-agent", "typebox"]) {
+  for (const host of ["@deepseek-ai/cordis", "@deepseek-ai/dsh-agent", "@earendil-works/pi-coding-agent", "@anthropic-ai/claude-agent-sdk", "typebox"]) {
     assert.throws(() => require.resolve(host), { code: "MODULE_NOT_FOUND" });
   }
   const manifest = JSON.parse(await readFile(join(packed, "package.json"), "utf8"));

@@ -66,7 +66,7 @@ export class Lifecycle {
   #active: WorkspaceInstance | undefined;
   configuration: WorkspaceConfiguration | undefined;
   root: string | undefined;
-  constructor(private readonly create: (root: string) => WorkspaceInstance,
+  constructor(private readonly create: (root: string, configuration: WorkspaceConfiguration) => WorkspaceInstance,
     private readonly register: (instance: WorkspaceInstance) => void, private readonly hide: () => void) {}
   get active() { return this.#active; }
   get() {
@@ -78,7 +78,7 @@ export class Lifecycle {
     this.root = await realpath(root);
     this.configuration = await readWorkspaceConfig(this.root);
     if (!this.configuration.enabled) return;
-    const instance = this.create(this.root);
+    const instance = this.create(this.root, this.configuration);
     this.#active = instance;
     try { this.register(instance); }
     catch (error) { await this.close(); throw error; }

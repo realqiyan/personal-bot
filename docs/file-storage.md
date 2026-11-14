@@ -16,7 +16,7 @@
 | 工作区 .pbot/history/ | Pi/dsh 问答、摘要、节点关系；双方共同查询，各写本来源 |
 | 用户级 pbot/python/.venv | 共享 Python 环境 |
 
-各宿主管理自己的主会话、专家对话与原生配置，不跨宿主恢复或接管。Personal Bot 的工作区资料是普通文件，启用配置集中在 `.pbot/config.json`，不维护工作区格式版本。详细目录用途见[项目 README](../README.zh-CN.md#工作区资料)，Python 路径见 [Python 说明](../python/README.md)。
+各宿主管理自己的主会话、对话与原生配置。ACP 成员由所属主会话的控制目录管理，但其对端上下文始终由目标宿主保存和恢复。Personal Bot 的工作区资料是普通文件，启用配置集中在 `.pbot/config.json`，不维护工作区格式版本。详细目录用途见[项目 README](../README.zh-CN.md#工作区资料)，Python 路径见 [Python 说明](../python/README.md)。
 
 ## 资料准备
 
@@ -35,6 +35,12 @@
 | completions | 周期结果引用 |
 | session-ref.json | Pi 原生会话文件的绝对路径；首次输入前为 null，不保存对话副本 |
 | native-session.json | dsh 原生 Session ID；不把 ID 当成 Pi 文件路径 |
+| acp-session.json | ACP 目标、固定启动命令与参数、对端会话 ID 和协商能力；pbot agentId 与对端 ID 分开 |
+| acp-process.json | ACP worker 的 PID、启动时间和 generation |
+| acp-model.json | ACP 的 provider、model、有效 thinking、可选原生 resolvedModel 与所属 generation；独立于最初请求的 options |
+| acp-input.json / acp-answer.json | 当前请求关联与 Pi/dsh 成员的最终答复快照 |
+| reports/<cycleId>.json | ACP 周期的固定报告，先保存正文，再发布 completion |
+| permissions/ | ACP 确认请求与独立答复，绑定成员及 generation |
 | team-ready.json | 子入口当前 generation 的团队接入/工具就绪标记，不是存储版本 |
 
 父侧写控制记录，子侧写状态、会话引用和完成事件，交付收据进入所属宿主的父会话；只读页面不写入收据。通信顺序与恢复规则见[专家协作](agent-collaboration.md)。
@@ -48,6 +54,8 @@ Pi 对没有用户或助手消息的会话延迟落盘。`session-ref.json` 初�
 dsh 先 flush 父会话，再创建专家并持久化空会话。公开 Session API 负责存储，pbot 只保存原生 ID。恢复前冷读核对宿主、工作区、父身份、原生身份和占用；清除旧 inbox 后只接纳新代次要求。报告定位到固定 `turn/end` 序号，后续轮次不改变原报告；冷读不启动 Agent。
 
 atomic-json 校验完整对象，写入并同步临时文件后原子发布；拒绝目录别名、越界和特殊文件，createOnly 保证不覆盖已有目标。短控制操作使用目录锁。处理崩溃遗留锁前须停止相关宿主执行实例。
+
+ACP 成员新增独立引用及报告文件，现有 descriptor、launch、inbox、status 和 completions 的持久字段保持不变。cycle.leaf 的 acp 前缀定位固定报告。控制文件不保存凭据或完整原生对话；任务与报告页从 inbox 和周期报告读取，不领取模型通知。Pi/dsh 成员快照只用于精确提取最终答复，ACP 进度文本不直接充当最终报告。
 
 ## 团队保存
 

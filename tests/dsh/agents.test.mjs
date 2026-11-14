@@ -153,6 +153,22 @@ test("native expert tools preserve owner, original workspace, empty sessions and
   assert.equal((await run(second, "pbot_agent", { action: "status", agentId: other.agentId })).state, "idle");
 });
 
+test("dsh main tools launch an ACP target without inheriting the parent model and expose its record page", async t => {
+  const { host, parents, run } = await fixture(t), parent = parents[0].agent;
+  const child = await run(parent, "pbot_agent", { action: "start", backend: "dsh", name: "external" });
+  assert.equal(child.backend, "dsh"); assert.equal(child.transport, "acp");
+  const ready = await until(() => run(parent, "pbot_agent", { action: "status", agentId: child.agentId }),
+    value => value.state === "idle" || value.state === "error");
+  assert.equal(ready.state, "idle", ready.error); assert.equal(ready.capabilities.team, false);
+  assert.equal(host.ctx.agents.get(child.agentId), undefined);
+  const result = await host.ctx.commands.execute(parent, "/pbot records " + JSON.stringify({ agentId: child.agentId }), [], new AbortController().signal);
+  assert.equal(result.result.kind, "success", result.result.text);
+  const records = JSON.parse(result.result.text); assert.equal(records.kind, "acp"); assert.equal(records.total, 0);
+  assert.deepEqual(records.records, []);
+  await run(parent, "pbot_agent", { action: "stop", agentId: child.agentId });
+  await until(() => run(parent, "pbot_agent", { action: "status", agentId: child.agentId }), value => value.state === "stopped");
+});
+
 test("native preset context refreshes before first requests and preserves complete persona selection", async t => {
   const { root, host, parents, run } = await fixture(t), parent = parents[0].agent;
   const expert = await run(parent, "pbot_agent", { action: "start" }), child = host.ctx.agents.get(expert.agentId);

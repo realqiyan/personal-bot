@@ -37,7 +37,26 @@ Pi 状态栏显示“PBot 未启用”或“PBot 已启动”。dsh 的 Personal
 
 只读取当前工作区根目录，不向父目录查找配置。在 `~/onebase/projects/example` 单独建立会话时，该目录需要自己的配置。受 Personal Bot 管理的专家沿用所属工作区的启用决定，专家的工作目录可以不同。
 
-配置使用普通 JSON，当前支持可选的布尔值 `enabled`。其他字段原样保留，后续工作区功能也在此文件中配置。
+配置使用普通 JSON，支持可选的布尔值 enabled 和 ACP 启动配置 acp。其他字段原样保留，后续工作区功能也在此文件中配置。
+
+## ACP 启动配置
+
+ACP 成员默认从 PATH 查找 pi-acp、dsh 和 claude-agent-acp。需要固定入口或选择已有 dsh profile 时，在同一配置中覆盖对应目标：
+
+```json
+{
+  "enabled": true,
+  "acp": {
+    "pi": { "command": "/absolute/path/to/pi-acp", "args": [] },
+    "dsh": { "command": "/absolute/path/to/dsh", "args": ["--profile", "acp"] },
+    "claude": { "command": "/absolute/path/to/claude-agent-acp", "args": [] }
+  }
+}
+```
+
+每项包含 command 和 args 字符串数组，只需填写要覆盖的目标。使用普通可执行文件和标准 stdio ACP 入口；dsh 入口须接受原生 --patch 叠加成员配置。命令不经过 shell 展开，参数中的相对路径按成员 cwd 解析。模型、认证、MCP 和工具在目标宿主配置，凭据值不写入此文件。
+
+创建成员时解析并保存实际可执行路径和参数。手工修改影响重载后的新成员；已有成员恢复继续使用保存的入口和会话引用。acp 字段无效时，按工作区配置错误处理。成员操作见[专家协作](agent-collaboration.md#acp-成员)。
 
 ## 应用手工修改
 

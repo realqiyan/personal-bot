@@ -7,6 +7,14 @@ function config(value: unknown): Record<string, unknown> {
   if (!object(value) || value.enabled !== undefined && typeof value.enabled !== "boolean") {
     throw new Error("配置必须是 JSON 对象，enabled 必须是布尔值。");
   }
+  if (value.acp !== undefined) {
+    if (!object(value.acp) || Object.keys(value.acp).some(key => !["pi", "dsh", "claude"].includes(key))) throw new Error("acp 仅接受 pi、dsh 和 claude 启动配置。");
+    for (const command of Object.values(value.acp)) {
+      if (!object(command) || typeof command.command !== "string" || !command.command.trim() || command.command.includes("\0") ||
+        !Array.isArray(command.args) || command.args.some(arg => typeof arg !== "string" || arg.includes("\0")) ||
+        Object.keys(command).some(key => !["command", "args"].includes(key))) throw new Error("ACP 启动配置需要 command 和 args 字符串数组。");
+    }
+  }
   return value;
 }
 import type { WorkspaceConfig, WorkspaceConfiguration } from "../../model/workspace-config.js";
@@ -26,7 +34,8 @@ export async function readWorkspaceConfig(root: string): Promise<WorkspaceConfig
   }
   try {
     const value = config(JSON.parse(content));
-    return { path, present: true, enabled: (value as WorkspaceConfig).enabled === true };
+    const settings = value as WorkspaceConfig;
+    return { path, present: true, enabled: settings.enabled === true, ...(settings.acp ? { acp: settings.acp } : {}) };
   } catch (error) {
     return { path, present: true, enabled: false, error: `工作区配置无效 ${path}: ${String(error)}` };
   }

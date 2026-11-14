@@ -1,6 +1,6 @@
 import type { Static } from "typebox";
 import type { AgentService } from "../../services/agents/agent-service.js";
-import type { AgentOptions, AgentOwner, AgentView } from "../../model/agent.js";
+import type { AgentOptions, AgentStartOptions, AgentOwner, AgentView } from "../../model/agent.js";
 import { markdownResult } from "../result.js";
 import type { agentParametersSchema, agentViewSchema } from "./contract.js";
 
@@ -11,6 +11,8 @@ function agentOutput(view: AgentView & Partial<AgentOutput>): AgentOutput {
   return {
     agentId: view.agentId, name: view.name, cwd: view.cwd, createdAt: view.createdAt,
     owned: view.owned, state: view.state, activity: view.activity,
+    ...(view.backend ? { backend: view.backend, transport: view.transport, capabilities: view.capabilities } : {}),
+    ...(view.selection ? { selection: view.selection } : {}),
     ...(c ? { cycle: { cycleId: c.cycleId, startedAt: c.startedAt, state: c.state, requestIds: c.requestIds, source: c.source,
       ...(c.finishedAt === undefined ? {} : { finishedAt: c.finishedAt }), ...(c.error === undefined ? {} : { error: c.error }) } } : {}),
     ...(view.error === undefined ? {} : { error: view.error }),
@@ -29,7 +31,7 @@ export async function executeAgent(service: AgentService, input: AgentInput, own
   switch (input.action) {
     case "start": {
       const { action: _action, ...supplied } = input;
-      value = await service.start({ ...defaults, ...supplied } as AgentOptions, owner); break;
+      value = await service.start({ ...(supplied.backend ? {} : defaults), ...supplied } as AgentStartOptions, owner); break;
     }
     case "list": return markdownResult({ agents: service.list(owner).map(agentOutput) }, "子会话列表");
     case "send": value = service.send(input.agentId!, input.message!, input.delivery ?? "steer", owner); break;

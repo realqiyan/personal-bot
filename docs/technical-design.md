@@ -23,7 +23,7 @@ src/pbot.ts 装配 Pi 入口，src/dsh.ts 装配 dsh Host，src/ui/dsh/index.ts 
 | src/tools/ | 输入、输出、schema、执行适配和工具列表 |
 | src/services/ | 业务规则、状态变更和操作顺序，按 agents、workspace、history、installation 聚合 |
 | src/model/ | 业务数据类型与窄能力约定，不包含业务实现或宿主 SDK 类型 |
-| src/integrations/ | Pi/dsh 原生会话、Python 环境激活与进程执行 |
+| src/integrations/ | Pi/dsh 原生会话、ACP 连接与进程、Python 环境激活 |
 | src/storage/ | 原子 JSON、子会话与团队文件 |
 | src/extension/ | 命令、事件和资源生命周期 |
 | src/ui/ | 确认队列、对话框和专家展示 |
@@ -36,7 +36,7 @@ src/pbot.ts 装配 Pi 入口，src/dsh.ts 装配 dsh Host，src/ui/dsh/index.ts 
 | --- | --- |
 | initializeWorkspace / prepareWorkspace | 初始化依次准备资料并写入共用启用配置；资料准备补建目录与根 AGENTS.md |
 | PythonEnvironmentService | venv 准备、依赖检查、状态与取消等待 |
-| AgentService / AgentRun | 原生专家实例、启动预约、代次、inbox、领取/进入/消费/完成与交付资格；拒绝向被团队占用的成员发送私人任务 |
+| AgentService / AgentRun / AcpAgentRun | 专家实例、启动预约、代次、inbox、领取/进入/消费/完成与交付资格；ACP prompt 收尾、固定报告与确认关联；拒绝向被团队占用的成员发送私人任务 |
 | TeamService | 固定成员、公共消息、有限轮次、团队占用与暂停规则 |
 | HistoryService | 双来源问答索引、四叉摘要、查询、来源写锁与过期提交拒绝 |
 | WorkspaceInstance / DshWorkspaces | 各宿主工作区及资源生命周期；dsh 按父会话装配，并按工作区共享历史整理 |
@@ -92,6 +92,24 @@ PiAgents 使用 `--session-id <agentId>` 启动新的原生会话，让 Pi 按�
 会话文件移出控制目录的恢复契约在 0.2.0 引入。旧兼容线不进入当前列表或后台调度；不导入、迁移或删除旧记录。既有控制字段、团队调度及完成叶节点关联保持不变。
 
 dsh 的 `native-session.json` 只保存原生 Session ID，不把它写入 Pi 路径字段。先持久化父会话，再创建并持久化空专家；冷读、恢复校验和固定 `dsh:<turn/end seq>` 报告均使用公开 Session API。恢复保留原生模型选择，清除旧 inbox，只接纳新代次的新请求。双方不接管对方的会话。
+
+## ACP 执行
+
+AgentBackends 显式组合当前宿主的原生策略与 pi、dsh、claude 三个 ACP 目标，按成员引用选择策略；默认保持原生。工具 start 的 backend 单独进入启动流程，不写入既有 descriptor.options。WorkspaceConfiguration 提供 acp 命令覆盖，创建时固定解析后的路径和参数，恢复使用保存的入口。
+
+integrations/acp/connection 使用官方 TypeScript SDK 的稳定 ACP v1，处理初始化、能力协商、配置选择、会话建立/恢复、进度、权限与关闭。主宿主仍持有自己的原生会话和通知收据。ACP 不继承父侧模型默认值；省略 model 或 thinking 时保留目标的原生默认配置。model-selection 将 Pi 的 provider/model、dsh 的编码模型值和 Claude 别名匹配到目标公开的选择；同名模型优先使用当前提供方，无法消歧时要求显式 provider。先选择模型，再按更新后的选项选择思考等级。首次配置全部成功后才固定原生会话引用，配置失败后的恢复继续应用原参数。worker 将配置选择与有效思考等级保存到独立 acp-model.json；服务只公开当前 generation 的 selection。Claude 从适配器入口或 node 启动脚本定位目标安装中的 SDK，通过 resolveSettings 读取原生配置，将环境变量决定的默认等级传入 SDK effort；显式 thinking 同时通过当前调用的 settings.env 覆盖原生环境等级，保留用户配置文件。只订阅 _claude/sdkMessage 的 system/init，将原生模型 ID 保存为 resolvedModel，与 model 配置别名分开。
+
+每位 ACP 成员拥有一个独立 worker。AgentService 继续写原 inbox，AcpAgentRun 逐条领取并通过关联的 prompt 结束判定结果；传输失败保存 interrupted/failed，不补发旧输入。Pi/dsh 的成员入口只装配角色、技能、工具范围和最终答复提取，不运行第二个 inbox pump。Claude 通过 systemPrompt append 加载 pbot 内容，并限制原生递归委派工具。
+
+Pi 通过 pi-acp 桥接 RPC；bin/pbot-pi-acp.mjs 增加受管成员入口及原生资源开关。dsh 在目标 acp profile 上叠加受管成员 patch，恢复时清除旧原生 inbox，校验进程禁止进入模型步骤。Claude 使用 claude-agent-acp。适配器和目标宿主由用户安装，pbot 仅声明 ACP SDK 运行依赖。
+
+报告先原子保存到 reports，再发布带 acp 位置引用的原 completion。Pi/dsh 使用关联当前 requestId 的原生最终答复快照，Claude 按消息边界及 prompt 结束提取正文；thought、工具状态和适配器提示只作进度。空闲状态与工作成功分别记录。
+
+worker 及其子进程属于同一进程组，进程记录绑定 generation，并在操作前核对启动身份。Pi reload 保留 worker，新的父实例从控制记录重新关联。stop 只为在途 prompt 发送取消并等待宽限，空闲成员直接关闭；工作或进程提前结束时清除宽限计时器。随后关闭支持的原生会话，再按宽限释放整个进程组；退出和 dsh 父生命周期沿用原清理规则。恢复校验在更换 generation 和接纳新输入前执行。
+
+权限请求与答复分开存储并绑定 generation。Pi 扫描器送入已有 Confirmations 队列；dsh 工作台通过 snapshot 展示请求，人工 approval 命令写回选项。dsh 原生 approval.request 要求处于原生 turn，ACP 请求可能在父会话空闲时发生，因此不借用父 turn 写入审批事件。
+
+首批 capabilities 明确关闭 ACP 的运行中 steer、团队通信和完整原生记录。人工页面提供任务与报告分页，模型 read 的通知领取语义保持不变。
 
 ## 团队接入
 

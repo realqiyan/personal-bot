@@ -93,18 +93,21 @@ export function showManagement(ctx: Context, parentSessionId: SessionId) {
   const pythonCard = group(status, "pbot-setting"), pythonInfo = group(pythonCard);
   const pythonButton = button(pythonCard, "准备 Python", async () => { await command("python setup", undefined, "Python 准备完成。"); });
   const diagnostic = details(status, "环境详情"), statusBody = block(""); statusBody.classList.add("pbot-raw"); diagnostic.append(statusBody);
+  const permissions = group(status, "pbot-setting"); permissions.hidden = true;
+  let permissionKey = "";
 
   const experts = section("experts", "专家"); pageTitle(experts, "专家", "");
   const create = details(experts, "创建专家"), createForm = form(create), newName = field(createForm, "名称"), initial = field(createForm, "任务（可选）", true);
   newName.placeholder = "例如：研究员"; initial.placeholder = "任务目标与交付要求";
+  const backend = select(createForm, "运行宿主", [["", "当前宿主"], ["pi", "Pi"], ["dsh", "dsh"], ["claude", "Claude Code"]]);
   const options = details(createForm, "模型与选项"), modelFields = group(options, "pbot-grid");
-  options.querySelector("summary")!.after(note("留空沿用当前会话。"));
+  options.querySelector("summary")!.after(note("当前宿主留空沿用主会话；其他宿主留空使用目标配置。"));
   const provider = field(modelFields, "Provider"), model = field(modelFields, "模型");
   const effort = field(options, "Reasoning effort"), cwd = field(options, "工作目录");
   const files = field(options, "文件路径（每行一个）", true);
   const advanced = field(details(options, "其他选项"), "JSON", true, "{}");
   submit(createForm, "创建", async () => {
-    const args = { ...objectInput(advanced.value), action: "start", ...(newName.value ? { name: newName.value } : {}),
+    const args = { ...objectInput(advanced.value), action: "start", ...(backend.value ? { backend: backend.value } : {}), ...(newName.value ? { name: newName.value } : {}),
       ...(initial.value ? { message: initial.value } : {}), ...(provider.value ? { provider: provider.value } : {}),
       ...(model.value ? { model: model.value } : {}), ...(effort.value ? { thinking: effort.value } : {}),
       ...(cwd.value ? { cwd: cwd.value } : {}), ...(lines(files.value).length ? { files: lines(files.value) } : {}) };
@@ -173,8 +176,14 @@ export function showManagement(ctx: Context, parentSessionId: SessionId) {
   }
   function showExpert(agent: Record<string, unknown>) {
     expertTitle.textContent = text(agent.name); expertBadge.replaceChildren(badge(agent.state)); expertPanel.hidden = false; expertEmpty.hidden = true;
-    const config = object(agent.options) ? agent.options : {};
-    expertInfo.replaceChildren(note(text(agent.activity) || "等待新的任务。"), facts([["模型", config.model || "继承父会话"], ["工作目录", agent.cwd]]));
+    const config = object(agent.options) ? agent.options : {}, selected = record(agent.selection);
+    const configuredModel = [selected.provider ?? config.provider, selected.model ?? config.model].filter(Boolean).join("/");
+    const chosenModel = selected.resolvedModel && selected.resolvedModel !== configuredModel ? `${configuredModel} → ${text(selected.resolvedModel)}` : configuredModel;
+    expertInfo.replaceChildren(note(text(agent.activity) || "等待新的任务。"), facts([["宿主", agent.backend || "当前宿主"], ["模型", chosenModel || (agent.transport === "acp" ? "目标宿主配置" : "继承父会话")],
+      ["思考等级", selected.thinking || config.thinking || "宿主默认"], ["工作目录", agent.cwd]]));
+    const steering = delivery.querySelector<HTMLOptionElement>('option[value="steer"]')!;
+    steering.disabled = agent.transport === "acp";
+    if (steering.disabled && delivery.value === "steer") delivery.value = "followUp";
     expertState.textContent = JSON.stringify(agent, null, 2); expertError.textContent = text(agent.error); expertError.hidden = !agent.error;
     const alive = agent.alive === true, owned = agent.owned === true;
     enabled(stopButton, owned && alive && agent.state !== "stopping"); enabled(sendButton, owned && alive && !["starting", "stopping"].includes(text(agent.state)));
@@ -185,7 +194,7 @@ export function showManagement(ctx: Context, parentSessionId: SessionId) {
     if (id !== expertId || revision !== recordRevision) return;
     eventDetail.hidden = false; eventDetail.open = true; eventBody.textContent = text(data.text); eventBody.classList.toggle("pbot-raw", format === "json");
     eventPaging.replaceChildren(element("span", `记录 ${seq} · ${offset + 1}–${offset + text(data.text).length} / ${data.totalLength}`));
-    button(eventPaging, format === "text" ? "查看原始事件" : "查看正文", () => loadRecord(seq, 0, format === "text" ? "json" : "text"));
+    button(eventPaging, format === "text" ? data.kind === "acp" ? "查看记录详情" : "查看原始事件" : "查看正文", () => loadRecord(seq, 0, format === "text" ? "json" : "text"));
     if (offset) button(eventPaging, "从头读取", () => loadRecord(seq, 0, format));
     if (typeof data.nextOffset === "number") button(eventPaging, "继续读取", () => loadRecord(seq, data.nextOffset as number, format));
   }
@@ -201,8 +210,9 @@ export function showManagement(ctx: Context, parentSessionId: SessionId) {
     recordControls.append(element("span", `${data.total} 条记录 · 从 ${actualOffset + 1} 开始`));
     const expanded = new Set(Array.from(rawEventList.querySelectorAll("details[open]")).map(item => (item as HTMLElement).dataset.seq));
     eventList.replaceChildren(); rawEventList.replaceChildren();
-    const labels: Record<string, string> = { "user/message": "输入", "assistant/message": "专家回复", "tool/result": "工具结果", "turn/end": "本轮结束" };
-    for (const event of rows(data.events)) {
+    rawEvents.querySelector("summary")!.textContent = data.kind === "acp" ? "全部任务与报告" : "全部原生事件";
+    const labels: Record<string, string> = { "user/message": "输入", "assistant/message": "专家回复", "tool/result": "工具结果", "turn/end": "本轮结束", "acp/input": "任务", "acp/report": "专家报告" };
+    for (const event of rows(data.kind === "acp" ? data.records : data.events)) {
       const seq = Number(event.seq), label = event.type === "user/message"
         ? event.source === "user" ? "输入" : event.source === "pbot-input" ? "任务" : undefined : labels[text(event.type)];
       if (label && text(event.preview)) {
@@ -395,8 +405,21 @@ export function showManagement(ctx: Context, parentSessionId: SessionId) {
     if (python.error) pythonInfo.append(element("p", text(python.error), "pbot-warning"));
     enabled(pythonButton, python.state !== "preparing");
     const { agents: _agents, teams: _teams, ...summary } = snapshot; statusBody.textContent = JSON.stringify(summary, null, 2);
+    const pending = rows(snapshot.permissions), nextPermissionKey = pending.map(request => text(request.agentId) + ":" + text(request.requestId)).join(",");
+    permissions.hidden = !pending.length;
+    if (nextPermissionKey !== permissionKey) {
+      permissionKey = nextPermissionKey; permissions.replaceChildren(element("h3", "专家请求确认"));
+      for (const request of pending) {
+        const card = group(permissions, "pbot-card"); card.append(element("h4", text(request.name)), block(request.description));
+        const choices = group(card, "pbot-row");
+        for (const option of rows(request.options)) button(choices, text(option.name), async () => {
+          await command("approval", { agentId: request.agentId, requestId: request.requestId, optionId: option.optionId }, "确认答复已提交。");
+        });
+        button(choices, "取消", async () => { await command("approval", { agentId: request.agentId, requestId: request.requestId, optionId: null }, "已取消该请求。"); });
+      }
+    }
     if (snapshot.controlError) inform(text(snapshot.controlError), "error"); renderLists();
-    const owned = agents.filter(value => value.owned), ids = new Set(owned.map(agent => text(agent.agentId)));
+    const owned = agents.filter(value => value.owned && record(value.capabilities).team !== false), ids = new Set(owned.map(agent => text(agent.agentId)));
     for (const input of memberFields.querySelectorAll<HTMLInputElement>("input[data-agent-id]")) if (!ids.has(input.dataset.agentId!)) input.parentElement?.remove();
     memberFields.querySelector(":scope > p")?.remove();
     for (const agent of owned) {

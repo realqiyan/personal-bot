@@ -21,6 +21,12 @@
 
 脚本使用隔离的用户目录、宿主配置与工作目录，完成后清理临时目录。两项检查均不调用模型；Pi 使用预置故障目录跳过 Python 依赖下载，dsh 通过原生 schema 收集导入 Host。
 
+## ACP 真实模型 E2E
+
+在已配置 Pi、dsh、Claude 原生模型与认证的环境执行 `npm run test:e2e:acp`。该命令在临时工作区调用三个真实后端，省略 model、thinking 和 provider 验证默认值；另测 Claude 显式 low 覆盖原生环境 max。检查文件结果、报告分页、停止耗时，并对照 Claude 原生请求中的模型与思考等级。它单独运行，不进入 `npm test`。
+
+入口默认从 PATH 查找。可用 `PBOT_ACP_E2E_PI_COMMAND`、`PBOT_ACP_E2E_DSH_COMMAND`、`PBOT_ACP_E2E_CLAUDE_COMMAND` 指定已有可执行文件路径；dsh 仍使用 acp profile。`PBOT_ACP_E2E_OUTPUT_DIR` 指定输出目录，默认使用临时目录；每个工作区保留 input.json、output.json、report.txt 和 result.json；Claude 用例还保留仅含模型与等级的 native-requests.json。
+
 ## Python 准备
 
 `setup-python.py` 按 `python/requirements.lock` 准备用户共享 venv。Personal Bot 加载时自动调用，也可运行独立脚本或 `/pbot python setup`。路径、依赖与排障见 [Python 说明](../python/README.md)。

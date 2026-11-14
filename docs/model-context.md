@@ -39,6 +39,14 @@
 
 团队简报在 `pre-step` 已接纳的团队上下文中加入，每次团队发言一次。首轮即提供目标、成员职责与操作说明，公共消息序号在实际消费后确认。准入失败保留未读状态；人工输入不追加新团队内容。
 
+## ACP 成员
+
+Pi 和 dsh 的 ACP 成员使用专用入口加载公共约定、general-purpose 职责、工作区补充和环境状态，并使用各自原生的资源发现。入口不消费 pbot inbox，输入由 ACP worker 投递。Pi 的 before_agent_start 刷新 section；dsh 的 system-prompt/assemble 刷新原生 section。
+
+Claude 成员通过协商后的 systemPrompt append 加入同一公共约定、职责和环境状态，原生 CLAUDE.md、技能和工具由 Claude 自己加载。恢复时重新提供这些 pbot 内容，不复制父聊天。首批 ACP 成员只处理独立工作，不加入团队上下文。
+
+worker 独立准备并激活共享 Python 环境。协议流中的 thought 和工具进度用于活动状态，Pi/dsh 的最终答复按原生完成边界提取，Claude 按消息 ID 和 prompt 完成边界定稿。
+
 ## 环境与历史
 
 模型环境提供 `workspaceRoot`、`resourceRoot`、`python.state` 和就绪时的 `python.directory`。实际 cwd 由宿主提供，Python 准备日志在 `/pbot status` 查看。

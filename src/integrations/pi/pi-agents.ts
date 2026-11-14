@@ -4,7 +4,7 @@ import { existsSync, lstatSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { CURRENT_SESSION_VERSION, getAgentDir, getPackageDir, parseSessionEntries, SessionManager } from "@earendil-works/pi-coding-agent";
 import { requireThat } from "../../common/validation.js";
-import type { AgentDescriptor, AgentSessionReference } from "../../model/agent.js";
+import type { AgentDescriptor, AgentOptions, AgentSessionReference } from "../../model/agent.js";
 import type { AgentHost } from "../../services/agents/agent-service.js";
 
 export const agentDirectory = () => join(getAgentDir(), "pbot/subagents");
@@ -25,6 +25,9 @@ export class PiAgents implements AgentHost {
   private file(reference: AgentSessionReference) {
     requireThat(reference.host === "pi", "不能接管其他宿主的会话。");
     return reference.file;
+  }
+  validateOptions(options: AgentOptions) {
+    requireThat(options.thinking === undefined || ["off", "minimal", "low", "medium", "high", "xhigh", "max"].includes(options.thinking), "Pi 思考级别无效。");
   }
   available() {
     requireThat(spawnSync("tmux", ["-V"], { encoding: "utf8" }).status === 0, "子会话需要 tmux。");
