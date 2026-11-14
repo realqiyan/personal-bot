@@ -99,7 +99,7 @@ AgentBackends 显式组合当前宿主的原生策略与 pi、dsh、claude 三�
 
 integrations/acp/connection 使用官方 TypeScript SDK 的稳定 ACP v1，处理初始化、能力协商、配置选择、会话建立/恢复、进度、权限与关闭。主宿主仍持有自己的原生会话和通知收据。ACP 不继承父侧模型默认值；省略 model 或 thinking 时保留目标的原生默认配置。model-selection 将 Pi 的 provider/model、dsh 的编码模型值和 Claude 别名匹配到目标公开的选择；同名模型优先使用当前提供方，无法消歧时要求显式 provider。先选择模型，再按更新后的选项选择思考等级。首次配置全部成功后才固定原生会话引用，配置失败后的恢复继续应用原参数。worker 将配置选择与有效思考等级保存到独立 acp-model.json；服务只公开当前 generation 的 selection。Claude 从适配器入口或 node 启动脚本定位目标安装中的 SDK，通过 resolveSettings 读取原生配置，将环境变量决定的默认等级传入 SDK effort；显式 thinking 同时通过当前调用的 settings.env 覆盖原生环境等级，保留用户配置文件。只订阅 _claude/sdkMessage 的 system/init，将原生模型 ID 保存为 resolvedModel，与 model 配置别名分开。
 
-每位 ACP 成员拥有一个独立 worker。AgentService 继续写原 inbox，AcpAgentRun 逐条领取并通过关联的 prompt 结束判定结果；传输失败保存 interrupted/failed，不补发旧输入。Pi/dsh 的成员入口只装配角色、技能、工具范围和最终答复提取，不运行第二个 inbox pump。Claude 通过 systemPrompt append 加载 pbot 内容，并限制原生递归委派工具。
+每位 ACP 成员拥有一个独立 worker。AgentService 继续写原 inbox，AcpAgentRun 逐条领取并通过关联的 prompt 结束判定结果；传输失败保存 interrupted/failed，不补发旧输入。Pi/dsh 的成员入口只装配角色、技能、工具范围和最终答复提取，不运行第二个 inbox pump。Claude 通过 systemPrompt append 加载 pbot 内容，claudeOptions 经原生 SDK 的 plugins 选项注册 resources/skills；该目录的 .claude-plugin/plugin.json 只声明技能，由 Claude 提供目录和按需加载。原生递归委派工具仍受成员工具范围限制。
 
 Pi 通过 pi-acp 桥接 RPC；bin/pbot-pi-acp.mjs 增加受管成员入口及原生资源开关。dsh 在目标 acp profile 上叠加受管成员 patch，恢复时清除旧原生 inbox，校验进程禁止进入模型步骤。Claude 使用 claude-agent-acp。适配器和目标宿主由用户安装，pbot 仅声明 ACP SDK 运行依赖。
 

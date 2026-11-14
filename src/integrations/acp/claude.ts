@@ -1,14 +1,15 @@
 import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
-import { basename, resolve } from "node:path";
+import { basename, join, resolve } from "node:path";
 import type { AcpCommand } from "../../model/acp.js";
 import { object } from "../../common/json.js";
 import { requireThat } from "../../common/validation.js";
+import { resourceRoot } from "../../common/paths.js";
 
 const levels = ["low", "medium", "high", "xhigh", "max"];
 export interface ClaudeConfiguration {
   thinking?: string;
-  options: { effort?: string; settings?: { env: { CLAUDE_CODE_EFFORT_LEVEL: string } } };
+  options: { plugins: { type: "local"; path: string }[]; effort?: string; settings?: { env: { CLAUDE_CODE_EFFORT_LEVEL: string } } };
 }
 
 /** Read the target installation's native settings without creating a model session. */
@@ -29,6 +30,7 @@ export async function claudeOptions(command: AcpCommand, cwd: string, requested?
   return {
     ...(thinking ? { thinking } : {}),
     options: {
+      plugins: [{ type: "local", path: join(resourceRoot, "skills") }],
       ...(effort ? { effort } : {}),
       // SDK effort alone loses to CLAUDE_CODE_EFFORT_LEVEL. A flag-tier env entry
       // applies the explicit choice to this invocation and preserves other settings.

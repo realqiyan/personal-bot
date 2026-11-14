@@ -1,6 +1,6 @@
 # 模型上下文
 
-本文说明 Personal Bot 的指令来源、加载时机与更新方式。编写要求见[模型指令编写原则](model-instruction-guidelines.md)。宿主系统提示、用户配置和模型传输由 Pi 或 dsh 管理。
+Personal Bot 的主会话运行于 Pi 或 dsh，Claude Code 作为二者可委派的子代理。本文说明指令来源、加载时机与更新方式。编写要求见[模型指令编写原则](model-instruction-guidelines.md)。各运行程序管理自己的系统提示、用户配置和模型传输。
 
 ## 内容与来源
 
@@ -9,7 +9,7 @@
 | 公共约定、资料目录用途 | `resources/prompts/workspace.md`，主会话与专家均加载 |
 | 协调者与专家职责 | `resources/agents/`，叠加原工作区 `agents/` 中的同名补充 |
 | 团队目标、职责与公开范围 | 专家处理团队任务时加载 `team-member.md` 和本次团队资料 |
-| 参数、分页与结果语义 | 工具契约 |
+| 参数、分页、能力与结果语义 | 工具契约，按所选程序和 capabilities 说明操作；协议与适配器说明留在安装、排障和开发文档 |
 | 项目维护、工具接入 | 原生技能目录提供发现入口，正文按任务读取 |
 | 计算方法 | 普通计算读取 compute；指标与回测另读 compute-finance |
 | 周期、DAG 与持久任务 | 按需读取 Task Conductor 参考和上游技能 |
@@ -43,7 +43,7 @@
 
 Pi 和 dsh 的 ACP 成员使用专用入口加载公共约定、general-purpose 职责、工作区补充和环境状态，并使用各自原生的资源发现。入口不消费 pbot inbox，输入由 ACP worker 投递。Pi 的 before_agent_start 刷新 section；dsh 的 system-prompt/assemble 刷新原生 section。
 
-Claude 成员通过协商后的 systemPrompt append 加入同一公共约定、职责和环境状态，原生 CLAUDE.md、技能和工具由 Claude 自己加载。恢复时重新提供这些 pbot 内容，不复制父聊天。首批 ACP 成员只处理独立工作，不加入团队上下文。
+Claude 子代理通过协商后的 systemPrompt append 加入同一公共约定、职责和环境状态。包内 `resources/skills/` 作为该子会话的原生本地插件注册，技能元数据进入 Claude 目录，正文按需读取；插件清单只声明技能。原生 CLAUDE.md、用户与项目技能、工具由 Claude 自己加载。恢复时重新提供这些 pbot 内容和插件路径。ACP 成员只处理独立工作，不加入团队上下文。
 
 worker 独立准备并激活共享 Python 环境。协议流中的 thought 和工具进度用于活动状态，Pi/dsh 的最终答复按原生完成边界提取，Claude 按消息 ID 和 prompt 完成边界定稿。
 

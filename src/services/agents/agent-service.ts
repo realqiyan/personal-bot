@@ -122,7 +122,7 @@ export class AgentService {
       requireThat(this.alive(id) && this.#starting.get(id)?.stage !== "validate" && !this.files.read(id, "launch.json", launch).stop, "子会话已停止或仍在恢复校验，请等待显式恢复完成。");
       this.assertPrivate(id);
       const view = this.view(d, owner);
-      requireThat(!(view.transport === "acp" && delivery === "steer" && view.state !== "idle"), "该 ACP 后端运行中不支持 steer；请用 delivery: followUp 排队。");
+      requireThat(!(view.transport === "acp" && delivery === "steer" && view.state !== "idle"), "该子代理运行中不支持 steer；请用 delivery: followUp 排队。");
       const files = attachments.map(path => realpathSync(resolve(this.root, path)));
       const request = this.files.enqueue(id, text, delivery, files);
       return { ...this.view(d, owner), requestId: request.requestId, messageStatus: "queued" as const };

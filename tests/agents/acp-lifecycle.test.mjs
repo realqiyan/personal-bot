@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { claudeOptions } from "../../dist/integrations/acp/claude.js";
+import { query } from "@anthropic-ai/claude-agent-sdk";
 
 test("Claude native settings supply the default effort and explicit effort stays scoped to the invocation", async t => {
   const root = await mkdtemp(join(tmpdir(), "pbot-claude-settings-")), config = join(root, "config");
@@ -27,6 +28,34 @@ test("Claude native settings supply the default effort and explicit effort stays
   assert.deepEqual(explicit.options.settings, { env: { CLAUDE_CODE_EFFORT_LEVEL: "low" } });
   await assert.rejects(claudeOptions(command, root, "off"));
   assert.equal(await readFile(join(config, "settings.json"), "utf8"), stored);
+});
+
+test("Claude discovers bundled and project skills through its native catalog without loading pbot roles as agents", { timeout: 30000 }, async t => {
+  const root = await mkdtemp(join(tmpdir(), "pbot-claude-skills-")), config = join(root, "config");
+  await mkdir(config);
+  await mkdir(join(root, ".claude/skills/local-check"), { recursive: true });
+  await writeFile(join(root, ".claude/skills/local-check/SKILL.md"), "---\nname: local-check\ndescription: Inspect local files\n---\nRead the task inputs.\n");
+  const previous = process.env.CLAUDE_CONFIG_DIR;
+  process.env.CLAUDE_CONFIG_DIR = config;
+  t.after(async () => { if (previous === undefined) delete process.env.CLAUDE_CONFIG_DIR; else process.env.CLAUDE_CONFIG_DIR = previous; await rm(root, { recursive: true, force: true }); });
+  const entry = fileURLToPath(import.meta.resolve("@anthropic-ai/claude-agent-sdk"));
+  const configuration = await claudeOptions({ command: entry, args: [] }, root);
+  let end;
+  const pending = new Promise(resolve => { end = resolve; });
+  // Native initialization discovers resources before any user input or provider request.
+  const session = query({ prompt: (async function* () { await pending; })(), options: {
+    ...configuration.options, cwd: root, settingSources: ["project"], persistSession: false,
+    env: { PATH: process.env.PATH, CLAUDE_CONFIG_DIR: config, DISABLE_AUTOUPDATER: "1" },
+  } });
+  const close = () => { session.close(); end(); };
+  t.signal.addEventListener("abort", close, { once: true });
+  try {
+    const commands = await session.supportedCommands();
+    assert.deepEqual(commands.filter(command => command.name.startsWith("personal-bot:")).map(command => command.name).sort(),
+      ["personal-bot:project-maintenance", "personal-bot:provider-connections"]);
+    assert.equal(commands.filter(command => command.name === "local-check").length, 1);
+    assert.equal((await session.supportedAgents()).some(agent => agent.name.startsWith("personal-bot:")), false);
+  } finally { t.signal.removeEventListener("abort", close); close(); }
 });
 
 test("closing a real ACP connection leaves no referenced grace timer in the client process", { timeout: 30000 }, async t => {

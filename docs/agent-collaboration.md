@@ -62,7 +62,7 @@ ACP 成员支持待命、独立委派、持续对话、状态、固定周期报�
 
 返回的 transport 为 acp，selection 给出 provider、model 和有效 thinking，包含宿主默认值。Claude 的 model 保留配置别名，resolvedModel 在原生会话报告后给出实际模型 ID；Pi 详情与 dsh 工作区页一起显示两者。Claude 的默认思考等级遵循原生环境设置，显式 thinking 只覆盖当前成员的启动配置。capabilities 给出当前能力。首批不提供运行中 steer、团队通信和完整原生记录；工具在忙碌时拒绝 steer，团队使用原生专家。Pi 专属启动开关只对 Pi 目标生效；Claude 的工具与技能通过 Claude 原生配置选择。
 
-成员加载公共约定、general-purpose 职责和工作区同名补充。Pi/dsh 使用成员入口，Claude 通过 ACP 系统提示追加。Pi 与 dsh 成员限制协调管理和递归委派工具。worker 准备并激活共享 Python 环境，准备失败时继续提供协作能力，并向成员报告环境状态。
+成员加载公共约定、general-purpose 职责和工作区同名补充，并按需使用包内技能。Claude 的原生技能目录中可见 personal-bot:provider-connections 和 personal-bot:project-maintenance，用户与项目技能继续沿用 Claude 配置。worker 准备并激活共享 Python 环境，准备失败时继续提供协作能力，并向成员报告环境状态。
 
 Pi 的 `/pbot agents` 对 ACP 成员提供任务、报告、补充要求及携新要求恢复；原生 Pi 成员继续通过 tmux 进入。dsh 专家页展示 ACP 任务与报告，也支持人工消息和附件。Pi 权限请求进入已有确认队列，使用一次性选项；dsh 工作区页展示待确认请求，也可用 `/pbot approval` 提交选项。
 

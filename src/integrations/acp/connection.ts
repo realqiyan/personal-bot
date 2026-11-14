@@ -122,7 +122,7 @@ export async function openAcp(reference: AcpSessionReference, cwd: string, env: 
       systemPrompt: Boolean(advertised?.sessionCapabilities?.systemPrompt),
       selection,
       async configure(requested: AgentOptions) {
-        requireThat(!requested.provider || requested.model, "ACP provider 需要同时指定目标 model。");
+        requireThat(!requested.provider || requested.model, "provider 需要同时指定目标 model。");
         for (const kind of ["model", "thinking"] as const) {
           const supplied = requested[kind];
           if (supplied === undefined) continue;

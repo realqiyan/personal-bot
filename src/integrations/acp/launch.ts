@@ -27,7 +27,7 @@ export function acpExecutable(command: string, backend: AcpBackend): string {
   const path = nativePi ? "Pi 已安装但 PATH 不可见时，启动主宿主前将 PI_ACP_PI_COMMAND 设置为 pi 的绝对路径。"
     : "已安装但 PATH 不可见时，在 .pbot/config.json 设置 acp." + backend + "：" + configured + "，command 使用实际绝对路径。";
   throw new Error([
-    "未找到 ACP 可执行文件：" + command + "。",
+    "未找到子代理程序：" + command + "。",
     "在运行 Pi/dsh 的机器上安装：" + install,
     target.configure,
     "检查安装路径：command -v " + (nativePi ? "pi" : target.command) + (!nativePi && backend === "pi" ? "；另用 command -v pi 检查 Pi。" : "。"),
@@ -36,14 +36,14 @@ export function acpExecutable(command: string, backend: AcpBackend): string {
   ].join("\n"));
 }
 export function acpLaunch(backend: AcpBackend, commands: AcpCommands, options: AgentOptions): AcpSessionReference {
-  requireThat(["pi", "dsh", "claude"].includes(backend), "未知 ACP 后端。");
-  requireThat(!options.provider || options.model, "ACP provider 需要同时指定目标 model。");
+  requireThat(["pi", "dsh", "claude"].includes(backend), "未知子代理程序。");
+  requireThat(!options.provider || options.model, "provider 需要同时指定目标 model。");
   if (backend !== "pi") for (const key of ["noExtensions", "noPromptTemplates", "noContextFiles"] as const) {
-    requireThat(options[key] === undefined, backend + " ACP 不支持启动选项：" + key);
+    requireThat(options[key] === undefined, backend + " 子代理不支持启动选项：" + key);
   }
   if (backend === "claude") {
-    requireThat(options.noSkills === undefined && options.tools === undefined, "Claude ACP 的技能和工具通过 Claude 原生配置选择。");
-    requireThat(options.provider === undefined, "Claude ACP 使用 Claude 原生提供方配置；请仅指定目标 model。");
+    requireThat(options.noSkills === undefined && options.tools === undefined, "Claude 子代理的技能和工具通过 Claude 原生配置选择。");
+    requireThat(options.provider === undefined, "Claude 子代理使用原生提供方配置；请仅指定目标 model。");
   }
   const selected = commands[backend] ?? targets[backend];
   return { host: "acp", backend, command: acpExecutable(selected.command, backend), args: [...selected.args], sessionId: null };
