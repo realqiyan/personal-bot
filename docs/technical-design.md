@@ -95,7 +95,7 @@ dsh 的 `native-session.json` 只保存原生 Session ID，不把它写入 Pi �
 
 ## ACP 执行
 
-AgentBackends 显式组合当前宿主的原生策略与 pi、dsh、claude 三个 ACP 目标，按成员引用选择策略；默认保持原生。工具 start 的 backend 单独进入启动流程，不写入既有 descriptor.options。WorkspaceConfiguration 提供 acp 命令覆盖，创建时固定解析后的路径和参数，恢复使用保存的入口。
+AgentBackends 显式组合当前宿主的原生策略与 pi、dsh、claude 三个 ACP 目标，按成员引用选择策略；默认保持原生。工具 start 的 backend 单独进入启动流程，不写入既有 descriptor.options。WorkspaceConfiguration 提供 acp 命令覆盖，创建时固定解析后的路径和参数，恢复使用保存的入口。backend 参数声明目标程序前提；找不到可执行入口时，由共享接入层返回该目标的安装命令、原生认证提示与路径配置示例，各宿主沿用原生错误展示。
 
 integrations/acp/connection 使用官方 TypeScript SDK 的稳定 ACP v1，处理初始化、能力协商、配置选择、会话建立/恢复、进度、权限与关闭。主宿主仍持有自己的原生会话和通知收据。ACP 不继承父侧模型默认值；省略 model 或 thinking 时保留目标的原生默认配置。model-selection 将 Pi 的 provider/model、dsh 的编码模型值和 Claude 别名匹配到目标公开的选择；同名模型优先使用当前提供方，无法消歧时要求显式 provider。先选择模型，再按更新后的选项选择思考等级。首次配置全部成功后才固定原生会话引用，配置失败后的恢复继续应用原参数。worker 将配置选择与有效思考等级保存到独立 acp-model.json；服务只公开当前 generation 的 selection。Claude 从适配器入口或 node 启动脚本定位目标安装中的 SDK，通过 resolveSettings 读取原生配置，将环境变量决定的默认等级传入 SDK effort；显式 thinking 同时通过当前调用的 settings.env 覆盖原生环境等级，保留用户配置文件。只订阅 _claude/sdkMessage 的 system/init，将原生模型 ID 保存为 resolvedModel，与 model 配置别名分开。
 

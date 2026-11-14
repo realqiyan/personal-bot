@@ -74,6 +74,20 @@ dsh plugin --profile pbot update personal-bot --latest
 
 The desktop application installs `personal-bot@latest` through its native Plugins page and uses a separate desktop profile. See the [dsh guide](docs/dsh.md) (Chinese) for launcher options, updates, and chat commands.
 
+### Optional: ACP specialist programs
+
+Both Pi and dsh main sessions can delegate to other hosts through ACP. Install each target you need on the machine running the main host:
+
+| Target | Installation | Authentication and model |
+| --- | --- | --- |
+| Pi | With Pi installed, run `npm install -g pi-acp`. Install Pi itself with `npm install -g @earendil-works/pi-coding-agent` if needed. | Run `pi` to sign in and select a default model. |
+| dsh | An existing command-line dsh installation is sufficient; otherwise run `npm install -g @deepseek-ai/dsh@latest`. | Configure the target profile's model and authentication through dsh. The default entry is `dsh --profile acp`. |
+| Claude Code | `npm install -g @agentclientprotocol/claude-agent-acp` | Follow the [Claude Code guide](https://code.claude.com/docs/en/quickstart) to sign in or configure API access, then set a default model. |
+
+Check the target from the same terminal that starts your main host, for example with `command -v claude-agent-acp`. Retry the original start request after installation. If the program is installed but absent from the host's PATH, put its absolute path in the workspace [acp configuration](docs/workspace-configuration.md#acp-启动配置) (Chinese). Restart the main host after PATH changes. For workspace configuration changes, run `/reload` in Pi or restart dsh.
+
+When a program is missing, the tool returns its installation command, authentication guidance, and a path configuration example. See [ACP members](docs/agent-collaboration.md#acp-成员) (Chinese) for calls and continued conversations.
+
 ### Use from source
 
 ```bash
@@ -84,7 +98,7 @@ npm run build:cli
 node bin/pbot.mjs setup
 ```
 
-To load only the Pi source extension, run `pi install --local /absolute/path/to/personal-bot` from the workspace and keep that source directory and its dependencies available. For dsh, follow the [source installation steps](docs/dsh.md#从源码安装) (Chinese).
+To load only the Pi source extension, run `pi install --local /absolute/path/to/personal-bot` from the workspace and keep that source directory and its dependencies available. Run the full `npm run build` before using ACP members. For dsh, follow the [source installation steps](docs/dsh.md#从源码安装) (Chinese).
 
 ### Optional: Task Conductor
 

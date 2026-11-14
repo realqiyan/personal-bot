@@ -41,7 +41,7 @@ async function main() {
   const command = { ...reference, args: [...reference.args] };
   const packageRoot = resolve(resourceRoot, "..");
   if (reference.backend === "pi") {
-    Object.assign(env, { PBOT_ACP_PI_COMMAND: process.env.PI_ACP_PI_COMMAND ?? acpExecutable("pi"),
+    Object.assign(env, { PBOT_ACP_PI_COMMAND: process.env.PI_ACP_PI_COMMAND ?? acpExecutable("pi", "pi"),
       PI_ACP_PI_COMMAND: join(packageRoot, "bin/pbot-pi-acp.mjs") });
   }
   if (reference.backend === "dsh") {

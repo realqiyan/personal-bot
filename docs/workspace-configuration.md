@@ -41,7 +41,7 @@ Pi 状态栏显示“PBot 未启用”或“PBot 已启动”。dsh 的 Personal
 
 ## ACP 启动配置
 
-ACP 成员默认从 PATH 查找 pi-acp、dsh 和 claude-agent-acp。需要固定入口或选择已有 dsh profile 时，在同一配置中覆盖对应目标：
+先按[ACP 专家程序安装说明](../README.zh-CN.md#可选安装-acp-专家程序)准备目标。ACP 成员从主宿主进程的 PATH 查找 pi-acp、dsh 和 claude-agent-acp；在启动主宿主的同一终端运行 command -v 可检查安装路径。桌面宿主或服务的 PATH 与终端可能不同，需要固定入口或选择已有 dsh profile 时，在同一配置中覆盖对应目标：
 
 ```json
 {

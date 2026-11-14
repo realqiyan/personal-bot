@@ -50,13 +50,9 @@ model 支持目标的原生模型 ID，也支持 ACP 完整模型值。Pi 和 ds
 { "action": "start", "backend": "dsh", "model": "deepseek-flash", "thinking": "high", "message": "检查项目并实现当前要求" }
 ```
 
-| backend | 本机入口与准备 |
-| --- | --- |
-| pi | 安装并配置 Pi，再安装 `pi-acp`；默认运行 `pi-acp` |
-| dsh | 按 dsh 当前发布要求安装并配置模型与认证；默认运行 `dsh --profile acp` |
-| claude | 安装 `@agentclientprotocol/claude-agent-acp` 并完成 Claude 原生认证；默认运行 `claude-agent-acp`，需要支持 ACP systemPrompt |
+首次使用前按[ACP 专家程序安装说明](../README.zh-CN.md#可选安装-acp-专家程序)准备目标程序、认证和默认模型。默认入口分别为 pi-acp、dsh --profile acp 和 claude-agent-acp；Claude 适配器需支持 ACP systemPrompt。缺少程序时，start 返回该目标的安装命令和路径配置示例，修复后重试原请求。
 
-适配器可通过 `npm install -g pi-acp @agentclientprotocol/claude-agent-acp` 安装。自定义可执行路径与 profile 参数放在工作区的 [acp 配置](workspace-configuration.md#acp-启动配置)。从源码使用 ACP 前先运行完整的 `npm run build`，以生成 worker 和 dsh 成员入口。
+自定义可执行路径与 profile 参数放在工作区的 [acp 配置](workspace-configuration.md#acp-启动配置)。从源码使用 ACP 前先运行完整的 `npm run build`，以生成 worker 和 dsh 成员入口。
 
 ACP 成员支持待命、独立委派、持续对话、状态、固定周期报告、停止和恢复。运行中的追加要求使用 followUp：
 

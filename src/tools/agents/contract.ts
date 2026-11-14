@@ -6,7 +6,7 @@ const id = Type.String({ minLength: 1, maxLength: 128 });
 const message = Type.String({ minLength: 1, maxLength: 24000, description: "本次目标、相关资料、约束和交付要求。" });
 const name = Type.String({ minLength: 1, maxLength: 64, pattern: "^[^\\r\\n\\x00-\\x1f]+$" });
 export const agentStartOptions = {
-  backend: Type.Optional(Type.Union([Type.Literal("pi"), Type.Literal("dsh"), Type.Literal("claude")], { description: "通过 ACP 调用目标宿主；省略时使用当前宿主原生专家。ACP 模型和认证使用目标配置。" })),
+  backend: Type.Optional(Type.Union([Type.Literal("pi"), Type.Literal("dsh"), Type.Literal("claude")], { description: "通过 ACP 调用已安装并配置的目标宿主：pi 需要 Pi 和 pi-acp，dsh 使用原生 acp profile，claude 需要 @agentclientprotocol/claude-agent-acp。省略时使用当前宿主原生专家。模型和认证使用目标配置。" })),
   name: Type.Optional(name), message: Type.Optional(message),
   files: Type.Optional(Type.Array(Type.String({ minLength: 1 }), { maxItems: 32, description: "随初始消息读取的文件；相对路径基于原工作区根目录。" })),
   prompts: Type.Optional(Type.Array(message, { maxItems: 32, description: "与 message 按顺序合并为同一初始消息。" })),

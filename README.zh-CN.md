@@ -74,6 +74,20 @@ dsh plugin --profile pbot update personal-bot --latest
 
 桌面应用通过原生“插件”页面安装 `personal-bot@latest`，使用独立的 desktop profile。完整终端参数、更新步骤与聊天命令见 [dsh 指南](docs/dsh.md)。
 
+### 可选安装 ACP 专家程序
+
+Pi 和 dsh 主会话都可通过 ACP 委派其他宿主。先在运行主宿主的机器上安装所需目标：
+
+| 目标 | 安装 | 认证与模型 |
+| --- | --- | --- |
+| Pi | 已有 Pi 时运行 `npm install -g pi-acp`；Pi 本身可通过 `npm install -g @earendil-works/pi-coding-agent` 安装 | 运行 `pi` 完成登录并选择默认模型 |
+| dsh | 已安装命令行 dsh 即可；否则运行 `npm install -g @deepseek-ai/dsh@latest` | 按 dsh 原生方式配置目标 profile 的模型与认证；默认入口为 `dsh --profile acp` |
+| Claude Code | `npm install -g @agentclientprotocol/claude-agent-acp` | 按 [Claude Code 指南](https://code.claude.com/docs/en/quickstart)完成登录或 API 配置，并设置默认模型 |
+
+在启动主宿主的同一终端检查目标程序，例如 `command -v claude-agent-acp`。安装后重试原 start 请求。已安装但 PATH 不可见时，将输出的绝对路径写入工作区 [acp 配置](docs/workspace-configuration.md#acp-启动配置)。PATH 变化后重启主宿主；只修改工作区配置时，Pi 执行 `/reload`，dsh 重启宿主。
+
+缺少程序时，工具会返回对应安装命令、认证提示和路径配置示例。调用参数与持续对话见[ACP 成员](docs/agent-collaboration.md#acp-成员)。
+
 ### 从源码使用
 
 ```bash
