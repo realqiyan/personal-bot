@@ -20,7 +20,7 @@ export class DshHistoryWork {
     const agents = new AgentFiles(dshHomePath("pbot", "subagents"), "dsh");
     this.service = new HistoryService(root, new HistoryFiles(join(root, ".pbot/history"), "dsh"),
       new DshHistory(ctx, root, () => agents.list().filter(value => value.workspace === root).map(value => value.agentId)),
-      new HistoryFiles(join(root, ".pbot/history")));
+      [new HistoryFiles(join(root, ".pbot/history"), "pi"), new HistoryFiles(join(root, ".pbot/history"), "claude")]);
   }
   attach(agent: Agent) { this.#parents.add(agent); return () => { this.#parents.delete(agent); }; }
   cancel() { this.#controller?.abort(); }

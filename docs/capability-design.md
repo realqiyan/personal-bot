@@ -1,6 +1,6 @@
 # 工具与执行
 
-Personal Bot 使用当前 Pi 或 dsh 宿主的原生工具与配置。接入方法见[接入技能](../resources/skills/provider-connections/SKILL.md)。
+Personal Bot 使用当前 Pi、dsh 或 Claude 宿主的原生工具与配置。Claude 接入的当前状态见[使用指南](claude-code.md)，接入方法见[接入技能](../resources/skills/provider-connections/SKILL.md)。
 
 ## 责任划分
 
@@ -16,7 +16,7 @@ Personal Bot 使用当前 Pi 或 dsh 宿主的原生工具与配置。接入方�
 
 ## CLI 与 MCP
 
-CLI 通过 Bash 使用。新增 MCP 默认仅接入当前项目：从工作区根目录执行 `pi mcp add --local <server> ...`，写入项目 `.pi/mcp.json`；删除项目连接也显式使用 `--local`。第三方 setup 或接入向导同样核对项目范围，不接受其全局默认值。只有用户明确要求跨项目使用时才修改当前 Pi agent dir 的 `mcp.json`，已有用户级连接不自动迁移或删除。
+CLI 通过 Bash 使用，MCP 由各宿主管理，配置、认证与模型不自动同步。Pi 新增项目连接时从工作区根目录执行 `pi mcp add --local <server> ...`，写入 `.pi/mcp.json`；删除也显式使用 `--local`。第三方 setup 采用项目范围。只有用户明确要求跨项目使用时才修改当前 Pi agent dir 的 mcp.json，已有用户级连接保留。
 
 Pi 处理信任、认证与工具暴露。使用 /mcp 查看连接、工具和配置来源，确认新增连接来自当前项目；配置变更后按 Pi 要求重载。项目配置使用原生认证或环境变量引用，不保存凭据值。
 
@@ -24,9 +24,15 @@ Pi 处理信任、认证与工具暴露。使用 /mcp 查看连接、工具和�
 
 dsh 使用当前安装版本的原生 MCP 组件和 profile 配置，模型与认证也由 dsh 管理。不得将上述 Pi 命令、配置目录或安装包声明直接用于 dsh，也不自动同步两套配置。同进程专家遵循 dsh 的原生作用域与工具可见性；不模拟 Pi 子进程的扩展开关。
 
+Claude 新增项目连接使用 `claude mcp add --scope project <server> ...`，写入工作区 `.mcp.json`；删除使用 `claude mcp remove --scope project <server>`。local、project、user 是不同原生范围，按实际用途选择；用户未要求跨项目时使用 project。通过当前会话 `/mcp` 检查连接、认证、配置来源和工具，CLI 状态不替代活动会话状态。原生 Agent、团队、消息和任务工具沿用 Claude 权限与认证，实验团队开关由用户管理。
+
+Claude 插件通过标准 Node command hooks 准备上下文与 Python，通过原生 `/personal-bot:pbot init|status|python setup` 技能调用同一 CLI。确定性操作可直接运行 `node <plugin>/lib/claude.js init|status|python setup`。工作区根固定为 `CLAUDE_PROJECT_DIR`，不随 Bash cwd 改变。Claude 的 Agent、团队、MCP 与会话由宿主管理；pbot 不在该宿主注册业务工具或 MCP 服务。
+
+Claude 的 Python 脚本通过原生 Bash 使用 `python.executable` 的完整路径；插件不修改 Claude 的 PATH 或环境变量。原生技能与专家的上下文加载方式见[模型上下文](model-context.md)。
+
 ## ACP 子会话
 
-主会话可通过 pbot_agent 的 backend 选择 Pi、dsh 或 Claude Code。目标保留自己的原生配置、认证、工具和资源发现，模型选择不跨宿主继承。Pi 目标使用 pi-acp，dsh 使用原生 acp profile，Claude 使用 claude-agent-acp；启动与持续对话见[专家协作](agent-collaboration.md#acp-成员)。
+Pi/dsh 主会话可通过 pbot_agent 的 backend 选择 Pi、dsh 或 Claude Code。目标保留自己的原生配置、认证、工具和资源发现，模型选择不跨宿主继承。Pi 目标使用 pi-acp，dsh 使用原生 acp profile，Claude 使用 claude-agent-acp；启动与持续对话见[专家协作](agent-collaboration.md#acp-成员)。
 
 ACP 权限请求按目标提供的选项交给人工：Pi 使用现有确认队列，dsh 在工作区页显示待确认操作。目标自己的工具政策继续生效。初始附件保留绝对来源；文本按预算读取，图片经协商后传入，其他二进制文件交给目标的原生工具沿来源读取。
 
@@ -40,7 +46,7 @@ Bash、Python、MCP 和扩展拥有其实际账户与凭据权限。dsh 的原�
 
 ## 可选 Task Conductor
 
-Task Conductor 通过原生 MCP 提供周期任务、重复流程和 DAG，独立管理任务定义与运行状态。两种宿主使用 `task-conductor-plugin` 和 `using-task-conductor` 技能。安装见[项目 README](../README.zh-CN.md#可选安装-task-conductor)，服务配置见[上游接入指南](https://github.com/realqiyan/task-conductor/blob/master/docs/host-integrations.md)。
+Task Conductor 通过原生 MCP 提供周期任务、重复流程和 DAG，独立管理任务定义与运行状态。Pi/dsh 的现有接入使用 `task-conductor-plugin` 和 `using-task-conductor` 技能；Claude 通过自己实际可用的原生 MCP 接入及上游说明使用服务。安装见[项目 README](../README.zh-CN.md#可选安装-task-conductor)，服务配置见[上游接入指南](https://github.com/realqiyan/task-conductor/blob/master/docs/host-integrations.md)。
 
 Personal Bot 提供按需参考入口，工具调用、连接和通知由 Task Conductor 插件与宿主管理。通知绑定提交任务的原生持久会话，恢复原会话后继续接收。
 

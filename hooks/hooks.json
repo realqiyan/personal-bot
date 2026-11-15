@@ -1,0 +1,19 @@
+{
+  "hooks": {
+    "SessionStart": [
+      { "hooks": [{ "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/lib/claude.js", "hook"], "timeout": 900 }] }
+    ],
+    "UserPromptSubmit": [
+      { "hooks": [{ "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/lib/claude.js", "hook"], "timeout": 900 }] }
+    ],
+    "SubagentStart": [
+      { "hooks": [{ "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/lib/claude.js", "hook"], "timeout": 30 }] }
+    ],
+    "PreToolUse": [
+      { "matcher": "Skill", "hooks": [{ "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/lib/claude.js", "hook"], "timeout": 10 }] }
+    ],
+    "UserPromptExpansion": [
+      { "matcher": "personal-bot:.*", "hooks": [{ "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/lib/claude.js", "hook"], "timeout": 10 }] }
+    ]
+  }
+}

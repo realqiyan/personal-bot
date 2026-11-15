@@ -77,7 +77,7 @@ async function main() {
   }, lifetime.signal, prompt, claude);
   try {
     requireThat(!prompt || reference.backend !== "claude" || connection.systemPrompt, "Claude ACP 后端需要支持 systemPrompt，以加载专家职责与工作区资料。");
-    if (validating) { process.send?.({ type: "validated" }); return; }
+    if (validating) { if (process.connected) process.send?.({ type: "validated" }); return; }
     if (reference.sessionId === null) await connection.configure(d.options);
     requireThat(files.read(id!, "launch.json", launch).generation === generation && !files.read(id!, "launch.json", launch).stop, "ACP 启动已取消。");
     files.write(id!, "acp-session.json", { ...reference, sessionId: reference.backend === "dsh" || reference.sessionId !== null ? connection.sessionId : null, capabilities: connection.capabilities }, acpReference);
@@ -108,7 +108,7 @@ try {
     else files.write(id, "status.json", { generation, state: "stopped", activity: "已停止", updatedAt: Date.now() }, status);
   }
 } catch (error) {
-  if (validating) process.send?.({ type: "error", error: String(error) });
+  if (validating) { if (process.connected) process.send?.({ type: "error", error: String(error) }); }
   else if (files.read(id, "launch.json", launch).generation === generation) {
     const stopped = files.read(id, "launch.json", launch).stop;
     const patch = { state: stopped ? "stopped" as const : "error" as const, activity: stopped ? "已停止" : "ACP 执行失败", ...(stopped ? {} : { error: String(error) }) };

@@ -1,10 +1,10 @@
 # Python 计算
 
-环境上下文的 `python.state` 是当前共享环境状态。ready 时通过 Bash 使用 `python` 或 `python3`，直接导入第三方库。项目构建和测试使用项目声明的环境。
+环境上下文的 `python.state` 是当前共享环境状态。ready 时通过 Bash 使用 `python.executable` 给出的完整解释器路径；未提供该字段时使用 `python` 或 `python3`，直接导入第三方库。项目构建和测试使用项目声明的环境。
 
 ## 环境异常
 
-未就绪或依赖异常时可自主诊断，只暂停依赖该环境的计算，不退回系统 Python，不删除或重建共享环境。完整准备错误可在 `/pbot status` 查看，修复后用 `/pbot python setup` 重试；需要用户执行会话操作时说明入口，专家向主会话交回所需条件。
+未就绪或依赖异常时可自主诊断，只暂停依赖该环境的计算，不退回系统 Python，不删除或重建共享环境。Pi/dsh 用 `/pbot status` 查看错误并用 `/pbot python setup` 重试；Claude 从当次 hook 或准备命令结果查看错误，用 `/personal-bot:pbot status` 检查当前环境，`/personal-bot:pbot python setup` 重试，或直接执行插件 `lib/claude.js` 的同名 Node 命令；需要用户执行会话操作时说明入口，专家向主会话交回所需条件。
 
 所有 pbot 工作区共用该环境。更改依赖会影响其他工作区，停止相关计算后再更新。安装与许可信息见 [Python 说明](../../python/README.md)。
 

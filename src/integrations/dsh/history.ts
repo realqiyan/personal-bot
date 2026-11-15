@@ -15,8 +15,8 @@ const text = (content: Question["data"]["content"]) => content.flatMap(block => 
 
 /** Archive questions and the final/partial answer; raw tool records stay in the native log. */
 export function projectDshHistory(header: SessionHeader, events: readonly SessionEvent[], name = ""): HistorySession {
-  const exchanges: HistoryExchange[] = [];
-  let users: Question[] = [], answer: Answer | undefined;
+  const exchanges: HistoryExchange[] = [], supersededEntryIds: string[] = [];
+  let users: Question[] = [], answer: Answer | undefined, observed: string[] = [];
   const finish = (completed = false) => {
     if (users.length) {
       const entries = [...users, ...(answer ? [answer] : [])];
@@ -27,17 +27,23 @@ export function projectDshHistory(header: SessionHeader, events: readonly Sessio
         text: users.map(event => (event.data.source.kind === "user" ? "用户：\n" : "协调者要求：\n") + text(event.data.content)).join("\n\n") +
           (body ? "\n\n助手：\n" + body : "") });
     }
-    users = []; answer = undefined;
+    const last = (answer ?? users.at(-1))?.seq;
+    supersededEntryIds.push(...observed.filter(id => id !== "dsh:" + last));
+    users = []; answer = undefined; observed = [];
   };
   for (const event of events) {
     if (event.type === "turn/start") finish();
-    else if (event.type === "user/message" && ["user", "pbot-input"].includes(event.data.source.kind)) users.push(event);
-    else if (event.type === "assistant/message" && users.length) answer = event;
+    else if (event.type === "user/message" && ["user", "pbot-input"].includes(event.data.source.kind)) {
+      if (!answer) observed.push("dsh:" + event.seq);
+      users.push(event);
+    } else if (event.type === "assistant/message" && users.length) {
+      answer = event; observed.push("dsh:" + event.seq);
+    }
     else if (event.type === "turn/end") finish(event.data.reason.kind === "completed");
   }
   finish();
   return { sessionId: header.id, name: name || exchanges[0]?.text.replace(/\s+/g, " ").slice(0, 80) || "",
-    branches: exchanges.length ? [exchanges] : [] };
+    branches: exchanges.length ? [exchanges] : [], supersededEntryIds };
 }
 
 export class DshHistory implements HistorySource {

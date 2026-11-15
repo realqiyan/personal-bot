@@ -8,7 +8,7 @@ import { fileId } from "./file-access.js";
 
 const strings = (value: unknown): value is string[] => Array.isArray(value) && value.every(item => typeof item === "string");
 function record(value: unknown): HistoryRecord {
-  requireThat(object(value) && (value.host === "pi" || value.host === "dsh") &&
+  requireThat(object(value) && (value.host === "pi" || value.host === "dsh" || value.host === "claude") &&
     typeof value.id === "string" && typeof value.sessionId === "string" &&
     typeof value.name === "string" && Array.isArray(value.nodes), "历史索引无效。");
   for (const node of value.nodes) requireThat(object(node) && typeof node.id === "string" &&
@@ -24,21 +24,30 @@ export class HistoryFiles {
   #warnings: string[] = [];
   constructor(readonly directory: string, readonly host: HistoryHost = "pi") {}
   get warnings(): readonly string[] { return this.#warnings; }
-  list() {
+  /** A peer can include its legacy directory without migrating or modifying either source. */
+  list(legacyRoot?: string) {
     this.#warnings = [];
-    if (!existsSync(this.directory)) return [];
-    const records: HistoryRecord[] = [];
-    for (const name of readdirSync(this.directory).filter(name => name.endsWith(".json"))) {
-      try {
-        const value = readJsonFile(this.directory, name, record);
-        requireThat(name === fileId(value.id) + ".json", "历史文件名与根 ID 不匹配。");
-        if (value.host === this.host) records.push(value);
-      } catch (error) { this.#warnings.push(join(this.directory, name) + ": " + String(error)); }
+    const records = new Map<string, HistoryRecord>();
+    const directories = [this.directory, ...(legacyRoot && this.host !== "claude" ? [join(legacyRoot, "." + this.host, "pbot/history")] : [])];
+    for (const directory of directories) {
+      if (!existsSync(directory)) continue;
+      for (const name of readdirSync(directory).filter(name => name.endsWith(".json"))) {
+        try {
+          const value = readJsonFile(directory, name, value => {
+            if (directory === this.directory) return record(value);
+            requireThat(object(value) && (value.host === undefined || value.host === this.host), "旧历史归档与来源目录不匹配。");
+            return record({ ...value, host: this.host });
+          });
+          requireThat(name === fileId(value.id) + ".json", "历史文件名与根 ID 不匹配。");
+          if (value.host === this.host && !records.has(value.id)) records.set(value.id, value);
+        } catch (error) { this.#warnings.push(join(directory, name) + ": " + String(error)); }
+      }
     }
-    return records;
+    return [...records.values()];
   }
   /** Publish each legacy archive with its directory's host before removing the old copy. */
   migrate(root: string) {
+    if (this.host !== "pi" && this.host !== "dsh") return;
     const directory = join(root, "." + this.host, "pbot/history");
     if (!existsSync(directory)) return;
     this.control(() => {

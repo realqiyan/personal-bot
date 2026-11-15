@@ -162,7 +162,7 @@ task-conductor setup
 | 工作区 | 启动状态、来源、目录、模型、Python 和历史整理状态；初始化启用、准备资料或重试 Python |
 | 专家 | 创建、重命名、停止、显式恢复；人工对话、附件和完整原生记录 |
 | 团队 | 固定成员与职责、有限轮次、暂停、关闭、公共原文和长消息分页 |
-| 历史 | 按 Pi/dsh 来源与时间查询，读取问答和摘要，沿父子节点导航 |
+| 历史 | 按来源与时间查询 Pi/dsh 及既有 Claude 归档，读取问答和摘要，沿父子节点导航 |
 
 宽窗口使用侧边导航，窄窗口使用顶部导航。专家支持名称与状态筛选；草稿与附件按专家保留，团队草稿分别保留。
 
@@ -312,7 +312,7 @@ pause 不停止专家；等待 status 的 `activeCount=0` 后才可 close：
 
 | action | 必填字段 | 可选字段与默认值 |
 | --- | --- | --- |
-| `search` | action | `host` 为 pi/dsh，省略查两者；`query`, `sessionId`, `from`, `to`；`offset=0`；`limit=20`，范围 1–50 条 |
+| `search` | action | `host` 为 pi/dsh/claude，省略查全部来源；`query`, `sessionId`, `from`, `to`；`offset=0`；`limit=20`，范围 1–50 条 |
 | `read` | action、`id` | `host`；`offset=0`；`limit=12000`，范围 1–24000 UTF-16 代码单元；`childrenOffset=0`，子节点每页固定 20 个 |
 
 query 按不区分大小写的连续文本搜索已就绪问答与摘要；省略或空白时列出会话。sessionId 是原生会话 ID；read 的 id 是返回的归档节点 ID，不是专家 ID。日期字段是 **from/to**，不是 start/end，使用明确时区的 ISO 时间。仅日期的 to 如 `2026-11-07` 表示 UTC 零点，不自动包含当日全天。
@@ -324,7 +324,7 @@ query 按不区分大小写的连续文本搜索已就绪问答与摘要；省�
 
 search 返回 matches、total、nextOffset 和 warnings，续页保持筛选条件并回填 nextOffset。read 返回 node：`node.nextOffset` 用于正文 offset，`node.nextChildrenOffset` 用于 childrenOffset；沿 parents/children 的 id 继续读取。没有 childrenLimit 参数。摘要提供线索，关键事实应回到问答原文；历史归档不能替代专家完整工具记录。
 
-Pi 与 dsh 共用 `.pbot/history/`，共同查询已有归档，只更新和整理自己的来源。查询不调用模型；正常主交互结束后的空闲阶段才使用当前宿主模型补齐摘要，新人工输入优先取消整理。详见[历史对话](history.md)。
+Pi/dsh 使用 `.pbot/history/`，查询已有各来源归档，只更新和整理自己的来源。既有 Claude 归档保持只读；Claude 标准插件不再收录或查询 pbot 历史。查询不调用模型；Pi/dsh 正常主交互结束后的空闲阶段才使用当前宿主模型补齐摘要，新人工输入优先取消整理。详见[历史对话](history.md)。
 
 ## 模型工具
 

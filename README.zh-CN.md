@@ -4,17 +4,19 @@
 
 **连接知识、研究与行动的个人助手。**
 
-Personal Bot 提供按工作区加载的 [Pi](https://pi.dev) 扩展和原生 dsh Web 接入，支持资料整理、项目推进、研究分析、专家协作和已授权的业务操作。模型负责分析与协调，插件提供资料目录、专家会话、历史查询和共享 Python 环境。
+Personal Bot 提供按工作区加载的 [Pi](https://pi.dev) 扩展、原生 dsh Web 接入和标准 Claude Code 插件，支持资料整理、项目推进、研究分析、专家协作和已授权的业务操作。Pi/dsh 提供受管专家、团队和历史查询；Claude 使用原生技能、Agent/teams 与 Node command hooks。三个宿主共用工作区资料和 Python 环境。
+
+Claude 的模型上下文、技能调用与专家行为还需在批准的原生模型环境验证。操作见 [Claude Code 指南](docs/claude-code.md)。
 
 ## 工作区启用
 
-安装后，从目标工作区打开 Pi 或 dsh，执行 `/pbot init` 初始化并启用。Pi 和 dsh 共用该命令创建的 `.pbot/config.json`：
+安装后，从目标工作区打开宿主。Pi/dsh 执行 `/pbot init`，Claude 使用原生技能 `/personal-bot:pbot init`，初始化资料并启用共用的 `.pbot/config.json`：
 
 ```json
 { "enabled": true }
 ```
 
-文件缺失或设为 false 时，Personal Bot 保持未启用，不加载包内技能和提示词，并引导执行 `init`。Pi 状态栏和 dsh 工作区页显示启动状态；`/pbot status` 随时可用。手工修改配置后，Pi 执行 `/reload`，dsh 重启宿主。规则见[工作区配置](docs/workspace-configuration.md)。
+配置缺失、停用或无效时，Personal Bot 保持未启用；只检查当前工作区根目录，不自动迁移配置。Pi/dsh 不加载包内技能及 pbot 提示词；Claude 仍可显示静态技能名称和简介，hooks 拦截 Skill 调用和直接斜杠命令中的工作方法并保留 pbot 初始化技能可用。状态入口为 Pi/dsh `/pbot status` 或 Claude `/personal-bot:pbot status`。手工修改后，Pi 执行 `/reload`，dsh 重启宿主；Claude 在 hook 与 CLI 操作时读取当前配置，工作区根由 `CLAUDE_PROJECT_DIR` 固定。规则见[工作区配置](docs/workspace-configuration.md)。
 
 ## 安装
 
@@ -74,9 +76,23 @@ dsh plugin --profile pbot update personal-bot --latest
 
 桌面应用通过原生“插件”页面安装 `personal-bot@latest`，使用独立的 desktop profile。完整终端参数、更新步骤与聊天命令见 [dsh 指南](docs/dsh.md)。
 
+### Claude Code
+
+使用 Linux 或 macOS 的交互式 Claude Code 终端，需要 **Claude Code 2.1.325+**、**Node.js 22.19+**，以及 Python 3.11+ 和 venv/ensurepip。通过 Claude 原生 marketplace 命令安装：
+
+```text
+/plugin install personal-bot --marketplace realqiyan/personal-bot
+```
+
+安装范围由 Claude 原生插件管理选择，再在目标工作区使用 `/personal-bot:pbot init` 和 `/personal-bot:pbot status`。它们是原生技能，由模型通过 Bash 执行对应 Node CLI。需要确定性执行时，将 `CLAUDE_PROJECT_DIR` 设为工作区根，直接运行 `node /absolute/path/to/plugin/lib/claude.js init`、`status` 或 `python setup`。登录、模型、权限、原生专家、团队和 MCP 由 Claude 管理；`pbot setup` 仍是 Pi 安装器。
+
+原生团队由用户在启动 Claude 前设置 `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` 启用。pbot 不修改该设置，也不在 Claude 中提供 pbot 团队调度。返回会话后明确要求继续工作；原生 resume/rewind 不恢复进程内 teammate。
+
+启用后自动准备共享 Python，并提供完整可执行路径供原生 Bash 使用，不修改 Claude 的 PATH 或环境变量。标准插件提供资料、技能与原生专家，既有 Claude 历史归档和旧控制记录原地保留。操作与 Python 使用见 [Claude 指南](docs/claude-code.md)。
+
 ### 可选安装 ACP 专家程序
 
-Pi 和 dsh 主会话都可通过 ACP 委派其他宿主。先在运行主宿主的机器上安装所需目标：
+Pi/dsh 使用 ACP 向 Pi、dsh 或 Claude 委派独立工作。先在运行主宿主的机器上安装所需目标：
 
 | 目标 | 安装 | 认证与模型 |
 | --- | --- | --- |
@@ -84,7 +100,7 @@ Pi 和 dsh 主会话都可通过 ACP 委派其他宿主。先在运行主宿主�
 | dsh | 已安装命令行 dsh 即可；否则运行 `npm install -g @deepseek-ai/dsh@latest` | 按 dsh 原生方式配置目标 profile 的模型与认证；默认入口为 `dsh --profile acp` |
 | Claude Code | `npm install -g @agentclientprotocol/claude-agent-acp` | 按 [Claude Code 指南](https://code.claude.com/docs/en/quickstart)完成登录或 API 配置，并设置默认模型 |
 
-在启动主宿主的同一终端检查目标程序，例如 `command -v claude-agent-acp`。安装后重试原 start 请求。已安装但 PATH 不可见时，将输出的绝对路径写入工作区 [acp 配置](docs/workspace-configuration.md#acp-启动配置)。PATH 变化后重启主宿主；只修改工作区配置时，Pi 执行 `/reload`，dsh 重启宿主。
+在启动主宿主的同一终端检查目标程序，例如 `command -v claude-agent-acp`。安装后重试原 start 请求。已安装但 PATH 不可见时，将输出的绝对路径写入工作区 [acp 配置](docs/workspace-configuration.md#acp-启动配置)。PATH 变化后重启主宿主；只修改工作区 ACP 配置时，Pi 执行 `/reload`，dsh 重启宿主。
 
 缺少程序时，工具会返回对应安装命令、认证提示和路径配置示例。调用参数与持续对话见[ACP 成员](docs/agent-collaboration.md#acp-成员)。
 
@@ -98,7 +114,7 @@ npm run build:cli
 node bin/pbot.mjs setup
 ```
 
-只加载 Pi 源码扩展时，在工作区执行 `pi install --local /absolute/path/to/personal-bot`，并保留该目录和依赖。使用 ACP 成员前先运行完整的 `npm run build`。dsh 的源码打包安装见[专门说明](docs/dsh.md#从源码安装)。
+只加载 Pi 源码扩展时，在工作区执行 `pi install --local /absolute/path/to/personal-bot`，并保留该目录和依赖。使用 ACP 成员或 Claude 插件前先运行完整的 `npm run build`。构建顺序是 CLI → dsh → Claude，因为 CLI 构建会清理 `lib/`。dsh 见[源码安装](docs/dsh.md#从源码安装)，Claude 见[开发检查](docs/claude-code.md#依赖与开发检查)。
 
 ### 可选安装 Task Conductor
 
@@ -110,7 +126,7 @@ Pi 用户从工作区运行 `pi install --local npm:task-conductor-plugin`，重
 
 ## 日常使用
 
-直接说明任务，例如整理资料、比较研究结论、委派复核或运行计算。以下命令面向 Pi，dsh 命令见其指南。
+直接说明任务，例如整理资料、比较研究结论、委派复核或运行计算。以下命令面向 Pi；[dsh](docs/dsh.md) 与 [Claude](docs/claude-code.md) 使用各自指南中的原生入口。
 
 | 命令 | 用途 |
 | --- | --- |
@@ -125,9 +141,9 @@ Pi 用户从工作区运行 `pi install --local npm:task-conductor-plugin`，重
 
 - **初始化与资料准备**：`/pbot init` 补建资料并启用工作区，保留已有资料与其他配置字段。Pi 首次启用时自动重载；已启动时补建的根 AGENTS 经 `/reload` 加载。
 - **原生工具**：CLI 通过 Bash 使用，MCP 使用宿主配置。Pi 新增项目连接时执行 `pi mcp add --local <server> ...`，通过 `/mcp` 查看来源。接入方法见[技能](resources/skills/provider-connections/SKILL.md)。
-- **历史回溯**：Pi 与 dsh 共同查询工作区归档。原文先可查询，主交互结束后用当前模型补齐摘要，会产生额外模型调用；新输入优先取消整理。详见[历史对话](docs/history.md)。
-- **专家与团队**：可独立委派、持续对话，或组织轮流讨论和并行轮次。默认 Pi 专家需要 tmux，dsh 使用原生会话；两种主会话也可通过 ACP 调用 Pi、dsh 和 Claude Code，支持独立对话、报告及恢复。ACP 的 model、thinking 均可单独省略，省略项使用目标宿主默认值。团队运行时占用成员，切换私人工作前先暂停并等待在途工作结束。详见[专家协作](docs/agent-collaboration.md)。
-- **Python**：所有已启用工作区共用当前用户的一份 venv，启用后自动准备并在宿主进程激活，通过 Bash 使用 `python` 或 `python3`。更新依赖前停止使用该环境的脚本。路径、排障与许可见 [Python 说明](python/README.md)。
+- **历史回溯**：Pi/dsh 刷新和整理自己的来源，查询已有各来源归档，包括保留的 Claude 归档。原文先可查询，主交互结束后用当前模型补齐摘要，会产生额外模型调用；新输入优先取消整理。Claude 使用原生会话历史。详见[历史对话](docs/history.md)。
+- **专家与团队**：默认 Pi 专家需要 tmux，dsh 使用原生会话。Pi/dsh 的 pbot 团队可组织轮流讨论与并行轮次，切换私人工作前先暂停并等待在途工作结束；Claude 使用原生 Agent 与团队工具。Pi/dsh 的 ACP 调用 Pi、dsh 和 Claude Code，支持独立对话、报告及显式恢复。ACP 的 model、thinking 均可单独省略，省略项使用目标宿主默认值。详见[专家协作](docs/agent-collaboration.md)。
+- **Python**：所有已启用工作区共用当前用户的一份 venv。Pi/dsh 自动准备并在宿主进程激活，通过 Bash 使用 `python` 或 `python3`；Claude 准备环境后，通过 Bash 使用 `python.executable` 完整路径。更新依赖前停止使用该环境的脚本。路径、排障与许可见 [Python 说明](python/README.md)。
 - **资料维护**：可请助手整理项目、按既有口径重做分析或检查交付。按[维护技能](resources/skills/project-maintenance/SKILL.md)更新当前说明、提炼方法，保留正式资料、历史与备份。
 
 Pi 主会话恢复用 `pi --resume` 明确选择；`pi --continue` 可能选中最近活跃的子会话。受管专家从 `/pbot agents` 进入，停止后打开原会话会保持待命，携新要求继续时使用 resume。运行中的会话只保留一个写入进程。
@@ -136,20 +152,21 @@ Pi 主会话恢复用 `pi --resume` 明确选择；`pi --continue` 可能选中�
 
 | 位置 | 用途 |
 | --- | --- |
-| `.pbot/config.json` | Pi/dsh 共用的工作区启用与配置 |
+| `.pbot/config.json` | Pi/dsh/Claude 共用的工作区启用与配置 |
 | `AGENTS.md` | 资料导航与工作约定 |
 | `areas/`、`projects/` | 长期目标、任务、结论与交付物 |
 | `knowledge/` | 可复用的概念、方法与口径 |
-| `.pbot/history/` | Pi/dsh 问答原文、摘要与节点关系 |
+| `.pbot/history/` | Pi/dsh 问答原文、摘要与节点关系，以及保留的 Claude 归档 |
 | `providers/` | 外部工具的使用说明、数据口径与来源 |
 | `scratch/` | 临时脚本、计算数据、下载与运行环境 |
-| `agents/`、`.agents/skills/` | 职责补充与工作区技能 |
+| `agents/` | 职责补充 |
+| `.agents/skills/`（Pi/dsh）、`.claude/skills/`（Claude） | 当前宿主原生发现的工作区技能 |
 
 已有布局与工作约定优先。可再次查询的数据在需要时按记录的口径获取。复制工作区前停止旧实例的写入，不支持多机同时写同步目录。详细位置与保留规则见[文件存储](docs/file-storage.md)。
 
 ## 更新与操作范围
 
-当前版本为 **0.2.12**。通过宿主原生包管理更新；本地 Pi 来源更新源码，依赖变化后运行 `npm ci --ignore-scripts`，再重载或重启。更换版本前停止活动专家；不同兼容线的专家需重新创建，旧资料、历史和备份保留。
+当前版本为 **0.2.13**。通过宿主原生包管理更新；本地 Pi 来源更新源码，依赖变化后运行 `npm ci --ignore-scripts`，再重载或重启。更换版本前停止活动专家；不同兼容线的专家需重新创建，旧资料、历史和备份保留。
 
 操作按用户请求、已有约定和必要确认执行。Bash、Python、MCP 和扩展使用实际账户与凭据权限；硬限制应由只读凭据、服务端控制或受限环境提供。交易、转账和账本修改需要相应授权。取消、超时或断连后，先查原生状态再决定是否重试，避免重复执行。
 
@@ -157,7 +174,7 @@ Task Conductor 节点单独配置工具、环境、技能与认证；需要人�
 
 ## 开发与文档
 
-双宿主开发使用 Linux、Node.js 24.9+。安装锁定依赖后运行：
+三宿主开发与完整验收使用 Linux、Node.js 24.9+。安装锁定依赖后运行：
 
 ```bash
 npm run check
@@ -166,7 +183,7 @@ git diff --check
 npm pack --dry-run
 ```
 
-`npm test` 包含冒烟与 E2E 测试，并生成测试用 `dist/` 和发布用 `lib/`。Pi 运行时加载源码。
+`npm test` 构建测试用 `dist/` 与发布用 `lib/`，运行 Pi/dsh 本地检查与 Claude Node hook 进程测试；Pi 运行时加载源码。Claude 安装包检查实际安装 tarball、执行原生 plugin validate 和 hook/CLI，不调用模型或安装宿主 SDK。真实模型 ACP 与 Claude 上下文、技能、专家验证在明确批准的专用认证环境单独进行。详见[发布说明](docs/release.md)。
 
 - [文档索引](docs/README.md)：当前架构、使用与开发说明。
 - [npm 发布](docs/release.md)：候选检查、发布配置与操作。

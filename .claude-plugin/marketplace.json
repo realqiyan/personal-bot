@@ -1,0 +1,18 @@
+{
+  "name": "personal-bot",
+  "owner": {
+    "name": "Personal Bot maintainers"
+  },
+  "plugins": [
+    {
+      "name": "personal-bot",
+      "version": "0.2.13",
+      "description": "Workspace materials, skills, native experts, and shared Python.",
+      "source": {
+        "source": "npm",
+        "package": "personal-bot",
+        "version": "0.2.13"
+      }
+    }
+  ]
+}

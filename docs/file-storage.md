@@ -4,25 +4,28 @@
 
 | 位置 | 内容与所有者 |
 | --- | --- |
-| 工作区 .pbot/config.json | Pi/dsh 共用的启用与功能配置 |
+| 工作区 .pbot/config.json | Pi/dsh/Claude 共用的启用与功能配置 |
 | 工作区 AGENTS.md、areas/、projects/、knowledge/ 等 | 用户资料、任务定义、方法、结论与交付物 |
 | 工作区 providers/<id>/GUIDE.md | 提供方使用说明 |
 | 工作区 .pi/settings.json、.pi/mcp.json | Pi 原生项目配置 |
+| 工作区 CLAUDE.md、.claude/settings*、.mcp.json | 用户指令与 Claude 原生插件/MCP 配置；pbot init 保留已有内容 |
 | Pi 原生 sessions/ 或原生配置指定的目录 | 主会话与子会话的 JSONL 对话，由 Pi 管理 |
 | 当前 Pi agent dir 的 pbot/subagents/ | Personal Bot 子进程控制记录与原生会话引用 |
 | 当前 Pi agent dir 的 pbot/teams/ | Pi 团队资料、批次与公共原文 |
 | dsh 原生会话存储 | dsh 主会话与专家的原生事件，由 dsh 管理 |
 | dsh home 的 pbot/subagents/、pbot/teams/ | dsh 专家控制记录、原生 ID 引用与团队公共记录 |
-| 工作区 .pbot/history/ | Pi/dsh 问答、摘要、节点关系；双方共同查询，各写本来源 |
+| Claude 原生会话与团队存储 | 主会话、专家与团队均由 Claude 管理，pbot 不解析其私有格式 |
+| Claude 配置根已有的 pbot/subagents/、sources/、receipts/、team-sources/ | 旧接入留下的控制记录与引用，保留只读，不由标准插件接管 |
+| 工作区 .pbot/history/ | Pi/dsh 问答、摘要与节点关系，以及既有 Claude 归档；Pi/dsh 查询，各写本来源 |
 | 用户级 pbot/python/.venv | 共享 Python 环境 |
 
-各宿主管理自己的主会话、对话与原生配置。ACP 成员由所属主会话的控制目录管理，但其对端上下文始终由目标宿主保存和恢复。Personal Bot 的工作区资料是普通文件，启用配置集中在 `.pbot/config.json`，不维护工作区格式版本。详细目录用途见[项目 README](../README.zh-CN.md#工作区资料)，Python 路径见 [Python 说明](../python/README.md)。
+各宿主管理自己的主会话、对话与原生配置。Pi/dsh 的 ACP 成员由所属主会话的控制目录管理，其对端上下文由目标宿主保存和恢复。Claude 标准插件只准备工作区资料与共享 Python，不建立会话控制或历史采集目录。Personal Bot 的工作区资料是普通文件，启用配置集中在 `.pbot/config.json`，不维护工作区格式版本。详细目录用途见[项目 README](../README.zh-CN.md#工作区资料)，Python 路径见 [Python 说明](../python/README.md)。
 
 ## 资料准备
 
-`/pbot init` 创建缺失的资料目录与根 AGENTS.md。资料目录位置若已被文件占用或是符号链接，则报错；根 AGENTS.md 已存在时直接保留，包括已有符号链接，不跟随链接写入。已创建资料保留，再次执行可继续补缺。
+Pi/dsh 的 `/pbot init` 与 Claude 的原生 `/personal-bot:pbot init` 技能或 Node CLI init 创建缺失的资料目录与根 AGENTS.md。资料目录位置若已被文件占用或是符号链接，则报错；根 AGENTS.md 已存在时直接保留，包括已有符号链接，不跟随链接写入。已创建资料保留，再次执行可继续补缺。
 
-## 子会话保存
+## Pi/dsh 子会话保存
 
 每个 agentId 对应一个目录：
 
@@ -57,7 +60,13 @@ atomic-json 校验完整对象，写入并同步临时文件后原子发布；�
 
 ACP 成员新增独立引用及报告文件，现有 descriptor、launch、inbox、status 和 completions 的持久字段保持不变。cycle.leaf 的 acp 前缀定位固定报告。控制文件不保存凭据或完整原生对话；任务与报告页从 inbox 和周期报告读取，不领取模型通知。Pi/dsh 成员快照只用于精确提取最终答复，ACP 进度文本不直接充当最终报告。
 
-## 团队保存
+## 既有 Claude 数据
+
+旧接入可能已在 Claude 配置根下留下 `pbot/subagents/`、`pbot/sources/`、`pbot/receipts/` 与 `pbot/team-sources/`。配置根由当时的 `CLAUDE_CONFIG_DIR` 决定，默认 `~/.claude`。这些目录中的 ACP 控制记录、原生来源引用与收据原地保留，标准插件不继续写入、迁移或恢复其中的任务。
+
+工作区已有的 `host: "claude"` 历史归档继续由 Pi/dsh 只读查询。Claude 的原生会话与团队存储仍归宿主管理，标准插件不扫描 transcript、不读取私有团队格式，也不创建新的 pbot 来源、收据或团队目录。
+
+## Pi/dsh 团队保存
 
 每个 teamId 对应 teams/<teamId>/team.json。单文件保存固定成员、批次、请求关联和公共消息；不使用事件日志、快照或迁移计数。每批次保存成员的原有 generation，用于拒绝旧代次请求。
 
@@ -69,9 +78,9 @@ I/O 失败后当前文件实例停止后续写入，不能因下一次读取成�
 
 ## 历史索引
 
-历史存档统一保存在工作区 `.pbot/history/`，按 host 与原生 session ID 关联会话。两种来源使用相同格式，顶层 `host` 字段标明 `pi` 或 `dsh`，文件名与根 ID 一致。归档包含问答文本、来源消息 ID、分支内的四叉摘要与父子关系，复用原子 JSON 写入；双方分别持有本来源的短写锁，只更新自己的记录。
+历史存档统一保存在工作区 `.pbot/history/`，按 host 与原生 session ID 关联会话。持久格式的顶层必填 host 继续接受 pi、dsh 或 claude，文件名与根 ID 一致。归档包含问答、来源消息 ID、分支内四叉摘要与父子关系，复用原子 JSON 写入。Pi/dsh 分别使用 `.write-pi`、`.write-dsh` 短锁，只更新自己的来源；既有 Claude 归档保持只读，旧 `.write-claude` 记录不由标准插件接管。
 
-原生会话不可用时仍可查询归档，复制到其他目录或机器后仍可读取，重新发现原生会话时复用原节点。收录范围与查询见[历史对话](history.md)。
+原生会话不可用时仍可查询归档，复制到其他目录或机器后仍可读取。Pi/dsh 重新发现原生会话时复用原节点，缺失来源、compaction 或部分扫描不删除已归档分支与原文。Pi/dsh 迁移本来源的旧目录，并只读查询对方尚在旧目录的归档；不新增 Claude 配置或历史迁移。收录范围与查询见[历史对话](history.md)。
 
 ## 历史与复制
 
@@ -79,4 +88,4 @@ I/O 失败后当前文件实例停止后续写入，不能因下一次读取成�
 
 加载、资料准备和重载保留已有资料、历史记录及备份。扩展管理自己的子会话、历史存档与 Python 环境，不自动导入或转换其他应用数据。
 
-复制工作区前停止旧实例。包含 `.pbot/history/` 的副本会带上两种来源的问答与摘要，但不会转移用户级原生会话、运行进程、环境或认证；不支持多机同时写入同步目录。
+复制工作区前停止旧实例。包含 `.pbot/history/` 的副本会带上已有各来源的问答与摘要，但不会转移用户级原生会话、运行进程、环境或认证；不支持多机同时写入同步目录。

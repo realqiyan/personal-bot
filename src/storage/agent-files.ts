@@ -48,7 +48,9 @@ export function status(v: unknown): AgentStatus {
 }
 export class AgentFiles {
   #failure: unknown;
-  constructor(readonly root: string, readonly host: NativeAgentHost = "pi") {}
+  constructor(readonly root: string, readonly host: NativeAgentHost = "pi") {
+    requireThat(host === "pi" || host === "dsh", "子会话所属宿主无效。");
+  }
   check() { if (this.#failure) throw this.#failure; }
   fail(error: unknown) { this.#failure = error; }
   directory(id: string) { return join(this.root, fileId(id)); }
@@ -65,6 +67,7 @@ export class AgentFiles {
   }
   create(value: AgentDescriptor, run: AgentLaunch, acp?: AcpSessionReference) {
     this.check();
+    if (acp) acpReference(acp);
     mkdirSync(this.root, { recursive: true, mode: 0o700 });
     mkdirSync(this.directory(value.agentId), { mode: 0o700 });
     for (const dir of ["inbox", "completions"]) privateDirectory(this.directory(value.agentId), dir);

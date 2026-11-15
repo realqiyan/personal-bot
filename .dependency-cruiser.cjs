@@ -1,11 +1,11 @@
-const host = "(?:^|/)node_modules/(?:@earendil-works/pi-(?:coding-agent|ai|tui|mcp)|@deepseek-ai/(?:cordis|dsh[^/]*)|react|typebox)(?:/|$)";
+const host = "(?:^|/)node_modules/(?:@earendil-works/pi-(?:coding-agent|ai|tui|mcp)|@deepseek-ai/(?:cordis|dsh[^/]*)|@anthropic-ai/claude-agent-sdk|react|typebox)(?:/|$)";
 
 module.exports = {
   forbidden: [
     { name: "no-cycles", severity: "error", from: { path: "^src/" }, to: { circular: true } },
     { name: "resolved-imports", severity: "error", from: { path: "^src/" }, to: { couldNotResolve: true } },
     { name: "model-is-data", severity: "error", from: { path: "^src/model/" },
-      to: { path: "^src/(?:services|tools|storage|integrations|extension|ui)/|^src/pbot\\.ts$|" + host } },
+      to: { path: "^src/(?:services|tools|storage|integrations|extension|ui)/|^src/(?:pbot|dsh|claude)\\.ts$|" + host } },
     { name: "common-is-independent", severity: "error", from: { path: "^src/common/" },
       to: { path: "^src/(?!common/)|" + host } },
     { name: "services-are-host-neutral", severity: "error", from: { path: "^src/services/" },
@@ -28,8 +28,10 @@ module.exports = {
       to: { path: "^src/(?:dsh\\.ts|(?:integrations|extension|ui)/dsh/)|node_modules/@deepseek-ai/" } },
     { name: "dsh-does-not-load-pi", severity: "error", from: { path: "^src/(?:dsh\\.ts|(?:integrations|extension|ui)/dsh/)" },
       to: { path: "^src/(?:pbot\\.ts|integrations/pi/)|node_modules/@earendil-works/" } },
+    { name: "claude-hooks-do-not-load-hosts", severity: "error", from: { path: "^src/(?:claude\\.ts|extension/claude-hooks\\.ts)" },
+      to: { path: "^src/(?:pbot\\.ts|dsh\\.ts|(?:extension|ui|integrations)/(?:pi|dsh)/)|node_modules/@(?:earendil-works|deepseek-ai|anthropic-ai)/" } },
     { name: "composition-is-not-a-dependency", severity: "error", from: { path: "^src/" },
-      to: { path: "^src/(?:pbot|dsh)\\.ts$" } },
+      to: { path: "^src/(?:pbot|dsh|claude)\\.ts$" } },
   ],
   options: {
     doNotFollow: { path: "node_modules" },

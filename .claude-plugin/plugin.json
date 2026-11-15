@@ -1,0 +1,15 @@
+{
+  "name": "personal-bot",
+  "version": "0.2.13",
+  "description": "Workspace materials, skills, native experts, and shared Python.",
+  "skills": [
+    "./resources/skills",
+    "./resources/claude/skills"
+  ],
+  "agents": [
+    "./resources/claude/agents/general-purpose.md"
+  ],
+  "engines": {
+    "claude-code": ">=2.1.325"
+  }
+}

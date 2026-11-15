@@ -4,17 +4,19 @@ English | [简体中文](README.zh-CN.md)
 
 **A personal assistant connecting knowledge, research, and action.**
 
-Personal Bot provides a workspace-scoped [Pi](https://pi.dev) extension and a native dsh Web integration for organizing materials, project work, research, specialist collaboration, and authorized operations. The model handles analysis and coordination; the plugin adds workspace materials, specialist sessions, history search, and a shared Python environment.
+Personal Bot provides a workspace-scoped [Pi](https://pi.dev) extension, a native dsh Web integration, and a standard Claude Code plugin. It supports organizing materials, project work, research, specialist collaboration, and authorized operations. Pi/dsh add managed specialists, teams, and history search. Claude uses native skills, Agent/teams, and Node command hooks. All three share workspace materials and a Python environment.
+
+Claude's model-driven context, skills, and specialist behavior still need validation in an approved native model environment. See the [Claude Code guide](docs/claude-code.md) (Chinese) for operations.
 
 ## Enable a workspace
 
-After installation, open Pi or dsh in the target workspace and run `/pbot init` to initialize and enable it. Pi and dsh share the `.pbot/config.json` created by this command:
+After installation, open the host in the target workspace. Pi/dsh use `/pbot init`; Claude uses the native skill `/personal-bot:pbot init`. These initialize materials and enable the shared `.pbot/config.json`:
 
 ```json
 { "enabled": true }
 ```
 
-A missing file or false leaves Personal Bot inactive, without packaged skills or pbot prompts, and directs the user to `init`. Pi's status bar and the dsh workspace page show the runtime state; `/pbot status` remains available. After manual configuration edits, use `/reload` in Pi or restart dsh. See [workspace configuration](docs/workspace-configuration.md) (Chinese).
+A missing, disabled, or invalid config leaves Personal Bot inactive; only the current workspace root is checked, with no automatic configuration migration. Pi/dsh withhold packaged skills and pbot prompts. Claude can display static skill names and descriptions; its hooks block work methods invoked through Skill or direct slash commands while leaving the pbot initialization skill available. Inspect state with Pi/dsh `/pbot status` or Claude `/personal-bot:pbot status`. After manual edits, use `/reload` in Pi or restart dsh; Claude reads current configuration at its hooks and CLI operations, with the root fixed by `CLAUDE_PROJECT_DIR`. See [workspace configuration](docs/workspace-configuration.md) (Chinese).
 
 ## Install
 
@@ -74,9 +76,23 @@ dsh plugin --profile pbot update personal-bot --latest
 
 The desktop application installs `personal-bot@latest` through its native Plugins page and uses a separate desktop profile. See the [dsh guide](docs/dsh.md) (Chinese) for launcher options, updates, and chat commands.
 
+### Claude Code
+
+Use an interactive Claude Code terminal on Linux or macOS with **Claude Code 2.1.325+**, **Node.js 22.19+**, and Python 3.11+ with venv/ensurepip. Install through Claude's native marketplace command:
+
+```text
+/plugin install personal-bot --marketplace realqiyan/personal-bot
+```
+
+Choose the installation scope through Claude's plugin manager, then use `/personal-bot:pbot init` and `/personal-bot:pbot status` in the target workspace. These are native skills: the model runs the corresponding Node CLI through Bash. For deterministic execution, run `node /absolute/path/to/plugin/lib/claude.js init`, `status`, or `python setup` with `CLAUDE_PROJECT_DIR` set to the workspace root. Claude owns login, models, permissions, native agents, teams, and MCP configuration; `pbot setup` remains the Pi installer.
+
+For native teams, the user enables Claude's experimental feature with `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` before starting Claude. pbot does not change this setting or provide pbot team scheduling in Claude. Continue work explicitly after returning to a session; native resume/rewind does not restore in-process teammates.
+
+The enabled plugin prepares shared Python and supplies its full executable path for native Bash; it does not change Claude's PATH or environment variables. The standard plugin provides materials, skills, and native specialists. Existing Claude history archives and old control records remain preserved. See the [Claude guide](docs/claude-code.md) (Chinese) for operations and Python use.
+
 ### Optional: ACP specialist programs
 
-Both Pi and dsh main sessions can delegate to other hosts through ACP. Install each target you need on the machine running the main host:
+Pi/dsh use ACP to delegate independent work to Pi, dsh, or Claude. Install each target you need on the machine running the main host:
 
 | Target | Installation | Authentication and model |
 | --- | --- | --- |
@@ -84,7 +100,7 @@ Both Pi and dsh main sessions can delegate to other hosts through ACP. Install e
 | dsh | An existing command-line dsh installation is sufficient; otherwise run `npm install -g @deepseek-ai/dsh@latest`. | Configure the target profile's model and authentication through dsh. The default entry is `dsh --profile acp`. |
 | Claude Code | `npm install -g @agentclientprotocol/claude-agent-acp` | Follow the [Claude Code guide](https://code.claude.com/docs/en/quickstart) to sign in or configure API access, then set a default model. |
 
-Check the target from the same terminal that starts your main host, for example with `command -v claude-agent-acp`. Retry the original start request after installation. If the program is installed but absent from the host's PATH, put its absolute path in the workspace [acp configuration](docs/workspace-configuration.md#acp-启动配置) (Chinese). Restart the main host after PATH changes. For workspace configuration changes, run `/reload` in Pi or restart dsh.
+Check the target from the same terminal that starts your main host, for example with `command -v claude-agent-acp`. Retry the original start request after installation. If the program is installed but absent from the host's PATH, put its absolute path in the workspace [acp configuration](docs/workspace-configuration.md#acp-启动配置) (Chinese). Restart the main host after PATH changes. For workspace ACP configuration changes, run `/reload` in Pi or restart dsh.
 
 When a program is missing, the tool returns its installation command, authentication guidance, and a path configuration example. See [ACP members](docs/agent-collaboration.md#acp-成员) (Chinese) for calls and continued conversations.
 
@@ -98,7 +114,7 @@ npm run build:cli
 node bin/pbot.mjs setup
 ```
 
-To load only the Pi source extension, run `pi install --local /absolute/path/to/personal-bot` from the workspace and keep that source directory and its dependencies available. Run the full `npm run build` before using ACP members. For dsh, follow the [source installation steps](docs/dsh.md#从源码安装) (Chinese).
+To load only the Pi source extension, run `pi install --local /absolute/path/to/personal-bot` from the workspace and keep that source directory and its dependencies available. Run the full `npm run build` before using ACP members or the Claude plugin. The build order is CLI → dsh → Claude because the CLI build clears `lib/`. For dsh, follow the [source installation steps](docs/dsh.md#从源码安装); for Claude, use the [development checks](docs/claude-code.md#依赖与开发检查) (Chinese).
 
 ### Optional: Task Conductor
 
@@ -110,7 +126,7 @@ Notifications return to the session that submitted the task. Service tasks conti
 
 ## Daily use
 
-Describe the task directly: organize materials, compare findings, delegate a review, or run calculations. These commands are for Pi; dsh commands are in its guide.
+Describe the task directly: organize materials, compare findings, delegate a review, or run calculations. These commands are for Pi; see the [dsh](docs/dsh.md) and [Claude](docs/claude-code.md) guides for their native interfaces.
 
 | Command | Purpose |
 | --- | --- |
@@ -125,9 +141,9 @@ Describe the task directly: organize materials, compare findings, delegate a rev
 
 - **Initialization and materials:** `/pbot init` creates missing materials and enables the workspace, preserving existing materials and other configuration fields. Pi reloads on first activation; an already running workspace loads a newly created root AGENTS after `/reload`.
 - **Native tools:** Use CLI tools through Bash and MCP through the host's configuration. Add Pi project connections with `pi mcp add --local <server> ...` and inspect their source with `/mcp`. See the [connection skill](resources/skills/provider-connections/SKILL.md).
-- **History:** Pi and dsh query shared workspace archives. Originals are searchable first; after a main interaction, the current model fills pending summaries through additional model calls. New input cancels that work first. See [history](docs/history.md).
-- **Specialists and teams:** Delegate independent work, continue a conversation, or organize ordered discussions and parallel rounds. Default Pi specialists require tmux; dsh uses native sessions. Either main host can also call Pi, dsh, and Claude Code through ACP for independent conversations, reports, and restoration. ACP model and thinking are independently optional; omitted values use the target host defaults. A running team reserves its members. Pause and drain in-flight work before private tasks. See [specialist collaboration](docs/agent-collaboration.md).
-- **Python:** Enabled workspaces share one venv for the current user. Workspace activation prepares it and activates it in the host process. Use `python` or `python3` through Bash. Stop scripts using the environment before dependency updates. See the [Python guide](python/README.md) for paths, troubleshooting, and licenses.
+- **History:** Pi/dsh refresh and summarize their own sources and query all existing archives, including preserved Claude archives. Originals are searchable first; after a main interaction, the current model fills pending summaries through additional model calls. New input cancels that work first. Claude uses native session history. See [history](docs/history.md).
+- **Specialists and teams:** Default Pi specialists require tmux; dsh uses native sessions. Pi/dsh pbot teams support ordered discussions and parallel rounds; pause and drain their work before private tasks. Claude uses native Agent and native team tools. Pi/dsh ACP calls Pi, dsh, and Claude Code for independent conversations, reports, and explicit restoration. ACP model and thinking are independently optional; omitted values use the target host defaults. See [specialist collaboration](docs/agent-collaboration.md).
+- **Python:** Enabled workspaces share one venv for the current user. Pi/dsh prepare and activate it in the host process for Bash `python` or `python3`. Claude prepares it and uses the full `python.executable` path through Bash. Stop scripts using the environment before dependency updates. See the [Python guide](python/README.md) for paths, troubleshooting, and licenses.
 - **Material maintenance:** Ask the assistant to organize a project, repeat an analysis with its existing definitions, or check a delivery. The [maintenance skill](resources/skills/project-maintenance/SKILL.md) updates current guidance and extracts reusable methods while preserving formal materials, history, and backups.
 
 Use `pi --resume` to select the main session explicitly; `pi --continue` can select the most recently active child. Enter managed specialists through `/pbot agents`. Opening a stopped specialist's saved session leaves it idle; use resume with a new instruction to continue work. Keep one writer per running session.
@@ -136,20 +152,21 @@ Use `pi --resume` to select the main session explicitly; `pi --continue` can sel
 
 | Location | Purpose |
 | --- | --- |
-| `.pbot/config.json` | Shared Pi/dsh workspace activation and configuration |
+| `.pbot/config.json` | Shared Pi/dsh/Claude workspace activation and configuration |
 | `AGENTS.md` | Navigation and working agreements |
 | `areas/`, `projects/` | Long-term goals, tasks, conclusions, and deliverables |
 | `knowledge/` | Reusable concepts, methods, and analysis definitions |
-| `.pbot/history/` | Pi/dsh exchanges, summaries, and node links |
+| `.pbot/history/` | Pi/dsh exchanges, summaries, and node links; preserved Claude archives |
 | `providers/` | External tool guidance, data definitions, and sources |
 | `scratch/` | Temporary scripts, calculation data, downloads, and environments |
-| `agents/`, `.agents/skills/` | Role additions and workspace skills |
+| `agents/` | Role additions |
+| `.agents/skills/` (Pi/dsh), `.claude/skills/` (Claude) | Workspace skills discovered by the current host |
 
 Existing layouts and agreements take precedence. Fetch queryable data when needed using the recorded definitions. Stop writes in the old instance before copying a workspace; concurrent writes from multiple machines to a synchronized directory are unsupported. See [file storage](docs/file-storage.md).
 
 ## Updates and operating scope
 
-Current release: **0.2.12**. Update through the host's native package manager. For a local Pi source, update the checkout, run `npm ci --ignore-scripts` when dependencies change, then reload or restart. Stop active specialists before changing versions. Recreate specialists across compatibility lines; existing materials, history, and backups are preserved.
+Current release: **0.2.13**. Update through the host's native package manager. For a local Pi source, update the checkout, run `npm ci --ignore-scripts` when dependencies change, then reload or restart. Stop active specialists before changing versions. Recreate specialists across compatibility lines; existing materials, history, and backups are preserved.
 
 Operations follow the user's request, existing agreements, and required confirmations. Bash, Python, MCP, and extensions use the actual account and credential permissions. Enforce hard limits through read-only credentials, service controls, or restricted environments. Trades, transfers, and ledger changes require authorization for those operations. After cancellation, timeout, or disconnection, query native status before retrying to avoid duplicate execution.
 
@@ -157,7 +174,7 @@ Task Conductor nodes need their own tools, environment, skills, and authenticati
 
 ## Development and documentation
 
-Development for both hosts uses Linux and Node.js 24.9+. After installing locked dependencies, run:
+Development and complete acceptance for all three hosts use Linux and Node.js 24.9+. After installing locked dependencies, run:
 
 ```bash
 npm run check
@@ -166,7 +183,7 @@ git diff --check
 npm pack --dry-run
 ```
 
-`npm test` includes smoke and E2E tests and generates `dist/` for tests and `lib/` for distribution. Pi loads source at runtime.
+`npm test` builds `dist/` for tests and `lib/` for distribution and runs local Pi/dsh checks plus Claude Node hook-process tests. Pi loads source at runtime. Claude package checks install the actual tarball, run native plugin validation, and exercise hooks/CLI without models or host SDKs. Real-model ACP and Claude context, skills, and specialist validation run separately in explicitly approved environments with dedicated authentication. See [release checks](docs/release.md).
 
 - [Documentation index](docs/README.md): current architecture, usage, and development guidance.
 - [npm release](docs/release.md): candidate checks, configuration, and publication.

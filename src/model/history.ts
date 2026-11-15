@@ -9,6 +9,8 @@ export interface HistorySession {
   sessionId: string;
   name: string;
   branches: HistoryExchange[][];
+  /** Earlier partial observations replaced along the same native branch or turn; never persisted. */
+  supersededEntryIds?: string[];
 }
 export interface HistoryNode extends HistoryExchange {
   id: string;
@@ -25,10 +27,16 @@ export interface HistoryRecord {
   name: string;
   nodes: HistoryNode[];
 }
-export type HistoryHost = "pi" | "dsh";
-export type HistoryLocation = { host?: "pi"; directory: string; file?: string } | { host: "dsh"; sessionId?: string };
+export type HistoryHost = "pi" | "dsh" | "claude";
+export type HistoryLocation = { host: "pi"; directory: string; file?: string } |
+  { host: "dsh"; sessionId?: string };
 export interface HistorySource {
-  readonly host: HistoryHost;
+  readonly host: HistoryLocation["host"];
   scan(location: HistoryLocation, signal?: AbortSignal): Promise<{ sessions: HistorySession[]; warnings: string[] }>;
 }
-export type HistorySummarizer = (text: string, signal: AbortSignal) => Promise<string>;
+export interface HistorySummaryRequest {
+  system: string;
+  prompt: string;
+  maxTokens: number;
+}
+export type HistorySummarizer = (request: HistorySummaryRequest, signal: AbortSignal) => Promise<string>;

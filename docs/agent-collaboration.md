@@ -1,8 +1,10 @@
 # 专家协作
 
-Personal Bot 保留独立工作和团队工作。默认使用当前宿主的原生专家：Pi 成员由 tmux 和独立进程运行，dsh 成员使用同进程的独立 Agent/Session。两种主会话也可通过 ACP 调用 Pi、dsh 和 Claude Code 成员。每位成员保留自己的上下文，恢复时继续使用原后端。主模型负责组织与验收，成员原文由代码同步，不需要主模型逐条转述。
+Personal Bot 保留独立工作和团队工作。Pi 原生专家由 tmux 和独立进程运行，dsh 原生专家使用同进程的独立 Agent/Session；Claude 使用原生 Agent 与原生团队。Pi/dsh 可通过 ACP 委派 Pi、dsh 或 Claude，目标保留自己的上下文与原生配置。Claude 标准插件的入口见[使用指南](claude-code.md)。
 
-## 独立工作
+本文的 `pbot_team`、轮次、批次、占用与公共消息规则适用于 Pi/dsh；Claude 原生团队由宿主管理。主模型按任务组织工作，成员原文通过对应宿主或 ACP 报告取得。
+
+## Pi/dsh 独立工作
 
 | pbot_agent action | 行为 |
 | --- | --- |
@@ -32,6 +34,14 @@ dsh 使用原生 provider/model/reasoning effort，拒绝 Pi 专属扩展、提�
 
 `/pbot` Web 管理页提供人工对话、完整原生记录、停止和携新要求恢复。离页不停止已接纳工作；父 Agent 或组件关闭会暂停安排并释放其拥有的专家。重新打开页面不会恢复或重放旧工作。详情见[dsh 使用](dsh.md)。
 
+## Claude 原生专家与团队
+
+Claude 插件通过静态 Markdown agent 提供 `personal-bot:general-purpose`，由原生 Agent 创建专家。构建从共享职责生成该文件；工作区启用后，SubagentStart 仅为这一类型补充公共约定、工作区专家职责、根资料与环境。模型、effort、权限、完成通知与会话记录遵循 Claude 原生规则，pbot 不读取私有团队格式来判断成员身份。
+
+完成后明确发送要求可继续原生专家上下文。团队需要用户在启动环境中设置 `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`，并自行选择原生 teammateMode；pbot 安装与 init 不修改开关。成员通过原生消息与任务工具交流，组织和状态由 Claude 管理。
+
+Claude 的 resume/rewind 不恢复进程内 teammate。返回主会话后明确要求继续工作；普通子代理继续与重启后恢复团队分别遵循宿主能力，需要新建成员时保留原记录。Claude 标准插件不提供 pbot ACP、团队调度或管理面板。实际首任务上下文、技能和专家行为还需原生模型验证，见[Claude 接入设计](claude-code-design.md)。
+
 ## ACP 成员
 
 在 start 中指定 backend，使用目标宿主的 ACP 会话：
@@ -40,7 +50,7 @@ dsh 使用原生 provider/model/reasoning effort，拒绝 Pi 专属扩展、提�
 { "action": "start", "backend": "claude", "name": "实现专家", "message": "检查项目并实现当前要求" }
 ```
 
-backend 可选 pi、dsh、claude；省略时保持当前宿主原生专家。两种主会话都支持这三个目标。目标宿主使用自己的模型、认证、工具、技能和项目配置，恢复保留原会话的模型选择。
+backend 可选 pi、dsh、claude；Pi/dsh 中省略时使用当前宿主原生专家。两个主宿主共享 ACP 目标实现。目标使用自己的模型、认证、工具、技能和项目配置，恢复保留原会话的模型选择。Claude 作为 ACP 目标的能力独立于标准 Claude 插件，所需 Claude SDK 保留为可选 peer 与开发依赖。
 
 model 和 thinking 均为可选，可单独提供；两者都省略时使用目标默认模型和默认思考等级。只指定 model 时使用所选模型的原生默认思考配置；只指定 thinking 时将该等级用于默认模型。主会话的模型和思考默认值不传给 ACP 目标。
 
@@ -64,9 +74,11 @@ ACP 成员支持待命、独立委派、持续对话、状态、固定周期报�
 
 成员加载公共约定、general-purpose 职责和工作区同名补充，并按需使用包内技能。Claude 的原生技能目录中可见 personal-bot:provider-connections 和 personal-bot:project-maintenance，用户与项目技能继续沿用 Claude 配置。worker 准备并激活共享 Python 环境，准备失败时继续提供协作能力，并向成员报告环境状态。
 
-Pi 的 `/pbot agents` 对 ACP 成员提供任务、报告、补充要求及携新要求恢复；原生 Pi 成员继续通过 tmux 进入。dsh 专家页展示 ACP 任务与报告，也支持人工消息和附件。Pi 权限请求进入已有确认队列，使用一次性选项；dsh 工作区页展示待确认请求，也可用 `/pbot approval` 提交选项。
+Pi 的 `/pbot agents` 对 ACP 成员提供任务、报告、补充要求及携新要求恢复；原生 Pi 成员继续通过 tmux 进入。dsh 专家页展示 ACP 任务与报告，也支持人工消息和附件。
 
-ACP 工作由独立 worker 持有。Pi reload 保留仍启用工作区的 worker；退出、切换主会话或 dsh 父会话释放时停止所属成员。恢复前校验已绑定的对端会话，旧输入不重放。Pi/Claude 从未交付输入的空待命会话恢复时可重新建立空上下文；已经交付的会话只恢复原引用。
+Pi 权限请求进入已有确认队列；dsh 工作区页展示待确认请求，也可用 `/pbot approval` 提交选项。各入口按 generation/requestId 核对请求，取消回写 null，过期选择被拒绝。
+
+ACP 工作由独立 worker 持有。Pi reload 保留仍启用工作区的 worker；退出、切换主会话或 dsh 父会话释放时停止所属成员。休眠后先查状态，携新要求显式继续。恢复前校验已绑定的对端会话，旧输入不重放。Pi/Claude 目标从未交付输入的空待命会话可重新建立空上下文；已经交付的会话只恢复原引用。
 
 ## Pi 原生会话与恢复入口
 
@@ -76,7 +88,7 @@ ACP 工作由独立 worker 持有。Pi reload 保留仍启用工作区的 worker
 
 `/pbot agents` 的“进入会话”连接运行中的成员；成员已停止时，“打开原会话”加载原会话并启动待命进程，不入队新要求、不调用模型、不重放旧工作。尚无对话文件的空会话仍以原 agentId 待命。运行中不另开进程同时写同一 JSONL。停止后从原生列表打开属于普通 Pi 对话，不恢复 pbot 成员身份或团队资格；模型工具 `pbot_agent resume` 仍用于携新要求继续工作。
 
-## 团队与两种策略
+## Pi/dsh 团队与两种策略
 
 一个团队固定一组成员，限于同一工作区、同一父 session 的可操作分支。一个 agent 最多属于一个未关闭团队。加入团队不创建新进程，关闭团队也不停止成员；换人时关闭旧团队，再用原 agent 创建新团队。
 
@@ -149,7 +161,7 @@ read 的文本结果也使用 Markdown，同时保留工具的结构化结果。
 
 Pi 独立周期的 read 结果进入当前分支后领取该周期通知，包括只读取部分正文的情况。dsh 以持久化的上下文消费或成功模型 read 领取；PTC 内层 read 还需根调用成功，排队仅防重，不视为已消费。人工管理页不领取模型通知。nextOffset 非空时，以同一 agentId、返回的 cycle.cycleId 和 nextOffset 续读，避免默认最新周期发生变化；status 不领取通知。团队关联周期不重复发个人完成通知；主模型只收到批次结束、暂停和收尾状态。普通 post 不唤醒主模型。团队通知按 teamId/runId/状态去重，UI 或工具 read 不领取模型通知。
 
-团队与成员均绑定父 session/分支。失去归属时暂停新安排，不向当前主分支投递结果。fork 不接管旧团队；返回原分支不会自动恢复旧批次。公共记录与外部工作不会随树导航回滚。
+Pi/dsh 的团队与受管成员均绑定父 session/分支。失去归属时暂停新安排，不向当前主分支投递结果。fork 不接管旧团队；返回原分支不会自动恢复旧批次。公共记录与外部工作不会随树导航回滚。
 
 | 事件 | 行为 |
 | --- | --- |
@@ -168,7 +180,7 @@ pause 返回时可能仍有在途请求。unresolved 区分排队、已接收、
 
 ## 界面与故障恢复
 
-dsh 的管理界面与命令见[dsh 使用说明](dsh.md)。下面介绍 Pi 的 TUI。
+dsh 的管理界面与命令见[dsh 使用说明](dsh.md)，Claude 的原生专家、技能与恢复规则见[Claude 使用说明](claude-code.md)。下面介绍 Pi 的 TUI。
 
 `/pbot` 打开工作区菜单。`/pbot agents` 提供专家列表、详情、会话入口、补充要求、重命名和停止；`/pbot teams` 提供团队状态、公共消息、批次及成员入口。长记录使用只读阅读页。完整报告仍通过 `pbot_agent read` 获取；非 TUI 模式保留结构化输出。
 

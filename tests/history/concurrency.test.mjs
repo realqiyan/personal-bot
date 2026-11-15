@@ -22,7 +22,7 @@ async function fixture(t) {
   const manager = SessionManager.create(root, join(root, "native"));
   for (let i = 0; i < 4; i++) exchange(manager, "问题 " + i);
   const files = new HistoryFiles(join(root, "index"));
-  return { root, manager, files, location: { directory: manager.getSessionDir(), file: manager.getSessionFile() } };
+  return { root, manager, files, location: { host: "pi", directory: manager.getSessionDir(), file: manager.getSessionFile() } };
 }
 function worker(code, args) {
   const child = spawn(process.execPath, ["--input-type=module", "-e", code, ...args], { stdio: ["pipe", "pipe", "pipe"], timeout: 15000 });
@@ -53,7 +53,7 @@ test("a slower native scan cannot replace a newer archive committed by another p
     import { PiHistory } from ${module("../../dist/integrations/pi/history.js")};
     const [root, index, directory, pipe] = process.argv.slice(1);
     const service = new HistoryService(root, new HistoryFiles(index), new PiHistory(root, () => [pipe]));
-    try { await service.refresh({ directory }); console.log(JSON.stringify(service.search())); }
+    try { await service.refresh({ host: "pi", directory }); console.log(JSON.stringify(service.search())); }
     finally { await service.close(); }
   `, [root, files.directory, location.directory, pipe]);
   const writer = worker(`
@@ -93,13 +93,60 @@ test("source locks are independent and summary commits reject changed inputs or 
     files.save(current);
   });
   const path = join(files.directory, record.id + ".json"), changed = await readFile(path, "utf8");
-  files.control(() => { assert.equal(completeHistorySummary(files.list()[0], summary.id, children, "过期的归档摘要"), false); });
+  files.control(() => { assert.equal(completeHistorySummary(files.list()[0], summary, children, "过期的归档摘要"), false); });
   assert.equal(await readFile(path, "utf8"), changed);
   // These are persisted archive fixtures, not a replacement for a summarizer or model.
   files.control(() => {
     const current = files.list()[0], inputs = summary.children.map(id => current.nodes.find(value => value.id === id));
-    assert.equal(completeHistorySummary(current, summary.id, inputs, "已提交的归档摘要"), true); files.save(current);
-    assert.equal(completeHistorySummary(current, summary.id, inputs, "迟到的竞争结果"), false);
+    assert.equal(completeHistorySummary(current, summary, inputs, "已提交的归档摘要"), true); files.save(current);
+    assert.equal(completeHistorySummary(current, summary, inputs, "迟到的竞争结果"), false);
   });
   assert.equal(files.list()[0].nodes.find(value => value.id === summary.id).text, "已提交的归档摘要");
+});
+
+for (const field of ["targetText", "targetCompleted", "targetChildren", "entryIds", "text", "from", "to", "completed", "ready", "summaryText"]) {
+  test(`summary commit rejects changed ${field} from persisted input snapshots`, async t => {
+    const { manager, files } = await fixture(t);
+    const record = indexHistory(projectHistory(await readFile(manager.getSessionFile(), "utf8")));
+    const summary = record.nodes.find(node => node.kind === "summary"), children = summary.children.map(id => record.nodes.find(node => node.id === id));
+    files.save(record);
+    files.control(() => {
+      const current = files.list()[0], target = current.nodes.find(node => node.id === summary.id), child = current.nodes.find(node => node.id === target.children[0]);
+      switch (field) {
+        case "targetText": target.text = "先前已有的未完成摘要"; break;
+        case "targetCompleted": target.completed = !target.completed; break;
+        case "targetChildren": target.children.reverse(); break;
+        case "entryIds": child.entryIds[0] += "-corrected"; break;
+        case "text": child.text += "\n新的原文"; break;
+        case "from": child.from = "2020-01-01T00:00:00.000Z"; break;
+        case "to": child.to = "2100-01-01T00:00:00.000Z"; break;
+        case "completed": child.completed = !child.completed; break;
+        case "ready": child.ready = false; break;
+        case "summaryText": target.text = "竞争提交"; target.ready = true; break;
+      }
+      files.save(current);
+    });
+    const path = join(files.directory, record.id + ".json"), current = await readFile(path, "utf8");
+    files.control(() => { assert.equal(completeHistorySummary(files.list()[0], summary, children, "过期的结果"), false); });
+    assert.equal(await readFile(path, "utf8"), current);
+  });
+}
+
+test("a parent summary rejects a changed child summary and accepts a fresh snapshot", async t => {
+  const { manager, files } = await fixture(t);
+  for (let i = 4; i < 16; i++) exchange(manager, "上层问题 " + i);
+  const record = indexHistory(projectHistory(await readFile(manager.getSessionFile(), "utf8")));
+  const children = record.nodes.filter(node => node.kind === "summary" && node.level === 1), target = record.nodes.find(node => node.level === 2);
+  for (const child of children) { child.text = "下层归档 " + child.id; child.ready = true; }
+  const input = target.children.map(id => record.nodes.find(node => node.id === id)); files.save(record);
+  files.control(() => { const current = files.list()[0]; current.nodes.find(node => node.id === children[0].id).text += "\n摘要修订"; files.save(current); });
+  const path = join(files.directory, record.id + ".json"), updated = await readFile(path, "utf8");
+  files.control(() => { assert.equal(completeHistorySummary(files.list()[0], target, input, "过期上层摘要"), false); });
+  assert.equal(await readFile(path, "utf8"), updated);
+  files.control(() => {
+    const current = files.list()[0], node = current.nodes.find(node => node.id === target.id);
+    assert.equal(completeHistorySummary(current, node, node.children.map(id => current.nodes.find(child => child.id === id)), "新的上层归档摘要"), true);
+    files.save(current);
+  });
+  assert.equal(files.list()[0].nodes.find(node => node.id === target.id).text, "新的上层归档摘要");
 });

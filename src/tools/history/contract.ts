@@ -1,7 +1,7 @@
 import { Type, type Static } from "typebox";
 import { requireThat, schema } from "../../common/validation.js";
 
-const host = Type.Union([Type.Literal("pi"), Type.Literal("dsh")]);
+const host = Type.Union([Type.Literal("pi"), Type.Literal("dsh"), Type.Literal("claude")]);
 const nullableOffset = Type.Union([Type.Integer(), Type.Null()]);
 const node = Type.Object({ host, id: Type.String(), kind: Type.Union([Type.Literal("session"), Type.Literal("exchange"), Type.Literal("summary")]),
   sessionId: Type.String(), name: Type.String(), preview: Type.String(), from: Type.String(), to: Type.String(), ready: Type.Boolean(), completed: Type.Boolean() });
@@ -13,7 +13,7 @@ export const historyResultSchema = Type.Object({
     source: Type.Object({ host, sessionId: Type.String({ description: "原始宿主会话 ID。" }), entryIds: Type.Array(Type.String()) }), warnings: Type.Array(Type.String()) })),
   warnings: Type.Array(Type.String()),
 });
-export const historyDescription = "查询当前工作区的 Pi/dsh 问答归档，host 可筛选来源。search 按不区分大小写的连续文本匹配原文和摘要；无匹配时换词，省略 query 列会话。read 按 parents/children 的 id 展开，nextOffset 续读正文，nextChildrenOffset 续读子节点。需要对话细节时读取 exchange 原文；需要工具日志时查所属宿主的原始会话。";
+export const historyDescription = "查询当前工作区的 Pi/dsh 问答与已有 Claude 归档，host 可筛选来源。search 按不区分大小写的连续文本匹配原文和摘要；无匹配时换词，省略 query 列会话。read 按 parents/children 的 id 展开，nextOffset 续读正文，nextChildrenOffset 续读子节点。需要对话细节时读取 exchange 原文；需要工具日志时查所属宿主的原始会话。";
 export const historyParameters = Type.Object({ action: Type.Union([Type.Literal("search"), Type.Literal("read")]),
   host: Type.Optional(host), query: Type.Optional(Type.String()), sessionId: Type.Optional(Type.String()),
   from: Type.Optional(Type.String({ description: "search：ISO 日期或时间，下界。" })),

@@ -13,7 +13,7 @@ description: 接入或修复原生 CLI/MCP，核对认证与可用性，维护�
 
 ## MCP
 
-先核对当前宿主、连接来源与实际配置范围。Pi 和 dsh 分别管理原生配置，不自动同步模型、认证或 MCP。
+先核对当前宿主、连接来源与实际配置范围。Pi、dsh 和 Claude 分别管理原生配置，不自动同步模型、认证或 MCP。
 
 ### Pi
 
@@ -30,6 +30,22 @@ description: 接入或修复原生 CLI/MCP，核对认证与可用性，维护�
 使用当前安装版本的原生 MCP 组件、profile 设置、认证与工具发现。按其公开文档或当前 help 核对参数，不使用 Pi 的命令和 `.pi/mcp.json` 配置方式。同一 profile 的连接可能供多个工作区使用，修改时留意影响范围。
 
 优先复用已有连接，保留无关条目与其他工作区配置。通过原生界面或管理能力修改配置，再从当前会话检查连接和工具；需要用户操作时说明入口。
+
+### Claude Code
+
+通过当前可见工具及 `claude mcp --help`、相关子命令核对已安装版本。当前会话的连接、认证与工具状态在原生 `/mcp` 查看；需要交互登录或刷新时使用该会话入口。Bash 中的 CLI 查询不代表活动会话已重连。
+
+新增连接默认使用项目范围，从工作区根目录执行：
+
+```sh
+claude mcp add --scope project --transport http <server> <url>
+# stdio 服务
+claude mcp add --scope project <server> -- <command> <args...>
+```
+
+project 写入工作区 `.mcp.json`，是新增连接的默认范围；明确需要本机私有项目配置时使用 local，用户明确要求跨项目共用时才使用 user。修改前核对同名项和实际来源，保留无关连接。删除时显式指定连接所在范围，例如 `claude mcp remove --scope project <server>`；local 或 user 连接使用对应的 scope，避免 remove 自动选择其他范围。第三方 setup 同样默认采用 project。
+
+认证沿用 Claude 原生 OAuth、登录及环境变量引用，配置中不保存凭据值。修改后按 Claude 提示重连或重启，通过当前会话 `/mcp` 核对来源和工具，再读取实际 schema。
 
 ## 检查与手册
 

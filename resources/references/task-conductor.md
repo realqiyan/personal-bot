@@ -1,6 +1,6 @@
 # 原生 Task Conductor
 
-主会话需要周期、重复流程、DAG 或离开当前宿主会话后继续执行时使用本文。普通独立协助使用 pbot_agent。
+主会话需要周期、重复流程、DAG 或离开当前宿主会话后继续执行时使用本文。普通独立协助使用当前宿主的原生专家；Pi/dsh 的跨宿主委派使用 pbot_agent。
 
 ## 准备能力
 
@@ -10,6 +10,7 @@
 | --- | --- |
 | Pi | `pi list` 查看来源与资源；从工作区根目录用 `pi install --local npm:task-conductor-plugin` 安装已发布接入，或用 `pi install --local /absolute/path/to/task-conductor/plugin` 加载未发布源码。当前会话执行 `/reload`，技能入口为 `/skill:using-task-conductor` |
 | dsh | 用 `dsh plugin --profile pbot list task-conductor-plugin --depth 0` 查看所选 profile；本地 tarball 使用 `dsh plugin --profile pbot add /absolute/path/to/task-conductor-plugin-<version>.tgz` 安装。重启对应宿主后，通过原生 skill 工具读取 `using-task-conductor`，或在聊天框调用 `/using-task-conductor`。桌面应用使用自己的原生插件页 |
+| Claude Code | 按上游当前提供的 Claude 接入方式安装；通过 `/mcp` 核对连接与认证，读取原生目录中实际提供的 using-task-conductor。手工增加 MCP 时使用 `claude mcp add --scope project ...`，具体参数见接入技能与上游资料 |
 
 将 `pbot` 和示例路径替换为实际 profile 和产物。dsh 接入包含于尚未发布的 Task Conductor `0.1.6` 候选版本；发布前使用该版本的本地插件及配套服务，构建方法见 [dsh 指南](../../docs/dsh.md#task-conductor)或[上游接入说明](https://github.com/realqiyan/task-conductor/blob/master/docs/host-integrations.md)。宿主聊天命令在相应会话中执行，不能通过 Bash 代执行；已发现技能时直接读取其正文继续。
 
@@ -35,4 +36,4 @@ dsh 插件随包提供共享技能，并为根主会话创建原生 MCP 连接�
 
 通知回到提交任务的原生持久会话；dsh 恢复原 Session 后可以继续接收待处理事件。同项目的新会话不会代收，仍可通过 MCP 查询任务。
 
-取消当前执行与停止未来周期分别操作，并查询确认。pbot_agent stop 或当前宿主关闭不停止 Task Conductor。报告时区分调度已创建和本轮已完成，并给出对应状态与产物位置。
+取消当前执行与停止未来周期分别操作，并查询确认。Pi/dsh 的 pbot_agent stop 或当前宿主关闭不停止 Task Conductor。报告时区分调度已创建和本轮已完成，并给出对应状态与产物位置。
