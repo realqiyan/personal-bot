@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { host } from "../helpers/pi-host.mjs";
 import { CombinedAutocompleteProvider } from "@earendil-works/pi-tui";
 import { convertResponsesTools } from "@earendil-works/pi-ai/api/openai-responses-shared";
-import { schema } from "../../dist/common/validation.js";
+import { schema } from "../../dist/common/schema.js";
 import { resourceRoot } from "../../dist/common/paths.js";
 import { buildSystemPrompt } from "../../node_modules/@earendil-works/pi-coding-agent/dist/core/system-prompt.js";
 

@@ -40,6 +40,6 @@ Claude 插件不实现 pbot 面板、历史采集与检索、摘要、ACP 委派
 
 最低及当前原生检查基线是 Claude Code 2.1.325；Node 消费基线为 22.19+，完整开发使用 Linux、Node 24.9+。后续升级检查公开 hook 输入/输出、manifest、技能与专家发现，不再维护 Claude 内部记录版本白名单或大型宿主声明快照。
 
-本地测试使用真实临时目录、Node/Python 进程及共用服务，核对固定根、停用无副作用、配置保留、错误处理和结构化 hook 输出。消费检查安装实际 tarball，在不安装 Pi/dsh/Claude SDK 的目录执行原生 `claude plugin validate`、确定性命令和 hook。
+本地测试使用真实临时目录、Node/Python 进程及共用服务，核对固定根、停用无副作用、配置保留、错误处理和结构化 hook 输出。消费检查安装实际 tarball 并执行原生 `claude plugin validate`，另将 tarball 直接解压，在没有 node_modules 的条件下执行确定性命令、hook 和启用工作区的资料读取。原生 marketplace 缓存不安装 npm 依赖，因此解包后的 Node 入口必须独立运行。
 
 真实模型验收在已批准且不含个人凭据的环境完成，核对：首任务资料与环境可见；工作区资料修改在下一轮生效；技能加载；原生专家职责与继续；用户选择的原生团队行为；Python 完整路径执行。无模型的进程测试与静态校验只报告实际覆盖范围，不替代这些模型行为检查。结果写任务、PR 或 CI，不维护验证日记。

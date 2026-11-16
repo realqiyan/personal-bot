@@ -5,8 +5,10 @@ import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
-const tarball = resolve(process.argv[2]);
+if (!process.argv[2]) throw new Error("Pass a package tarball or npm:personal-bot@<version>.");
+const installation = process.argv[2].startsWith("npm:") ? process.argv[2].slice(4) : resolve(process.argv[2]);
 const source = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
+const npmVersion = execFileSync("npm", ["--version"], { encoding: "utf8" }).trim();
 const root = await mkdtemp(join(tmpdir(), "pbot-consumer-"));
 const consumer = join(root, "consumer"), home = join(root, "home"), workspace = join(root, "workspace");
 await Promise.all([consumer, home, workspace].map(path => mkdir(path)));
@@ -15,12 +17,14 @@ const env = { PATH: process.env.PATH, HOME: home, XDG_DATA_HOME: join(home, "dat
 const npm = args => execFileSync("npm", args, { cwd: consumer, env, stdio: "inherit", timeout: 180_000 });
 try {
   await writeFile(join(consumer, "package.json"), JSON.stringify({ private: true, type: "module" }));
-  npm(["install", "--ignore-scripts", "--no-audit", "--no-fund", tarball]);
-  const require = createRequire(join(consumer, "package.json"));
-  for (const host of ["@earendil-works/pi-coding-agent", "@deepseek-ai/dsh", "@deepseek-ai/dsh-agent", "@anthropic-ai/claude-agent-sdk"]) {
-    assert.throws(() => require.resolve(host), { code: "MODULE_NOT_FOUND" });
-  }
+  npm(["install", "--ignore-scripts", "--no-audit", "--no-fund", "--registry=https://registry.npmjs.org", installation]);
   const packed = join(consumer, "node_modules/personal-bot");
+  for (const base of [join(consumer, "package.json"), join(packed, "package.json")]) {
+    const require = createRequire(base);
+    for (const host of [...Object.keys(source.peerDependencies), "@deepseek-ai/dsh", "typescript"]) {
+      assert.throws(() => require.resolve(host), { code: "MODULE_NOT_FOUND" });
+    }
+  }
   const version = execFileSync(process.execPath, [join(packed, "bin/pbot.mjs"), "--version"],
     { cwd: workspace, env, encoding: "utf8" }).trim();
   assert.equal(version, source.version);
@@ -69,7 +73,7 @@ console.log("Packed Pi extension, skills, tools and initialization passed withou
 `);
   execFileSync(process.execPath, [driver, workspace, join(root, "agent"), packed],
     { cwd: workspace, env, stdio: "inherit", timeout: 30_000 });
-  console.log(`Consumer acceptance passed: personal-bot@${version}, Node ${process.version}.`);
+  console.log(`Consumer acceptance passed: personal-bot@${version}, Node ${process.version}, npm ${npmVersion}.`);
 } finally {
   await rm(root, { recursive: true, force: true });
 }

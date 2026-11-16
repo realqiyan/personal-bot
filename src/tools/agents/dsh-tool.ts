@@ -4,7 +4,8 @@ import { dshParameters, dshOutputSchema } from "../../integrations/dsh/schema.js
 import type { AgentService } from "../../services/agents/agent-service.js";
 import type { AgentOwner } from "../../model/agent.js";
 import { object, json } from "../../common/json.js";
-import { requireThat, schema } from "../../common/validation.js";
+import { requireThat } from "../../common/validation.js";
+import { schema } from "../../common/schema.js";
 import { markdownFields } from "../../common/markdown.js";
 import { executeAgent, type AgentInput } from "./actions.js";
 import { agentDescription, agentResultSchema } from "./contract.js";

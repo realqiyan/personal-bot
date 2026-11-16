@@ -11,7 +11,7 @@ import { TeamService } from "../../dist/services/agents/team-service.js";
 import { teamContext, deliveredTeams } from "../../dist/integrations/pi/team-context.js";
 import { agentOwner } from "../../dist/integrations/pi/agent-context.js";
 import { agentDirectory } from "../../dist/integrations/pi/pi-agents.js";
-import { schema } from "../../dist/common/validation.js";
+import { schema } from "../../dist/common/schema.js";
 import { packageVersion } from "../../dist/common/version.js";
 import childEntry from "../../dist/extension/subagent-entry.js";
 import { initializeWorkspaceConfig } from "../../dist/services/workspace/workspace-config.js";

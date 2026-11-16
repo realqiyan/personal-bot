@@ -2,7 +2,8 @@ import { defineTool } from "@earendil-works/pi-coding-agent";
 import type { AgentService } from "../../services/agents/agent-service.js";
 import { agentOwner } from "../../integrations/pi/agent-context.js";
 import type { CallAccess } from "../access.js";
-import { requireThat, schema } from "../../common/validation.js";
+import { requireThat } from "../../common/validation.js";
+import { schema } from "../../common/schema.js";
 import { executeAgent } from "./actions.js";
 import { agentDescription, agentActionSchema, agentParametersSchema, agentResultSchema } from "./contract.js";
 

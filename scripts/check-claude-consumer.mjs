@@ -1,15 +1,15 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtemp, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 if (!process.argv[2]) throw new Error("Pass the path of the personal-bot npm tarball.");
 const tarball = resolve(process.argv[2]);
-const root = await mkdtemp(join(tmpdir(), "pbot claude consumer "));
-const consumer = join(root, "consumer"), home = join(root, "home"), workspace = join(root, "workspace");
-await Promise.all([consumer, home, workspace].map(path => mkdir(path)));
+const root = await realpath(await mkdtemp(join(tmpdir(), "pbot claude consumer ")));
+const consumer = join(root, "consumer"), home = join(root, "home"), workspace = join(root, "workspace"), extracted = join(root, "extracted"), enabled = join(root, "enabled");
+await Promise.all([consumer, home, workspace, extracted, enabled].map(path => mkdir(path)));
 const env = { PATH: process.env.PATH, HOME: home, XDG_DATA_HOME: join(home, "data"),
   CLAUDE_CONFIG_DIR: join(home, "claude"), LANG: "C.UTF-8", CI: "true",
   DISABLE_AUTOUPDATER: "1", CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
@@ -46,23 +46,41 @@ try {
   const cli = args => JSON.parse(execFileSync(process.execPath, [join(packed, "lib/claude.js"), ...args],
     { cwd: workspace, env, encoding: "utf8", timeout: 30_000 }));
   const status = cli(["status"]);
+  execFileSync("tar", ["-xzf", tarball, "-C", extracted], { cwd: workspace, env, timeout: 30_000 });
+  const raw = join(extracted, "package");
+  await assert.rejects(stat(join(raw, "node_modules")), { code: "ENOENT" });
+  await assert.rejects(stat(join(raw, "npm-shrinkwrap.json")), { code: "ENOENT" });
+  const rawStatus = JSON.parse(execFileSync(process.execPath, [join(raw, "lib/claude.js"), "status"],
+    { cwd: workspace, env, encoding: "utf8", timeout: 30_000 }));
+  assert.equal(rawStatus.version, manifest.version);
+  assert.equal(rawStatus.configuration.enabled, false);
+  assert.equal(rawStatus.python.state, "unprepared");
   assert.equal(status.version, manifest.version);
   assert.equal(status.configuration.enabled, false);
   assert.equal(status.python.state, "unprepared");
   const hook = hooks.hooks.UserPromptSubmit[0].hooks[0];
   assert.equal(hook.command, "node");
-  const args = hook.args.map(value => value.replaceAll("${CLAUDE_PLUGIN_ROOT}", packed));
+  const args = hook.args.map(value => value.replaceAll("${CLAUDE_PLUGIN_ROOT}", raw));
   const result = JSON.parse(execFileSync(process.execPath, args, { cwd: workspace, env, encoding: "utf8", timeout: 10_000,
     input: JSON.stringify({ hook_event_name: "UserPromptSubmit", cwd: workspace }) }));
   assert.equal(result.hookSpecificOutput.hookEventName, "UserPromptSubmit");
   assert.equal(typeof result.hookSpecificOutput.additionalContext, "string");
   const expansion = hooks.hooks.UserPromptExpansion[0].hooks[0];
-  const blocked = JSON.parse(execFileSync(expansion.command, expansion.args.map(value => value.replaceAll("${CLAUDE_PLUGIN_ROOT}", packed)),
+  const blocked = JSON.parse(execFileSync(expansion.command, expansion.args.map(value => value.replaceAll("${CLAUDE_PLUGIN_ROOT}", raw)),
     { cwd: workspace, env, encoding: "utf8", timeout: 10_000,
       input: JSON.stringify({ hook_event_name: "UserPromptExpansion", cwd: workspace, expansion_type: "slash_command", command_name: "personal-bot:project-maintenance" }) }));
   assert.equal(blocked.decision, "block");
+  await mkdir(join(enabled, ".pbot"));
+  await writeFile(join(enabled, ".pbot/config.json"), JSON.stringify({ enabled: true }));
+  const member = JSON.parse(execFileSync(process.execPath, args,
+    { cwd: enabled, env, encoding: "utf8", timeout: 30_000,
+      input: JSON.stringify({ hook_event_name: "SubagentStart", cwd: enabled, agent_type: "personal-bot:general-purpose" }) }));
+  const environment = JSON.parse(member.hookSpecificOutput.additionalContext.split("\n\n").at(-1));
+  assert.equal(environment.resourceRoot, join(raw, "resources") + "/");
+  assert.notEqual(environment.python.state, "error", JSON.stringify(environment.python));
+  assert.equal(member.hookSpecificOutput.hookEventName, "SubagentStart");
   await assert.rejects(stat(join(workspace, ".pbot")), { code: "ENOENT" });
-  console.log(`Packed Claude command hooks, native plugin validation and standalone CLI passed without host or MCP SDKs: personal-bot@${version}, Node ${process.version}.`);
+  console.log(`Packed Claude command hooks, native plugin validation and standalone CLI passed; extracted Claude hooks and CLI ran without node_modules: personal-bot@${version}, Node ${process.version}.`);
 } finally {
   await rm(root, { recursive: true, force: true });
 }

@@ -40,11 +40,11 @@ npm pack
 
 prepack 依次执行 check、build:cli、build:dsh、build:claude；CLI 构建清理 lib，因此保持该顺序。build:claude 用 tsc 编译 Node hook/CLI，从共享职责生成原生 agent，并同步根插件与 marketplace 的发布版本，发布前核对它们与 package.json 一致。
 
-核对包清单包含 bin、lib（安装 CLI、dsh Host/Web、Claude Node 与 Pi/dsh ACP worker）、src、resources（含 dsh patch、Claude 原生 pbot 技能与 agent、ACP 仅技能插件）、Python 锁文件、setup 脚本、npm-shrinkwrap.json，以及隐藏的 .claude-plugin/plugin.json、marketplace.json 和 hooks/hooks.json。排除 dist、node_modules、凭据、原生测试会话与运行数据。核对 dsh 导出和元数据，以及 Claude command hooks 的 command/args、技能与 agent 路径；Claude 插件不发布 MCP 声明、mod 或类型快照。
+核对包清单包含 bin、lib（安装 CLI、dsh Host/Web、Claude Node 与 Pi/dsh ACP worker）、src、resources（含 dsh patch、Claude 原生 pbot 技能与 agent、ACP 仅技能插件）、Python 锁文件、setup 脚本，以及隐藏的 .claude-plugin/plugin.json、marketplace.json 和 hooks/hooks.json。npm-shrinkwrap.json 仅保留在仓库用于开发和 CI；从发布包排除完整开发锁，避免 registry 安装展开开发宿主与构建依赖。另排除 dist、node_modules、凭据、原生测试会话与运行数据。核对 dsh 导出和元数据，以及 Claude command hooks 的 command/args、技能与 agent 路径；Claude 插件不发布 MCP 声明、mod 或类型快照。
 
 依赖与产物规则见[技术设计](technical-design.md#工具与分发)，安装包检查入口见[维护脚本](../scripts/README.md)。
 
-使用隔离用户目录、宿主配置和临时工作区检查实际 tarball，避免 Python 准备影响日常环境。Pi 检查扩展、技能、工具和初始化，dsh 检查 Host、Web 与 Remote。Claude consumer 脚本在独立 npm 目录实际安装 tarball，执行 `claude plugin validate <安装目录>/.claude-plugin/plugin.json`，再通过真实 Node 进程检查 hooks 与 CLI；无需模型认证或宿主 SDK，不依赖仓库开发目录。
+使用隔离用户目录、宿主配置和临时工作区检查实际 tarball，避免 Python 准备影响日常环境。Pi 检查扩展、技能、工具和初始化，dsh 检查 Host、Web 与 Remote。Claude consumer 脚本在独立 npm 目录实际安装 tarball 并执行原生 plugin validate，同时将包直接解压到另一个空目录，在没有 node_modules 的条件下执行 hooks、CLI 和启用工作区的资料读取，以覆盖原生 marketplace 缓存的运行方式。检查无需模型认证或宿主 SDK，不依赖仓库开发目录。
 
 Claude 的实际首任务上下文、原生 pbot 与工作方法技能、`personal-bot:general-purpose` 专家仍需在明确批准的原生模型环境验证。使用专用认证、隔离配置和临时工作区；原生团队开关由运行者管理。默认 Node 测试及 plugin validate 的结果与模型验证分别报告，当前尚未完成原生模型验证。范围见[Claude 接入设计](claude-code-design.md)。
 
@@ -97,7 +97,7 @@ npm view "personal-bot@$VERSION" version --registry=https://registry.npmjs.org
 npm view personal-bot dist-tags --json --registry=https://registry.npmjs.org
 ```
 
-在独立 npm cache/prefix 中从公开 registry 全新安装发布版本，验证 npx 入口与全局 pbot 命令。再在独立 Pi 配置和临时工作区执行 `pi install --local npm:personal-bot`，核对安装版本、扩展加载、技能发现和 /pbot status。
+运行 `node scripts/check-consumer.mjs npm:personal-bot@<version>`，在独立用户目录、npm cache 和消费目录中从公开 registry 按包名安装，核对宿主 SDK 未被连带安装，再检查 CLI 与 Pi 扩展加载、技能、工具和初始化。记录实际 Node/npm 版本；本地 tarball 与 registry 安装分别验证。另在独立 prefix 检查 npx 与全局 pbot 命令，并在独立 Pi 配置和临时工作区执行 `pi install --local npm:personal-bot`，核对原生安装版本与 `/pbot status`。
 
 按[dsh 使用说明](dsh.md)，在独立 profile 安装公开 registry 的目标版本，核对 Host 启用、Web 管理页和 Remote 查询。
 

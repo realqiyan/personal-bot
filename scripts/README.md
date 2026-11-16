@@ -13,15 +13,15 @@
 
 ## 安装包检查
 
-先 `npm pack`，使用生成的实际 tarball 检查交付路径；`npm pack --dry-run` 仅用于查看清单。
+先 `npm pack`，使用生成的实际 tarball 检查交付路径；`npm pack --dry-run` 仅用于查看清单。完整开发 npm-shrinkwrap.json 留在仓库，不进入发布包；消费者按正常运行依赖安装。
 
 | 命令 | 检查内容 | 环境 |
 | --- | --- | --- |
-| `node scripts/check-consumer.mjs <tarball>` | 独立 CLI、Pi 扩展、技能、工具与资料初始化 | CI 使用 Node.js 22.19.0，脚本安装锁定的 Pi SDK |
+| `node scripts/check-consumer.mjs <tarball>` | 独立 CLI、Pi 扩展、技能、工具与资料初始化；安装 Pi 前核对消费根和包内均未安装宿主依赖 | CI 使用 Node.js 22.19.0，脚本安装锁定的 Pi SDK |
 | `node scripts/check-dsh-consumer.mjs <tarball>` | dsh 原生插件安装、独立 CLI 与 Host 导入；检查无需单独安装 TypeBox 或宿主 SDK | Node.js 24.9+、仓库开发依赖和 PATH 中的 pnpm |
-| `node scripts/check-claude-consumer.mjs <tarball>` | 实际 tarball 安装、原生 plugin validate、Node hook 与 CLI；不安装 Pi/dsh/Claude 或 MCP SDK | Node.js 22.19+、Claude Code 2.1.325+；PBOT_CLAUDE_COMMAND 可指定 CLI |
+| `node scripts/check-claude-consumer.mjs <tarball>` | 实际 tarball 安装与原生 plugin validate；另在直接解包且没有 node_modules 的目录执行 hook、CLI 和资料读取 | Node.js 22.19+、Python 3.11+、Claude Code 2.1.325+；PBOT_CLAUDE_COMMAND 可指定 CLI |
 
-上述脚本使用隔离用户目录、宿主配置与工作目录，结束后清理临时目录，不调用模型。Pi 使用预置故障目录跳过 Python 下载，dsh 通过原生 schema 收集导入 Host。Claude 在独立 npm 消费目录安装实际 tarball，核对版本、原生资源与 hook 参数，执行未启用工作区的 hook 和 status，不访问日常会话或凭据。
+上述脚本使用隔离用户目录、宿主配置与工作目录，结束后清理临时目录，不调用模型。Pi 使用预置故障目录跳过 Python 下载，dsh 通过原生 schema 收集导入 Host。Claude 在独立 npm 消费目录安装实际 tarball，核对版本、原生资源与 hook 参数；再从直接解包目录运行未启用工作区的 hook/status，以及已启用工作区的专家资料与 Python 只读检查，覆盖原生 marketplace 不安装 npm 依赖的缓存目录。不访问日常会话或凭据。
 
 Claude 包内路径包括 `.claude-plugin/plugin.json`、marketplace、`hooks/hooks.json`、`lib/claude.js`、`resources/claude/skills/pbot/SKILL.md`、原生 Markdown agent、共享资料与工作方法技能。`resources/skills/.claude-plugin/plugin.json` 保留给 Pi/dsh 的 Claude ACP 目标。可对实际安装包执行原生校验：
 
@@ -29,7 +29,7 @@ Claude 包内路径包括 `.claude-plugin/plugin.json`、marketplace、`hooks/ho
 claude plugin validate /absolute/path/to/installed/package/.claude-plugin/plugin.json
 ```
 
-消费环境不依赖仓库 cwd、dist 或开发 node_modules。只有实际执行的项目才记录为通过，版本与未执行项写在任务、PR 或 CI。
+消费环境不依赖仓库 cwd、dist 或开发 node_modules。发布后运行 `node scripts/check-consumer.mjs npm:personal-bot@<version>`，通过公开 registry 按包名安装再执行相同检查；分别记录实际 Node/npm 版本，不能用本地 tarball 安装代替这条路径。只有实际执行的项目才记录为通过，版本与未执行项写在任务、PR 或 CI。
 
 ## 本地 Node hook 检查
 

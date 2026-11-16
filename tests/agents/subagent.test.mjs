@@ -12,7 +12,7 @@ import { PiAgents, agentDirectory } from "../../dist/integrations/pi/pi-agents.j
 import { agentOwner, deliveredCycles } from "../../dist/integrations/pi/agent-context.js";
 import { packageVersion } from "../../dist/common/version.js";
 import { resourceRoot } from "../../dist/common/paths.js";
-import { schema } from "../../dist/common/validation.js";
+import { schema } from "../../dist/common/schema.js";
 import { agentBoard } from "../../dist/ui/agent-display.js";
 import { loadThemeFromPath } from "../../node_modules/@earendil-works/pi-coding-agent/dist/modes/interactive/theme/theme.js";
 import { visibleWidth } from "@earendil-works/pi-tui";

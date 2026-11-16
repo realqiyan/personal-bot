@@ -1,5 +1,6 @@
 import { Type, type Static } from "typebox";
-import { requireThat, schema } from "../../common/validation.js";
+import { requireThat } from "../../common/validation.js";
+import { schema } from "../../common/schema.js";
 
 const host = Type.Union([Type.Literal("pi"), Type.Literal("dsh"), Type.Literal("claude")]);
 const nullableOffset = Type.Union([Type.Integer(), Type.Null()]);

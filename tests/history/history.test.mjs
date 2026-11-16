@@ -11,7 +11,7 @@ import { HistoryFiles } from "../../dist/storage/history-files.js";
 import { PiHistory, projectHistory } from "../../dist/integrations/pi/history.js";
 import { splitHistorySummary } from "../../dist/integrations/history-summary.js";
 import { historyInput, historyResultSchema } from "../../dist/tools/history/contract.js";
-import { schema } from "../../dist/common/validation.js";
+import { schema } from "../../dist/common/schema.js";
 
 // Persisted transcript fixtures through the real SDK; no model or simulated provider.
 const usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0,

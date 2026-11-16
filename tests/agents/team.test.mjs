@@ -14,7 +14,7 @@ import { TeamService } from "../../dist/services/agents/team-service.js";
 import { PiAgents } from "../../dist/integrations/pi/pi-agents.js";
 import { teamContext, deliveredTeams } from "../../dist/integrations/pi/team-context.js";
 import { teamParametersSchema, teamActionSchema, teamMessageActionSchema } from "../../dist/tools/teams/contract.js";
-import { schema } from "../../dist/common/validation.js";
+import { schema } from "../../dist/common/schema.js";
 import { packageVersion } from "../../dist/common/version.js";
 import { host } from "../helpers/pi-host.mjs";
 import { preparePythonFailure } from "../helpers/python-home.mjs";

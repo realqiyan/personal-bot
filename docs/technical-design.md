@@ -35,7 +35,7 @@ src/extension/setup-cli.ts 装配独立 Pi 安装命令；`pbot setup` 通过原
 
 服务不依赖宿主 SDK、工具或 UI。共享进程执行可直接使用，其他宿主能力通过窄接口传入。接入层可引用服务类型；命令和工具通过服务执行状态变更。模型层用 interface/type 描述普通数据和窄能力契约；数据以普通对象进入 JSON、存储和工具结果。
 
-Claude command hook 是独立 Node 进程，只使用 Node 内置模块和共用资料/Python 服务。hook 的 stdout 输出标准 JSON，诊断写 stderr；不加载宿主 SDK、mod API 或内部 MCP。
+Claude command hook 是独立 Node 进程，只使用 Node 内置模块和共用资料/Python 服务。通用断言保留在 common/validation，依赖 Ajv 的 JSON Schema 编译放在 common/schema，由 Pi/dsh 工具适配显式引用，避免资料和配置读取加载第三方模块。hook 的 stdout 输出标准 JSON，诊断写 stderr；不加载宿主 SDK、mod API 或内部 MCP。
 
 | 主体 | 管理内容 |
 | --- | --- |
@@ -159,9 +159,9 @@ Pi/dsh 在当前宿主进程激活 PATH、VIRTUAL_ENV 和 Python 路径变量，
 
 Pi 将工具纳入 pbot namespace，codemode 按契约组合；dsh 注册原生工具，并在宿主可表达的 schema 之外继续校验完整领域契约。原生 CLI/MCP 与可选 Task Conductor 的接入和授权见[工具与执行](capability-design.md)。
 
-Pi 入口指向 src，由宿主加载 TypeScript 源码；独立 CLI、dsh Host/Web、Claude Node hooks 编译到 lib，dist 供测试使用。Claude 的 hooks/hooks.json 指向 lib/claude.js；根 manifest 声明技能与原生专家，marketplace 指向同版本 npm 包。
+Pi 入口指向 src，由宿主加载 TypeScript 源码；独立 CLI、dsh Host/Web、Claude Node hooks 编译到 lib，dist 供测试使用。Claude 的 hooks/hooks.json 指向 lib/claude.js；根 manifest 声明技能与原生专家，marketplace 指向同版本 npm 包。原生 marketplace 将包解压到插件缓存，不安装 npm 依赖；Claude hook/CLI 在没有 node_modules 的包目录中直接运行，资源路径相对包内模块定位。
 
-宿主 SDK 使用 optional peer，dsh SDK 范围为 "*"，最低宿主版本由 engines.dsh 声明；开发依赖和锁文件保留精确版本。TypeBox 同样为 optional peer：Pi 通过宿主加载器提供，dsh 构建携带库及许可证。Claude 插件使用 Node 命令与共用服务，不加载宿主 SDK；Claude SDK 可选依赖仅供 Pi/dsh 的 Claude ACP 目标使用。
+宿主 SDK 使用 optional peer，dsh SDK 范围为 "*"，最低宿主版本由 engines.dsh 声明；开发依赖和仓库锁文件保留精确版本。完整开发 npm-shrinkwrap.json 不进入发布包，消费者按正常运行依赖安装，避免 registry 安装展开开发锁中的宿主 SDK。TypeBox 同样为 optional peer：Pi 通过宿主加载器提供，dsh 构建携带库及许可证。Claude 插件使用 Node 命令与共用服务，不加载宿主 SDK；Claude SDK 可选依赖仅供 Pi/dsh 的 Claude ACP 目标使用。
 
 Pi、CLI 与 Claude hooks 支持 Node.js 22.19+，Claude 原生 CLI 最低与当前验证基线为 2.1.325；dsh 与 Linux 完整开发使用 Node.js 24.9+。安装检查发现真实宿主后，在子进程中使用其 SDK。包内组件共用 package.json 发布版本，build:claude 同步插件与 marketplace 版本并生成原生专家文件。构建顺序为 dist → build:cli → build:dsh → build:claude；build:cli 会清理 lib。子会话兼容线在 1.0 前按次版本、之后按主版本判断。
 
