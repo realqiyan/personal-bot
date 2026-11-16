@@ -100,19 +100,6 @@ export async function inspectSystem(processes: SetupProcesses, cwd: string): Pro
   if (major < 22 || major === 22 && minor < 19) throw new Error("需要 Node.js 22.19 或更高版本。");
   const npm = await findExecutable("npm", processes.env);
   if (!npm) throw new Error("未找到 npm。请先安装 Node.js/npm。");
-  const python = await findExecutable("python3", processes.env) ?? await findExecutable("python", processes.env);
-  if (!python) throw new Error("需要 Python 3.11+ 和 venv/ensurepip。请先安装后重试。");
-  try {
-    await processes.run(python, ["-I", "-B", "-c", [
-      "import sys, tempfile, venv, ensurepip",
-      "assert sys.version_info >= (3, 11), 'Python 3.11+ required'",
-      "with tempfile.TemporaryDirectory(prefix='pbot-python-check-') as path:",
-      "    venv.EnvBuilder(with_pip=True).create(path)",
-    ].join("\n")], cwd);
-  } catch (error) {
-    processes.signal.throwIfAborted();
-    throw new Error("基础 Python 检查失败。需要 Python 3.11+ 和 venv/ensurepip；Debian/Ubuntu 还需 python3-venv。\n" + String(error));
-  }
   const tmux = await findExecutable("tmux", processes.env);
   if (tmux) { await processes.run(tmux, ["-V"], cwd); return { npm }; }
   const names = process.platform === "darwin" ? ["brew"] : ["apt-get", "dnf", "pacman", "zypper", "apk", "sudo"];

@@ -26,9 +26,7 @@ export async function acpMember() {
   };
   const context = async () => {
     const [workspace, role] = await Promise.all([readFile(join(resourceRoot, "prompts/workspace.md"), "utf8"), agentText("general-purpose", d.workspace)]);
-    const state = process.env.PBOT_ACP_PYTHON_STATE ?? "unavailable";
-    const python = state === "ready" && process.env.VIRTUAL_ENV ? { state, directory: process.env.VIRTUAL_ENV } : { state };
-    return { workspace, role, environment: JSON.stringify({ workspaceRoot: d.workspace, resourceRoot, python }) };
+    return { workspace, role, environment: JSON.stringify({ workspaceRoot: d.workspace, resourceRoot }) };
   };
   return { files, d, id, generation, check, context,
     input() {

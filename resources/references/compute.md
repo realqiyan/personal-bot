@@ -1,18 +1,16 @@
 # Python 计算
 
-环境上下文的 `python.state` 是当前共享环境状态。ready 时通过 Bash 使用 `python.executable` 给出的完整解释器路径；未提供该字段时使用 `python` 或 `python3`，直接导入第三方库。项目构建和测试使用项目声明的环境。
-
-## 环境异常
-
-未就绪或依赖异常时可自主诊断，只暂停依赖该环境的计算，不退回系统 Python，不删除或重建共享环境。Pi/dsh 用 `/pbot status` 查看错误并用 `/pbot python setup` 重试；Claude 从当次 hook 或准备命令结果查看错误，用 `/personal-bot:pbot status` 检查当前环境，`/personal-bot:pbot python setup` 重试，或直接执行插件 `lib/claude.js` 的同名 Node 命令；需要用户执行会话操作时说明入口，专家向主会话交回所需条件。
-
-所有 pbot 工作区共用该环境。更改依赖会影响其他工作区，停止相关计算后再更新。安装与许可信息见 [Python 说明](../../python/README.md)。
-
 ## 按项目运行
 
-沿用项目的工作目录、脚本或模块入口、输入参数与输出位置。包内相对导入通常使用项目根目录下的 `python -m 包.模块`，不为绕过导入错误随意改 `sys.path`。相对数据路径取决于 cwd 或脚本自身的处理；交付时提供实际产物路径，并检查结果。
+使用当前宿主的原生 Bash，沿用项目声明的解释器、依赖、工作目录、脚本或模块入口、输入参数与输出位置。尚无约定时，先检查可用解释器及本次计算需要的库，再选择运行方式。依赖和 Python 版本以项目及所选库的要求为准。
 
-预装库包括 NumPy、pandas、SciPy、statsmodels、scikit-learn（导入名 sklearn）、Matplotlib、seaborn、Bokeh、openpyxl、PyArrow、TA-Lib 和 backtesting。按任务查阅当前版本的原生 API。
+包内相对导入通常使用项目根目录下的 `python -m 包.模块`，不为绕过导入错误随意改 `sys.path`。相对数据路径取决于 cwd 或脚本自身的处理；交付时提供实际产物路径，并检查结果。
+
+解释器或依赖异常时，检查实际路径、导入错误及项目配置，继续不受影响的工作。专家需要主会话协助时交回具体阻碍和所需条件。
+
+## 第三方库
+
+按任务选择当前环境中可用的库，并查阅所用版本的原生 API：NumPy、pandas 用于数组和表格，SciPy、statsmodels、scikit-learn（导入名 sklearn）用于数值分析、统计和建模，Matplotlib、seaborn、Bokeh 用于绘图，openpyxl、PyArrow 用于文件读写。
 
 - 无图形界面的绘图：在导入 pyplot/seaborn 前选择 Matplotlib 的 Agg 后端，保存文件并关闭 figure。
 - Excel、Parquet、Feather：按格式选择 openpyxl 或 pyarrow；核对读写后的字段类型、时间单位与时区。Excel 不直接保存带时区的 datetime，转换前明确目标时区。

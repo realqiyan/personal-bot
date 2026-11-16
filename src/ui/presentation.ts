@@ -1,7 +1,7 @@
 const states: Record<string, string> = {
   starting: "启动中", busy: "执行中", idle: "待命", stopping: "停止中", stopped: "已停止", error: "需要处理",
   running: "进行中", paused: "已暂停", finished: "已结束", completed: "已完成", failed: "失败",
-  cancelled: "已取消", interrupted: "已中断", ready: "已就绪", preparing: "准备中", unprepared: "未准备",
+  cancelled: "已取消", interrupted: "已中断",
   open: "待安排", closed: "已关闭",
 };
 export const stateLabel = (state: unknown) => states[String(state)] ?? String(state ?? "未知");

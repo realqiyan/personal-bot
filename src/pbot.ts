@@ -1,7 +1,6 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { PiAgents, agentDirectory } from "./integrations/pi/pi-agents.js";
 import { AgentBackends } from "./integrations/acp/agents.js";
-import { PythonEnvironmentService } from "./services/workspace/python-environment-service.js";
 import { AgentService } from "./services/agents/agent-service.js";
 import { TeamService } from "./services/agents/team-service.js";
 import { Confirmations } from "./ui/confirmation.js";
@@ -28,7 +27,7 @@ export default function pbot(pi: ExtensionAPI) {
         const file = agents.files.optional(agent.agentId, "session-ref.json", sessionRef)?.file;
         return file ? [file] : [];
       })), [new HistoryFiles(join(root, ".pbot/history"), "dsh"), new HistoryFiles(join(root, ".pbot/history"), "claude")]);
-    return new WorkspaceInstance(root, new PythonEnvironmentService(root), agents, new TeamService(root, agents.files, agents.teamFiles), history);
+    return new WorkspaceInstance(root, agents, new TeamService(root, agents.files, agents.teamFiles), history);
   }, instance => registry.register(mainTools(instance.agents, instance.teams, instance.history, instance)), () => registry.hide());
   registerCommand(pi, lifecycle, confirmations);
   registerEvents(pi, lifecycle, confirmations);

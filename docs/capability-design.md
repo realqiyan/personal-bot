@@ -26,9 +26,9 @@ dsh 使用当前安装版本的原生 MCP 组件和 profile 配置，模型与�
 
 Claude 新增项目连接使用 `claude mcp add --scope project <server> ...`，写入工作区 `.mcp.json`；删除使用 `claude mcp remove --scope project <server>`。local、project、user 是不同原生范围，按实际用途选择；用户未要求跨项目时使用 project。通过当前会话 `/mcp` 检查连接、认证、配置来源和工具，CLI 状态不替代活动会话状态。原生 Agent、团队、消息和任务工具沿用 Claude 权限与认证，实验团队开关由用户管理。
 
-Claude 插件通过标准 Node command hooks 准备上下文与 Python，通过原生 `/personal-bot:pbot init|status|python setup` 技能调用同一 CLI。确定性操作可直接运行 `node <plugin>/lib/claude.js init|status|python setup`。工作区根固定为 `CLAUDE_PROJECT_DIR`，不随 Bash cwd 改变。Claude 的 Agent、团队、MCP 与会话由宿主管理；pbot 不在该宿主注册业务工具或 MCP 服务。
+Claude 插件通过标准 Node command hooks 加载上下文，通过原生 `/personal-bot:pbot init|status` 技能调用同一 CLI。确定性操作可直接运行 `node <plugin>/lib/claude.js init|status`。工作区根固定为 `CLAUDE_PROJECT_DIR`，不随 Bash cwd 改变。Claude 的 Agent、团队、MCP 与会话由宿主管理；pbot 不在该宿主注册业务工具或 MCP 服务。原生技能与专家的上下文加载方式见[模型上下文](model-context.md)。
 
-Claude 的 Python 脚本通过原生 Bash 使用 `python.executable` 的完整路径；插件不修改 Claude 的 PATH 或环境变量。原生技能与专家的上下文加载方式见[模型上下文](model-context.md)。
+各宿主的 Python 计算通过原生 Bash，使用项目声明的解释器、依赖与工作目录。通用方法见 [Python 计算](../resources/references/compute.md)，指标与回测按需读取[专门参考](../resources/references/compute-finance.md)。
 
 ## ACP 子会话
 

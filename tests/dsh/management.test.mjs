@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, readFile, realpath, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, realpath, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
@@ -8,7 +8,6 @@ import { setTimeout as delay } from "node:timers/promises";
 import { dshHost } from "../helpers/dsh-host.mjs";
 import * as pbot from "../../dist/dsh.js";
 import { initializeWorkspaceConfig } from "../../dist/services/workspace/workspace-config.js";
-import { preparePythonFailure } from "../helpers/python-home.mjs";
 
 async function until(predicate) {
   const deadline = Date.now() + 6000;
@@ -18,8 +17,7 @@ async function until(predicate) {
 test("native management reads preserve sessions, retain full records after stop, and reject foreign or disposed owners", async () => {
   const root = await realpath(await mkdtemp(join(tmpdir(), "pbot-dsh-management-")));
   const saved = { DSH_HOME: process.env.DSH_HOME, XDG_DATA_HOME: process.env.XDG_DATA_HOME, HOME: process.env.HOME };
-  const { directory: venv, environment } = await preparePythonFailure(join(root, "user"));
-  Object.assign(process.env, environment, { DSH_HOME: join(root, "home") });
+  Object.assign(process.env, { HOME: join(root, "user"), XDG_DATA_HOME: join(root, "user/data"), DSH_HOME: join(root, "home") });
   await initializeWorkspaceConfig(root);
   const host = await dshHost(join(root, "sessions")), signal = new AbortController().signal;
   try {
@@ -95,7 +93,6 @@ test("native management reads preserve sessions, retain full records after stop,
     await extension.dispose();
     assert.equal(host.ctx.typert.local.get("pbot/snapshot"), undefined);
     await assert.rejects(management.snapshot(request, signal));
-    assert.equal(await readFile(join(venv, "keep"), "utf8"), "unrelated data");
     for (const handle of handles) await handle.dispose();
   } finally {
     await host.close();

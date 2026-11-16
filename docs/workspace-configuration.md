@@ -19,10 +19,9 @@ Pi 首次启用时自动重载；已运行时补建的根 AGENTS 经 `/reload` �
 ```sh
 node /absolute/path/to/plugin/lib/claude.js init
 node /absolute/path/to/plugin/lib/claude.js status
-node /absolute/path/to/plugin/lib/claude.js python setup
 ```
 
-Claude CLI 从 `CLAUDE_PROJECT_DIR` 读取固定工作区根；在普通 shell 中未提供该变量时使用当前目录。需要显式指定工作区时，将它设为目标工作区的绝对路径。状态显示工作区、配置与 Python 信息；Claude 没有独立的 `/pbot` 原生命令或管理面板。操作见[Claude 使用指南](claude-code.md)。
+Claude CLI 从 `CLAUDE_PROJECT_DIR` 读取固定工作区根；在普通 shell 中未提供该变量时使用当前目录。需要显式指定工作区时，将它设为目标工作区的绝对路径。状态显示工作区与配置信息；Claude 没有独立的 `/pbot` 原生命令或管理面板。操作见[Claude 使用指南](claude-code.md)。
 
 ## 启用与停用
 
@@ -36,11 +35,11 @@ Claude CLI 从 `CLAUDE_PROJECT_DIR` 读取固定工作区根；在普通 shell �
 
 | 配置情况 | 行为 |
 | --- | --- |
-| `enabled: true` | Pi/dsh 启动业务实例；Claude hooks 加载上下文并准备共享 Python |
+| `enabled: true` | Pi/dsh 启动业务实例；Claude hooks 加载上下文 |
 | 文件不存在、缺少 enabled 或 `enabled: false` | 保持未启用，提供状态与初始化入口；宿主原生功能继续使用 |
 | JSON 损坏、字段类型错误或文件不可读取 | 保持未启用，报告具体错误；修复文件后再执行 `init` |
 
-Pi/dsh 未启用时不注册包内技能，也不注入 pbot 提示词。Claude 静态技能名称、简介与原生 agent 仍可被宿主发现；PreToolUse 对 Skill 拦截 pbot 工作方法，保留 `personal-bot:pbot` 初始化技能可用。公共约定、角色和 Python 准备受配置控制。用户自己的指令、技能与其他插件沿用宿主加载规则；已经进入聊天的内容作为历史保留。
+Pi/dsh 未启用时不注册包内技能，也不注入 pbot 提示词。Claude 静态技能名称、简介与原生 agent 仍可被宿主发现；PreToolUse 对 Skill 拦截 pbot 工作方法，保留 `personal-bot:pbot` 初始化技能可用。公共约定与角色加载受配置控制。用户自己的指令、技能与其他插件沿用宿主加载规则；已经进入聊天的内容作为历史保留。
 
 只读取绑定工作区根目录，不向父目录查找。例如在 `~/workspace/projects/example` 单独建立会话时，该目录需要自己的配置。修改 Bash cwd 不改变绑定根目录；Claude 使用 `CLAUDE_PROJECT_DIR` 固定此根。Pi/dsh 受管专家沿用所属工作区的启用决定，其执行目录可以不同。
 
@@ -71,11 +70,9 @@ Pi/dsh 主会话可委派 Pi、dsh 或 Claude ACP 成员。先按[ACP 专家程�
 | --- | --- |
 | Pi | 执行原生 `/reload`，或重新启动 Pi |
 | dsh | 重启对应服务或桌面宿主 |
-| Claude | 后续 SessionStart、UserPromptSubmit、SubagentStart、Skill 调用与技能展开检查及 CLI 操作读取当前配置 |
+| Claude | 后续 UserPromptSubmit、SubagentStart、Skill 调用与技能展开检查及 CLI 操作读取当前配置 |
 
-Pi/dsh 在重载前保持原配置。停用生效后撤下后续业务工具与职责，释放所属执行和历史整理，并暂停团队调度。Claude 停止后续 pbot 上下文注入、工作方法技能与 Python 自动准备；原生会话和团队继续由 Claude 管理。资料、历史与备份保留。重新启用可使用各宿主的 init 入口。
-
-所有已启用工作区共用用户级 Python venv。Pi/dsh 激活所在进程环境，dsh 的激活由整个 Host 组件持有。Claude 通过 Bash 使用 `python.executable` 完整路径，不修改 Claude PATH 或环境变量，禁用或卸载无需恢复环境。路径与排障见 [Python 指南](../python/README.md)。
+Pi/dsh 在重载前保持原配置。停用生效后撤下后续业务工具与职责，释放所属执行和历史整理，并暂停团队调度。Claude 停止后续 pbot 上下文注入与工作方法技能调用；原生会话和团队继续由 Claude 管理。资料、历史与备份保留。重新启用可使用各宿主的 init 入口。
 
 ## 安装与更新
 

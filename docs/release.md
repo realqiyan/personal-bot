@@ -17,11 +17,11 @@
 
 Trusted Publisher 使用 GitHub OIDC，无需保存 NPM_TOKEN。首次包创建与授权条件见 [npm 官方说明](https://docs.npmjs.com/trusted-publishers/)。需要先创建包时，由维护者完成首次本机发布，再配置 Trusted Publisher。
 
-provenance 所用 repository 元数据须与实际公开仓库匹配。若改为 scoped 包名，同步修改包与锁文件、工作流中的包名和 tarball 名、安装说明。第三方 Python 库许可见 [Python 说明](../python/README.md)。
+provenance 所用 repository 元数据须与实际公开仓库匹配。若改为 scoped 包名，同步修改包与锁文件、工作流中的包名和 tarball 名、安装说明。
 
 ## 准备候选包
 
-使用 Linux、Node.js 24.9+ 和 Python 3.11+ 准备发布包并完成适用检查。Pi、独立 CLI 与 Claude Node hook/CLI 最低消费者检查使用 Node.js 22.19.0，Claude CLI 当前验证基线为 2.1.325。记录实际 OS、Node、Claude CLI 与 Pi/dsh 版本；运行 ACP 验证时另记目标及 SDK 版本。锁定开发依赖与实际运行结果分别记录。更新版本：
+使用 Linux 和 Node.js 24.9+ 准备发布包并完成适用检查。Pi、独立 CLI 与 Claude Node hook/CLI 最低消费者检查使用 Node.js 22.19.0，Claude CLI 当前验证基线为 2.1.325。记录实际 OS、Node、Claude CLI 与 Pi/dsh 版本；运行 ACP 验证时另记目标及 SDK 版本。锁定开发依赖与实际运行结果分别记录。更新版本：
 
 ```bash
 npm version <新版本> --no-git-tag-version --ignore-scripts
@@ -40,11 +40,11 @@ npm pack
 
 prepack 依次执行 check、build:cli、build:dsh、build:claude；CLI 构建清理 lib，因此保持该顺序。build:claude 用 tsc 编译 Node hook/CLI，从共享职责生成原生 agent，并同步根插件与 marketplace 的发布版本，发布前核对它们与 package.json 一致。
 
-核对包清单包含 bin、lib（安装 CLI、dsh Host/Web、Claude Node 与 Pi/dsh ACP worker）、src、resources（含 dsh patch、Claude 原生 pbot 技能与 agent、ACP 仅技能插件）、Python 锁文件、setup 脚本，以及隐藏的 .claude-plugin/plugin.json、marketplace.json 和 hooks/hooks.json。npm-shrinkwrap.json 仅保留在仓库用于开发和 CI；从发布包排除完整开发锁，避免 registry 安装展开开发宿主与构建依赖。另排除 dist、node_modules、凭据、原生测试会话与运行数据。核对 dsh 导出和元数据，以及 Claude command hooks 的 command/args、技能与 agent 路径；Claude 插件不发布 MCP 声明、mod 或类型快照。
+核对包清单包含 bin、lib（安装 CLI、dsh Host/Web、Claude Node 与 Pi/dsh ACP worker）、src、resources（含 dsh patch、Claude 原生 pbot 技能与 agent、ACP 仅技能插件），以及隐藏的 .claude-plugin/plugin.json、marketplace.json 和 hooks/hooks.json。npm-shrinkwrap.json 仅保留在仓库用于开发和 CI；从发布包排除完整开发锁，避免 registry 安装展开开发宿主与构建依赖。另排除 dist、node_modules、凭据、原生测试会话与运行数据。核对 dsh 导出和元数据，以及 Claude command hooks 的 command/args、技能与 agent 路径；Claude 插件不发布 MCP 声明、mod 或类型快照。
 
 依赖与产物规则见[技术设计](technical-design.md#工具与分发)，安装包检查入口见[维护脚本](../scripts/README.md)。
 
-使用隔离用户目录、宿主配置和临时工作区检查实际 tarball，避免 Python 准备影响日常环境。Pi 检查扩展、技能、工具和初始化，dsh 检查 Host、Web 与 Remote。Claude consumer 脚本在独立 npm 目录实际安装 tarball 并执行原生 plugin validate，同时将包直接解压到另一个空目录，在没有 node_modules 的条件下执行 hooks、CLI 和启用工作区的资料读取，以覆盖原生 marketplace 缓存的运行方式。检查无需模型认证或宿主 SDK，不依赖仓库开发目录。
+使用隔离用户目录、宿主配置和临时工作区检查实际 tarball。Pi 检查扩展、技能、工具和初始化，dsh 检查 Host、Web 与 Remote。Claude consumer 脚本在独立 npm 目录实际安装 tarball 并执行原生 plugin validate，同时将包直接解压到另一个空目录，在没有 node_modules 的条件下执行 hooks、CLI 和启用工作区的资料读取，以覆盖原生 marketplace 缓存的运行方式。检查无需模型认证或宿主 SDK，不依赖仓库开发目录。
 
 Claude 的实际首任务上下文、原生 pbot 与工作方法技能、`personal-bot:general-purpose` 专家仍需在明确批准的原生模型环境验证。使用专用认证、隔离配置和临时工作区；原生团队开关由运行者管理。默认 Node 测试及 plugin validate 的结果与模型验证分别报告，当前尚未完成原生模型验证。范围见[Claude 接入设计](claude-code-design.md)。
 
@@ -101,7 +101,7 @@ npm view personal-bot dist-tags --json --registry=https://registry.npmjs.org
 
 按[dsh 使用说明](dsh.md)，在独立 profile 安装公开 registry 的目标版本，核对 Host 启用、Web 管理页和 Remote 查询。
 
-在独立 Claude 配置与临时工作区通过 `/plugin install personal-bot --marketplace realqiyan/personal-bot` 安装，核对原生 marketplace 实际解析的版本与发布包一致，再检查 Node CLI init/status 和原生资源发现。模型环境获批后验证 `/personal-bot:pbot`、工作方法技能、专家上下文与 Python 完整路径使用。升级保留工作区资料、既有 Claude 归档与旧控制记录；插件不修改 Claude 进程环境，禁用或卸载无需 Python 恢复手续。
+在独立 Claude 配置与临时工作区通过 `/plugin install personal-bot --marketplace realqiyan/personal-bot` 安装，核对原生 marketplace 实际解析的版本与发布包一致，再检查 Node CLI init/status 和原生资源发现。模型环境获批后验证 `/personal-bot:pbot`、工作方法技能、专家上下文及工作区与资源路径。升级保留用户环境、工作区资料、既有 Claude 归档与旧控制记录。
 
 上传结果不明时先查询 registry。若上传完成但后续查询失败，手动运行 Publish npm，选择原版本 tag 并保持 verify_only=true。该模式重新执行检查与 registry 查询，不上传；目标版本已不是 latest 时会失败。不要直接重跑原上传作业，也不要移动已发布 tag。
 

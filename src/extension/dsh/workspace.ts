@@ -18,8 +18,6 @@ import { registerDshFileEvents } from "./files.js";
 import { DshHistoryWork, registerDshHistoryEvents } from "./history.js";
 import type { HistoryService } from "../../services/history/history-service.js";
 import { registerDshHistoryTool } from "../../tools/history/dsh-tool.js";
-import { activatePython } from "../../integrations/python-activation.js";
-import { PythonEnvironmentService } from "../../services/workspace/python-environment-service.js";
 import { requireThat } from "../../common/validation.js";
 import { registerDshSkills } from "../../integrations/dsh/skills.js";
 import { readWorkspaceConfig, workspaceDisabledMessage } from "../../services/workspace/workspace-config.js";
@@ -40,7 +38,7 @@ export class DshWorkspace {
   #events: DshAgentEvents | undefined;
   #closing: Promise<void> | undefined;
   constructor(readonly ctx: Context, readonly root: string, readonly agent: Agent,
-    readonly python: PythonEnvironmentService, readonly component: AbortSignal,
+    readonly component: AbortSignal,
     private readonly historyWork: DshHistoryWork, private readonly releaseHistory: () => Promise<void>, acp?: AcpCommands) {
     this.history = historyWork.service;
     this.owner = { sessionId: agent.id, leaf: null, branch: [] };
@@ -53,7 +51,7 @@ export class DshWorkspace {
           this.#experts.set(d.agentId, runtime);
           scope.effect(() => () => { if (this.#experts.get(d.agentId) === runtime) this.#experts.delete(d.agentId); });
           registerDshSkills(scope, child);
-          await dshResources(scope, child, root, "general-purpose", () => python.status, runtime.check);
+          await dshResources(scope, child, root, "general-purpose", runtime.check);
           const teamTool = dshExpertTools(scope, child, d.options);
           if (teamTool) registerDshTeamMessageTool(scope, child, this.teams, runtime.actor, runtime.check);
           registerDshFileEvents(scope, child, root, true, runtime.check);
@@ -77,7 +75,7 @@ export class DshWorkspace {
     this.check();
     this.#scope = await this.agent.ctx.plugin({ name: "pbot-coordinator", inject: dshDependencies, apply: async ctx => {
       registerDshSkills(ctx, this.agent);
-      await dshResources(ctx, this.agent, this.root, "coordinator", () => this.python.status, this.check);
+      await dshResources(ctx, this.agent, this.root, "coordinator", this.check);
       registerDshFileEvents(ctx, this.agent, this.root, false, this.check);
       registerDshAgentTool(ctx, this.agent, this.agents, this.owner, this.check);
       registerDshTeamTool(ctx, this.agent, this.teams, this.agents, this.owner, this.check);
@@ -129,17 +127,13 @@ export class DshWorkspace {
   }
 }
 
-/** The execution component owns Python; closing one Session must not undo its activation. */
 export class DshWorkspaces {
-  readonly python = new PythonEnvironmentService(process.cwd());
   readonly #parents = new Map<Agent, Promise<DshWorkspace | undefined>>();
   readonly #initializing = new Map<string, Promise<void>>();
   readonly #configurations = new Map<Agent, { root: string; configuration: WorkspaceConfiguration }>();
   readonly #parentEffects = new Map<Agent, () => Promise<void>>();
   readonly #histories = new Map<string, { work: DshHistoryWork; users: number }>();
   readonly #lifetime = new AbortController();
-  #restorePython: (() => void) | undefined;
-  #preparing: Promise<{ directory: string; python: string }> | undefined;
   #closing: Promise<void> | undefined;
   constructor(readonly ctx: Context) {}
 
@@ -184,14 +178,13 @@ export class DshWorkspaces {
       const history = await this.history(root);
       let workspace: DshWorkspace | undefined;
       try {
-        workspace = new DshWorkspace(this.ctx, root, agent, this.python, this.#lifetime.signal, history.work, history.release, configuration.acp);
+        workspace = new DshWorkspace(this.ctx, root, agent, this.#lifetime.signal, history.work, history.release, configuration.acp);
         const owned = workspace;
         const dispose = agent.ctx.effect(() => async () => {
           this.#parents.delete(agent); this.#configurations.delete(agent); this.#parentEffects.delete(agent); await owned.close();
         });
         this.#parentEffects.set(agent, dispose);
         await workspace.open(); this.#lifetime.signal.throwIfAborted();
-        void this.preparePython().catch(error => this.ctx.logger.warn(String(error)));
         return workspace;
       } catch (error) {
         try {
@@ -249,18 +242,6 @@ export class DshWorkspaces {
     return this.get(agent);
   }
 
-  preparePython() {
-    this.#lifetime.signal.throwIfAborted();
-    if (this.#preparing) return this.#preparing;
-    this.#preparing = (async () => {
-      const result = await this.python.setup(this.#lifetime.signal);
-      this.#lifetime.signal.throwIfAborted();
-      if (!this.#restorePython) this.#restorePython = activatePython(result.directory);
-      return result;
-    })().finally(() => { this.#preparing = undefined; });
-    return this.#preparing;
-  }
-
   close() {
     if (this.#closing) return this.#closing;
     this.#lifetime.abort();
@@ -271,10 +252,9 @@ export class DshWorkspaces {
         const closed = await Promise.allSettled(opened.flatMap(value => value.status === "fulfilled" && value.value ? [value.value.close()] : []));
         const effects = await Promise.allSettled([...this.#parentEffects.values()].map(dispose => dispose()));
         const histories = await Promise.allSettled([...this.#histories.values()].map(value => value.work.close()));
-        await this.python.close();
         const errors = [...new Set([...closed, ...effects, ...histories].flatMap(value => value.status === "rejected" ? [value.reason] : []))];
         if (errors.length) throw new AggregateError(errors, "部分 dsh 工作区未能完成关闭。");
-      } finally { this.#parents.clear(); this.#configurations.clear(); this.#parentEffects.clear(); this.#histories.clear(); this.#restorePython?.(); this.#restorePython = undefined; }
+      } finally { this.#parents.clear(); this.#configurations.clear(); this.#parentEffects.clear(); this.#histories.clear(); }
     })();
     return this.#closing;
   }

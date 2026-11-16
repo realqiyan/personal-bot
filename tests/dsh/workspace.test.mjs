@@ -7,15 +7,11 @@ import { randomUUID } from "node:crypto";
 import { dshHost } from "../helpers/dsh-host.mjs";
 import * as pbot from "../../dist/dsh.js";
 import { initializeWorkspaceConfig } from "../../dist/services/workspace/workspace-config.js";
-import { preparePythonFailure } from "../helpers/python-home.mjs";
 
-// The real setup script encounters unrelated data and refuses to install anything.
-// This exercises visible preparation failure without touching the user's venv.
 test("dsh commands bind each parent to its workspace and unload invalidates captured handlers", async () => {
   const root = await realpath(await mkdtemp(join(tmpdir(), "pbot-dsh-workspace-")));
   const before = process.env.XDG_DATA_HOME, beforeDsh = process.env.DSH_HOME, beforeHome = process.env.HOME;
-  const { directory: venv, environment } = await preparePythonFailure(join(root, "user"));
-  Object.assign(process.env, environment, { DSH_HOME: join(root, "dsh-home") });
+  Object.assign(process.env, { HOME: join(root, "user"), XDG_DATA_HOME: join(root, "user/data"), DSH_HOME: join(root, "dsh-home") });
   const host = await dshHost(join(root, "sessions"));
   try {
     const extension = await host.ctx.plugin(pbot);
@@ -48,7 +44,6 @@ test("dsh commands bind each parent to its workspace and unload invalidates capt
     await extension.dispose();
     assert.equal(host.ctx.commands.find(parents[1].agent, "pbot"), undefined);
     await assert.rejects(definition.handler({ agent: parents[1].agent, rawInput: "status", attachments: [], signal: new AbortController().signal }));
-    assert.equal(await readFile(join(venv, "keep"), "utf8"), "unrelated data");
     await parents[1].dispose();
   } finally {
     await host.close();

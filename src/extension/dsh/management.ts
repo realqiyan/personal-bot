@@ -24,11 +24,11 @@ const teamSchema = Type.Object({ teamId: Type.String({ minLength: 1 }), afterSeq
   limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 16000 })) }, { additionalProperties: false });
 const validRequest = schema(requestSchema), validExpert = schema(expertSchema), validTeam = schema(teamSchema);
 
-export function dshStatus(workspaces: DshWorkspaces, workspace: DshWorkspace): Json {
+export function dshStatus(workspace: DshWorkspace): Json {
   workspace.check();
   const agents = workspace.agents.list(workspace.owner);
   return json({ host: "dsh", release: packageVersion, enabled: true, state: "running", workspaceRoot: workspace.root, sessionId: workspace.agent.id,
-    model: workspace.agent.model.current() ?? null, python: workspaces.python.status,
+    model: workspace.agent.model.current() ?? null,
     controlError: workspace.controlError ?? null, history: workspace.history.status,
     agents, permissions: workspace.agents.pendingPermissions(workspace.owner), teams: workspace.teams.list(workspace.owner, agents) });
 }
@@ -39,7 +39,7 @@ export async function dshWorkspaceStatus(workspaces: DshWorkspaces, agent: Agent
   if (!configuration.enabled) return json({ host: "dsh", release: packageVersion, enabled: false,
     state: configuration.error ? "error" : "disabled", nextStep: configuration.error ? configuration.error : "/pbot init",
     workspaceRoot: root, sessionId: agent.id, configuration, model: agent.model.current() ?? null, agents: [], teams: [] });
-  return json({ ...dshStatus(workspaces, await workspaces.get(agent)) as Record<string, Json>, configuration });
+  return json({ ...dshStatus(await workspaces.get(agent)) as Record<string, Json>, configuration });
 }
 
 /** Native Remote owns transport and access checks. These workspace reads do not admit or cancel execution. */

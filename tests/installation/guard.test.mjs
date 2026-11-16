@@ -12,9 +12,6 @@ for (const enabled of [false, true]) test("native startup initialization is hand
   t.after(() => rm(temp, { recursive: true, force: true }));
   const workspace = join(temp, "workspace"), home = join(temp, "home"), agentDir = join(temp, "agent");
   await Promise.all([workspace, home, agentDir].map(path => mkdir(path)));
-  // Actual invalid shared environments prevent network setup on both supported systems.
-  await mkdir(join(home, "data/pbot/python/.venv"), { recursive: true });
-  await mkdir(join(home, "Library/Application Support/pbot/python/.venv"), { recursive: true });
   const { stdout } = await exec(process.execPath, [resolve("tests/installation/guard-driver.mjs"), workspace, agentDir, resolve("."), enabled ? "yes" : "no"], {
     cwd: workspace, timeout: 25_000, env: { HOME: home, XDG_DATA_HOME: join(home, "data"),
       PATH: "/usr/bin:/bin", LANG: "C.UTF-8", PI_OFFLINE: "1", PI_CODING_AGENT_DIR: agentDir },

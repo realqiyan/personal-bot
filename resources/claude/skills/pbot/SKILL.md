@@ -1,6 +1,6 @@
 ---
 name: pbot
-description: 初始化 Personal Bot 工作区，查看状态，或准备共享 Python 环境。
+description: 初始化 Personal Bot 工作区或查看状态。
 disable-model-invocation: true
 ---
 
@@ -11,7 +11,6 @@ disable-model-invocation: true
 ```sh
 node "${CLAUDE_SKILL_DIR}/../../../../lib/claude.js" init
 node "${CLAUDE_SKILL_DIR}/../../../../lib/claude.js" status
-node "${CLAUDE_SKILL_DIR}/../../../../lib/claude.js" python setup
 ```
 
-根据用户参数选择一条：`init` 补建资料并启用工作区，`status` 只查看当前配置和 Python 状态，`python setup` 为已启用工作区准备或修复共享 Python。省略参数时查看状态。返回命令的实际结果和需要处理的错误。
+根据用户参数选择一条：`init` 补建资料并启用工作区，`status` 只查看工作区及当前配置状态。省略参数时查看状态。返回命令的实际结果和需要处理的错误。

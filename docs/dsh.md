@@ -1,12 +1,12 @@
 # dsh 使用说明
 
-Personal Bot 使用 dsh 原生 Web 界面，提供工作区资料、专家、团队、历史查询和 Python 环境。它与 Pi 共用资料、角色、方法及协作规则，各自管理原生会话、模型配置、认证与 MCP。
+Personal Bot 使用 dsh 原生 Web 界面，提供工作区资料、专家、团队和历史查询。它与 Pi 共用资料、角色、方法及协作规则，各自管理原生会话、模型配置、认证与 MCP。
 
 安装和更新使用 dsh 最新版，最低宿主版本为 `0.2.2-rc.1`。本文区分终端命令与聊天框中的 `/pbot` 命令，升级后可查看实际安装版的帮助。
 
 ## 安装与首次启动（CLI + 浏览器）
 
-需要 Node.js 24.9+、npm、pnpm，以及 Python 3.11+ 和 venv/ensurepip。新版本的 Node.js 要求以 dsh 的 engines 为准。安装使用原生插件与 profile：
+需要 Node.js 24.9+、npm 和 pnpm。新版本的 Node.js 要求以 dsh 的 engines 为准。安装使用原生插件与 profile：
 
 ```bash
 npm view @deepseek-ai/dsh@latest version engines --json
@@ -27,7 +27,7 @@ dsh 启动 Web 服务并通常自动打开浏览器。SSH 或 `--no-open` 模式
 /pbot
 ```
 
-`status` 显示未启用或已启动状态；`init` 补建资料目录和根 AGENTS，保留已有资料与其他配置字段，并立即启用此目录下已打开的主会话；裸 `/pbot` 打开管理界面。已启用工作区加载后会自动准备当前用户共享的 Python venv。准备失败时修复基础环境，再运行 `/pbot python setup`。
+`status` 显示未启用或已启动状态；`init` 补建资料目录和根 AGENTS，保留已有资料与其他配置字段，并立即启用此目录下已打开的主会话；裸 `/pbot` 打开管理界面。
 
 一个 profile 可管理多个工作区。通过原生工作区选择器指定目录；默认使用系统 Documents。pbot 绑定主会话创建时的根目录，后续 cwd 变化只影响相对路径解析。
 
@@ -81,7 +81,7 @@ dsh plugin --profile pbot list personal-bot --depth 0
 dsh --profile pbot
 ```
 
-`update personal-bot --latest` 只选择 Personal Bot 更新到当前 `latest`，允许越过原先保存的版本范围；不带 `--latest` 的 update 受已有声明限制。更新后用 `/pbot status` 核对版本与环境，旧专家需显式恢复。停用或重载插件也可能释放专家。
+`update personal-bot --latest` 只选择 Personal Bot 更新到当前 `latest`，允许越过原先保存的版本范围；不带 `--latest` 的 update 受已有声明限制。更新后用 `/pbot status` 核对版本与工作区状态，旧专家需显式恢复。停用或重载插件也可能释放专家。
 
 `dsh plugin --profile pbot` 后面的包管理参数交给 pnpm，必须选对 profile：
 
@@ -122,7 +122,7 @@ dsh --profile pbot
 
 在 DeepSeek Harness 的“插件 → 添加插件”中安装并启用 `personal-bot@latest`，也可输入本地 tarball 的绝对路径。应用提供运行时和包管理，宿主与插件分别通过应用更新。
 
-桌面应用使用独立的 desktop profile；CLI 的 pbot profile 分开管理。应用从登录 Shell 读取环境，Python 3.11+ 应在该 PATH 中可见。安装后选择工作区和主会话，用 `/pbot status` 检查环境。
+桌面应用使用独立的 desktop profile；CLI 的 pbot profile 分开管理。安装后选择工作区和主会话，用 `/pbot status` 检查工作区状态。
 
 ## Task Conductor
 
@@ -159,7 +159,7 @@ task-conductor setup
 
 | 页签 | 操作 |
 | --- | --- |
-| 工作区 | 启动状态、来源、目录、模型、Python 和历史整理状态；初始化启用、准备资料或重试 Python |
+| 工作区 | 启动状态、来源、目录、模型和历史整理状态；初始化启用或准备资料 |
 | 专家 | 创建、重命名、停止、显式恢复；人工对话、附件和完整原生记录 |
 | 团队 | 固定成员与职责、有限轮次、暂停、关闭、公共原文和长消息分页 |
 | 历史 | 按来源与时间查询 Pi/dsh 及既有 Claude 归档，读取问答和摘要，沿父子节点导航 |
@@ -179,9 +179,8 @@ task-conductor setup
 | 命令 | 用途 |
 | --- | --- |
 | `/pbot` | 在 Web 中打开管理界面；服务端直接执行空参数命令时返回 status |
-| `/pbot status` | 查看工作区、版本、模型、Python、历史、专家和团队状态 |
+| `/pbot status` | 查看工作区、版本、模型、历史、专家和团队状态 |
 | `/pbot init` | 可选地补建资料目录与缺失的根 `AGENTS.md` |
-| `/pbot python setup` | 重试共享 Python 环境准备并在当前 Host 进程激活 |
 | `/pbot agent {"action":"list"}` | 专家管理，全部 action 见下表 |
 | `/pbot chat {"agentId":"AGENT_ID","text":"补充要求"}` | 人工对话，可附文件；自动先暂停所属团队 |
 | `/pbot records {"agentId":"AGENT_ID"}` | 读取原生专家事件，或 ACP 专家的任务与报告 |

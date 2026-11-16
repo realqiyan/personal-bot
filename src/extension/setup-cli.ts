@@ -21,7 +21,7 @@ export async function main(args: string[]): Promise<number> {
   if (options.action === "help") {
     console.log("Personal Bot " + manifest.version + "\n\n用法：pbot setup [--workspace <目录>]\n" +
       "      npx personal-bot@latest setup\n\nsetup 安装或升级 Pi、pbot 和选中的插件，然后启动 Pi 执行 /pbot init。\n" +
-      "支持 Linux/macOS，需要 Node.js 22.19+、npm 和 Python 3.11+。\n--help 显示帮助；--version 显示安装器版本。");
+      "支持 Linux/macOS，需要 Node.js 22.19+ 和 npm。\n--help 显示帮助；--version 显示安装器版本。");
     return 0;
   }
   if (!process.stdin.isTTY || !process.stdout.isTTY) {
@@ -33,7 +33,7 @@ export async function main(args: string[]): Promise<number> {
   const ui = new SetupUI(controller), processes = new SetupProcesses(controller.signal);
   try {
     const cwd = process.cwd();
-    ui.text("Personal Bot " + manifest.version + " — 安装与升级\n正在检查 Node/npm、Python 和 tmux…");
+    ui.text("Personal Bot " + manifest.version + " — 安装与升级\n正在检查 Node/npm 和 tmux…");
     const system = await inspectSystem(processes, cwd);
     const supplied = options.workspace ?? await ui.ask("工作区目录（当前、已有或新建目录）", cwd);
     const workspace = await resolveWorkspace(supplied, cwd, homedir());
@@ -84,14 +84,14 @@ export async function main(args: string[]): Promise<number> {
     }
     const blocking = choices.find(choice => choice.required && choice.error);
     if (blocking) throw new Error(blocking.error);
-    ui.text("升级前请停止活动 pbot 子会话和相关 Python 脚本。Pi 为当前用户共用，插件只处理此工作区。");
+    ui.text("升级前请停止活动 pbot 子会话。Pi 为当前用户共用，插件只处理此工作区。");
     if (!await ui.confirm("执行以上计划")) return 130;
     await mkdir(workspace, { recursive: true });
     if (await realpath(workspace) !== workspace) throw new Error("工作区路径已发生变化，请重新运行 setup。");
     const result = await executeSetup(plan, host, item => ui.text("[" + item.state + "] " + item.name + ": " + item.detail), controller.signal);
     const failed = result.results.some(item => item.state === "failed");
     if (!result.pi) return 1;
-    ui.text("\n软件安装阶段结束。初始化、Python 环境和外部服务的状态由 Pi/pbot/插件分别报告。");
+    ui.text("\n软件安装阶段结束。工作区初始化和外部服务的状态由 Pi/pbot/插件分别报告。");
     if (await ui.confirm(failed ? "部分插件失败，是否仍启动 Pi 并初始化启用工作区" : "启动 Pi 并初始化启用工作区", !failed)) {
       process.stdin.pause();
       await host.start(result.pi, workspace);

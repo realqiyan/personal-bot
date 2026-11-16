@@ -5,7 +5,6 @@ import { spawn } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { initializeWorkspaceConfig } from "../../dist/services/workspace/workspace-config.js";
-import { preparePythonFailure } from "../helpers/python-home.mjs";
 
 for (const { name, noSkills = false, globalSkills, projectPackages, expected } of [
   { name: "enabled", expected: ["skill:project-maintenance", "skill:provider-connections"] },
@@ -19,7 +18,6 @@ for (const { name, noSkills = false, globalSkills, projectPackages, expected } o
   t.after(() => rm(root, { recursive: true, force: true }));
   const workspace = join(root, "workspace"), agentDir = join(root, "agent"), output = join(root, "observed.json");
   await mkdir(workspace); await mkdir(agentDir);
-  const { environment } = await preparePythonFailure(join(root, "home"));
   await initializeWorkspaceConfig(workspace);
   await writeFile(join(agentDir, "settings.json"), JSON.stringify({
     defaultProjectTrust: "always",
@@ -48,7 +46,8 @@ export default function(pi) {
     "--mode", "json", "--print", "--no-session", "--provider", "openai", "--model", "gpt-4.1",
     ...(noSkills ? ["--no-skills"] : []), "--extension", probe, "/pbot-probe"], {
     cwd: workspace, stdio: ["ignore", "pipe", "pipe"], signal: AbortSignal.timeout(20000),
-    env: { PATH: process.env.PATH, ...environment, PI_CODING_AGENT_DIR: agentDir, PI_OFFLINE: "1", LANG: "C.UTF-8" },
+    env: { PATH: process.env.PATH, HOME: join(root, "home"), XDG_DATA_HOME: join(root, "data"),
+      PI_CODING_AGENT_DIR: agentDir, PI_OFFLINE: "1", LANG: "C.UTF-8" },
   });
   let diagnostic = "";
   for (const stream of [child.stdout, child.stderr]) stream.setEncoding("utf8").on("data", text => { diagnostic = (diagnostic + text).slice(-16000); });

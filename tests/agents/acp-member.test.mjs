@@ -30,7 +30,7 @@ async function fixture(t, backend, noSkills) {
   { host: "acp", backend, command: process.execPath, args: [], sessionId: null });
   const request = files.enqueue(id, "Local inspection", "steer");
   files.write(id, "acp-input.json", { generation, requestId: request.requestId }, acpInput);
-  const env = { PBOT_SUBAGENT_RUN_ID: id, PBOT_SUBAGENT_DIR: files.directory(id), PBOT_SUBAGENT_GENERATION: generation, PBOT_ACP_PYTHON_STATE: "error" };
+  const env = { PBOT_SUBAGENT_RUN_ID: id, PBOT_SUBAGENT_DIR: files.directory(id), PBOT_SUBAGENT_GENERATION: generation };
   const prior = Object.fromEntries(Object.keys(env).map(key => [key, process.env[key]])); Object.assign(process.env, env);
   t.after(async () => {
     for (const [key, value] of Object.entries(prior)) { if (value === undefined) delete process.env[key]; else process.env[key] = value; }
@@ -53,7 +53,7 @@ for (const noSkills of [false, true]) test(`Pi ACP member loads and refreshes na
     const prepare = () => session._prepareRun({ messageType: "user", prompt: "Local inspection" });
     const first = await prepare(), sections = session._runSystemPromptOptions.sections;
     const environment = JSON.parse(sections.pbot_environment);
-    assert.equal(environment.workspaceRoot, root); assert.equal(environment.resourceRoot, resourceRoot); assert.equal(environment.python.state, "error");
+    assert.deepEqual(environment, { workspaceRoot: root, resourceRoot });
     for (const marker of [native, role]) assert.equal(session.systemPrompt.split(marker).length - 1, 1);
     assert.equal(Object.hasOwn(sections, "pbot_team"), false);
     assert.equal(session.systemPrompt.includes(method), false);
@@ -97,8 +97,7 @@ for (const noSkills of [false, true]) test(`dsh ACP member loads and refreshes n
     const events = child.session.snapshotEvents();
     const environment = events.flatMap(event => event.type === "user/message" && event.data.source.kind === "runtime-context" ? event.data.source.sections : [])
       .find(section => section.name === "pbot:environment");
-    assert.equal(JSON.parse(environment.text).workspaceRoot, root);
-    assert.equal(JSON.parse(environment.text).python.state, "error");
+    assert.deepEqual(JSON.parse(environment.text), { workspaceRoot: root, resourceRoot });
     const system = events.filter(event => event.type === "system/message").map(event => messageText(event.data.message)).join("\n");
     assert.equal(system.split(role).length - 1, 1);
     const instructions = events.filter(event => event.type === "user/message" && event.data.source.kind === "agent-instructions");

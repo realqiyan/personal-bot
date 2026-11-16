@@ -62,9 +62,9 @@ export const managementStyles = `
 .pbot-card > :is(h3, .pbot-between) { margin-bottom: 12px; }
 .pbot-badge { display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0; color: var(--pbot-muted); background: var(--pbot-bg); padding: 3px 8px; border-radius: 6px; font-size: 12px; font-weight: 500; white-space: nowrap; }
 .pbot-badge::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
-.pbot-badge:is([data-state=busy],[data-state=running],[data-state=starting],[data-state=preparing]) { color: var(--pbot-accent); background: var(--pbot-tint); }
+.pbot-badge:is([data-state=busy],[data-state=running],[data-state=starting]) { color: var(--pbot-accent); background: var(--pbot-tint); }
 .pbot-badge:is([data-state=error],[data-state=failed]) { color: var(--pbot-danger); }
-.pbot-badge:is([data-state=ready],[data-state=completed]) { color: var(--dsw-alias-state-success-primary, #26834b); }
+.pbot-badge[data-state=completed] { color: var(--dsw-alias-state-success-primary, #26834b); }
 .pbot-badge:is([data-state=paused],[data-state=stopping]) { color: var(--dsw-alias-state-warn-label, #9a6500); }
 .pbot-facts { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 7px 18px; margin: 12px 0; font-size: 13px; }
 .pbot-facts dt { color: var(--pbot-muted); }

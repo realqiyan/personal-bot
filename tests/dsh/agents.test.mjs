@@ -15,13 +15,12 @@ import { createUserMessage } from "@deepseek-ai/dsh-llm";
 import { dshHost } from "../helpers/dsh-host.mjs";
 import * as pbot from "../../dist/dsh.js";
 import { initializeWorkspaceConfig } from "../../dist/services/workspace/workspace-config.js";
-import { preparePythonFailure } from "../helpers/python-home.mjs";
 
 async function fixture(t) {
   const root = await realpath(await mkdtemp(join(tmpdir(), "pbot-dsh-agents-")));
   const previous = { DSH_HOME: process.env.DSH_HOME, AGENTS_HOME: process.env.AGENTS_HOME, XDG_DATA_HOME: process.env.XDG_DATA_HOME, HOME: process.env.HOME };
-  const { environment } = await preparePythonFailure(join(root, "user"));
-  Object.assign(process.env, environment, { DSH_HOME: join(root, "home"), AGENTS_HOME: join(root, "user-agents") });
+  Object.assign(process.env, { HOME: join(root, "user"), XDG_DATA_HOME: join(root, "user/data"),
+    DSH_HOME: join(root, "home"), AGENTS_HOME: join(root, "user-agents") });
   const host = await dshHost(join(root, "sessions"), { presets: true });
   t.after(async () => {
     try { await host.close(); }
@@ -186,9 +185,8 @@ test("native preset context refreshes before first requests and preserves comple
     const environment = events.flatMap(event => event.type === "user/message" && event.data.source.kind === "runtime-context" ? event.data.source.sections : [])
       .find(section => section.name === "pbot:environment");
     const data = JSON.parse(environment.text);
-    assert.deepEqual(Object.keys(data).sort(), ["python", "resourceRoot", "workspaceRoot"]);
+    assert.deepEqual(Object.keys(data).sort(), ["resourceRoot", "workspaceRoot"]);
     assert.equal(data.workspaceRoot, join(root, "a"));
-    assert.deepEqual(Object.keys(data.python).filter(key => !["state", "directory"].includes(key)), []);
     assert.ok(agent.session.requestHeader().tools.some(tool => tool.name === "read"));
   }
   const updated = "updated-resource-" + randomUUID();

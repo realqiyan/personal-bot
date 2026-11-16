@@ -1,6 +1,6 @@
 {
   "name": "personal-bot",
-  "version": "0.2.14",
+  "version": "0.2.15",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/realqiyan/personal-bot.git"
@@ -62,10 +62,7 @@
     ".claude-plugin/plugin.json",
     ".claude-plugin/marketplace.json",
     "hooks/hooks.json",
-    "scripts/setup-python.py",
     "scripts/README.md",
-    "python/requirements.lock",
-    "python/README.md",
     "README.md",
     "README.zh-CN.md",
     "CONTEXT.md",

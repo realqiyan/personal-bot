@@ -30,12 +30,12 @@ test("native autocomplete exposes current command contracts", async t => {
   const suggest = text => autocomplete.getSuggestions([text], 0, text.length, { force: false });
   const all = await suggest("/pbot ");
   assert.equal(all.prefix, "");
-  assert.deepEqual(all.items.map(item => item.value), ["init", "status", "history", "agents", "teams", "python"]);
+  assert.deepEqual(all.items.map(item => item.value), ["init", "status", "history", "agents", "teams"]);
   const filtered = await suggest("/pbot st");
   assert.deepEqual(filtered.items.map(item => item.value), ["status"]);
   const completed = autocomplete.applyCompletion(["/pbot st"], 0, 8, filtered.items[0], filtered.prefix);
   assert.equal(completed.lines[0].trimEnd(), "/pbot status");
-  for (const text of ["/pbot unknown", "/pbot upgrade", "/pbot python /", "/pbot init "]) {
+  for (const text of ["/pbot unknown", "/pbot upgrade", "/pbot init "]) {
     assert.equal(await suggest(text), null);
   }
 });
@@ -51,9 +51,7 @@ for (const legacy of [undefined, '{"format":"legacy/1","status":"pending"}', "in
     const started = await session.extensionRunner.emitBeforeAgentStart({ messageType: "user", prompt: "" }, { cwd: root });
     assert.doesNotThrow(() => buildSystemPrompt(started.systemPromptOptions));
     const environment = JSON.parse(started.systemPromptOptions.sections.pbot_environment);
-    assert.equal(environment.workspaceRoot, root);
-    assert.equal(environment.resourceRoot, resourceRoot);
-    assert.equal(environment.python.state, "error");
+    assert.deepEqual(environment, { workspaceRoot: root, resourceRoot });
     assert.deepEqual(errors, []);
     assert.deepEqual(session.getAllTools().map(t => t.name).filter(n => n.startsWith("pbot_")).sort(), ["pbot_agent", "pbot_history", "pbot_team", "pbot_team_message"]);
     assert.ok(loader.getSkills().skills.length > 0);

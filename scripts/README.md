@@ -19,9 +19,9 @@
 | --- | --- | --- |
 | `node scripts/check-consumer.mjs <tarball>` | 独立 CLI、Pi 扩展、技能、工具与资料初始化；安装 Pi 前核对消费根和包内均未安装宿主依赖 | CI 使用 Node.js 22.19.0，脚本安装锁定的 Pi SDK |
 | `node scripts/check-dsh-consumer.mjs <tarball>` | dsh 原生插件安装、独立 CLI 与 Host 导入；检查无需单独安装 TypeBox 或宿主 SDK | Node.js 24.9+、仓库开发依赖和 PATH 中的 pnpm |
-| `node scripts/check-claude-consumer.mjs <tarball>` | 实际 tarball 安装与原生 plugin validate；另在直接解包且没有 node_modules 的目录执行 hook、CLI 和资料读取 | Node.js 22.19+、Python 3.11+、Claude Code 2.1.325+；PBOT_CLAUDE_COMMAND 可指定 CLI |
+| `node scripts/check-claude-consumer.mjs <tarball>` | 实际 tarball 安装与原生 plugin validate；另在直接解包且没有 node_modules 的目录执行 hook、CLI 和资料读取 | Node.js 22.19+、Claude Code 2.1.325+；PBOT_CLAUDE_COMMAND 可指定 CLI |
 
-上述脚本使用隔离用户目录、宿主配置与工作目录，结束后清理临时目录，不调用模型。Pi 使用预置故障目录跳过 Python 下载，dsh 通过原生 schema 收集导入 Host。Claude 在独立 npm 消费目录安装实际 tarball，核对版本、原生资源与 hook 参数；再从直接解包目录运行未启用工作区的 hook/status，以及已启用工作区的专家资料与 Python 只读检查，覆盖原生 marketplace 不安装 npm 依赖的缓存目录。不访问日常会话或凭据。
+上述脚本使用隔离用户目录、宿主配置与工作目录，结束后清理临时目录，不调用模型。Pi 检查扩展加载与资料初始化，dsh 通过原生 schema 收集导入 Host。Claude 在独立 npm 消费目录安装实际 tarball，核对版本、原生资源与 hook 参数；再从直接解包目录运行未启用工作区的 hook/status，以及已启用工作区的专家资料读取，覆盖原生 marketplace 不安装 npm 依赖的缓存目录。不访问日常会话或凭据。
 
 Claude 包内路径包括 `.claude-plugin/plugin.json`、marketplace、`hooks/hooks.json`、`lib/claude.js`、`resources/claude/skills/pbot/SKILL.md`、原生 Markdown agent、共享资料与工作方法技能。`resources/skills/.claude-plugin/plugin.json` 保留给 Pi/dsh 的 Claude ACP 目标。可对实际安装包执行原生校验：
 
@@ -44,7 +44,3 @@ Claude 的实际首任务上下文、`/personal-bot:pbot` 技能调用、工作�
 在明确批准、单独准备 Pi/dsh/Claude 模型与测试认证的环境执行 `npm run test:e2e:acp`。该命令在临时工作区调用三个真实后端，省略 model、thinking 和 provider 验证默认值；另测 Claude 显式 low 覆盖原生环境 max。检查文件结果、报告分页、停止耗时，并对照 Claude 原生请求中的模型与思考等级。它单独运行，不进入 `npm test`，属于 Pi/dsh 的 ACP 目标验证。
 
 入口默认从 PATH 查找。可用 `PBOT_ACP_E2E_PI_COMMAND`、`PBOT_ACP_E2E_DSH_COMMAND`、`PBOT_ACP_E2E_CLAUDE_COMMAND` 指定已有可执行文件路径；dsh 仍使用 acp profile。`PBOT_ACP_E2E_OUTPUT_DIR` 指定输出目录，默认使用临时目录；每个工作区保留 input.json、output.json、report.txt 和 result.json；Claude 用例还保留仅含模型与等级的 native-requests.json。
-
-## Python 准备
-
-setup-python.py 按 python/requirements.lock 准备用户共享 venv。工作区启用后自动调用，也可运行独立脚本。Pi/dsh 使用 `/pbot python setup` 重试；Claude 使用原生 `/personal-bot:pbot python setup` 技能或 `node <plugin>/lib/claude.js python setup`。路径、依赖与排障见 [Python 说明](../python/README.md)。

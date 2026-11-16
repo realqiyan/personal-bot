@@ -8,13 +8,11 @@ import { assembleContextFor } from "@deepseek-ai/dsh-agent";
 import * as pbot from "../../dist/dsh.js";
 import { initializeWorkspaceConfig, workspaceConfigPath } from "../../dist/services/workspace/workspace-config.js";
 import { dshHost } from "../helpers/dsh-host.mjs";
-import { preparePythonFailure } from "../helpers/python-home.mjs";
 
 test("one dsh profile applies workspace opt-in independently, including reload and malformed configuration", async () => {
   const root = await realpath(await mkdtemp(join(tmpdir(), "pbot-dsh-config-")));
   const saved = { HOME: process.env.HOME, XDG_DATA_HOME: process.env.XDG_DATA_HOME, DSH_HOME: process.env.DSH_HOME };
-  const { environment } = await preparePythonFailure(join(root, "user"));
-  Object.assign(process.env, environment, { DSH_HOME: join(root, "home") });
+  Object.assign(process.env, { HOME: join(root, "user"), XDG_DATA_HOME: join(root, "user/data"), DSH_HOME: join(root, "home") });
   const host = await dshHost(join(root, "sessions"), { presets: true });
   const signal = new AbortController().signal;
   try {

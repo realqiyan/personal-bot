@@ -19,11 +19,11 @@ const validChat = schema(chatSchema);
 const approvalSchema = Type.Object({ agentId: Type.String({ minLength: 1 }), requestId: Type.String({ minLength: 1 }),
   optionId: Type.Union([Type.String({ minLength: 1 }), Type.Null()]) }, { additionalProperties: false });
 const validApproval = schema(approvalSchema);
-const usage = '用法：/pbot status | init | python setup | agent {"action":…} | chat {"agentId":…,"text":…} | team {"action":…} | post {"teamId":…,"text":…} | history {"action":…} | records {"agentId":…}';
+const usage = '用法：/pbot status | init | agent {"action":…} | chat {"agentId":…,"text":…} | team {"action":…} | post {"teamId":…,"text":…} | history {"action":…} | records {"agentId":…}';
 
 export function registerDshCommand(ctx: Context, workspaces: DshWorkspaces, management: PbotManagement) {
   ctx.commands.register({ name: "pbot", description: "Personal Bot 工作区与协作管理", recordInput: false,
-    input: { hint: "status | init | python setup | agent/chat/team/post/history/records JSON", attachments: true },
+    input: { hint: "status | init | agent/chat/team/post/history/records JSON", attachments: true },
     async handler({ agent, rawInput, signal, attachments, commandId }) {
       signal.throwIfAborted();
       const command = rawInput.trim(), split = command.search(/\s/);
@@ -42,10 +42,6 @@ export function registerDshCommand(ctx: Context, workspaces: DshWorkspaces, mana
       signal.throwIfAborted();
       const verb = split < 0 ? command : command.slice(0, split);
       requireThat(verb === "chat" || !attachments.length, "输入框附件仅用于 chat 人工对话。");
-      if (command === "python setup") {
-        const result = await workspaces.preparePython(); workspace.check();
-        return { kind: "success", text: JSON.stringify(result, null, 2) };
-      }
       requireThat(split >= 0, usage);
       const input: unknown = JSON.parse(command.slice(split));
       requireThat(object(input), "命令参数必须是 JSON 对象。");

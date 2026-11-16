@@ -15,7 +15,6 @@ import { acpContent } from "../../dist/integrations/acp/input.js";
 import { launch } from "../../dist/storage/agent-files.js";
 import { acpModelState, acpPermission, acpPermissionReply, acpReference, acpReport } from "../../dist/storage/acp-files.js";
 import { packageVersion } from "../../dist/common/version.js";
-import { preparePythonFailure } from "../helpers/python-home.mjs";
 import { readWorkspaceConfig } from "../../dist/services/workspace/workspace-config.js";
 
 const owner = { sessionId: "parent", leaf: "anchor", branch: ["anchor"] };
@@ -27,8 +26,8 @@ async function until(read, accept) {
 async function fixture(t, keyless = false) {
   const root = await realpath(await mkdtemp(join(tmpdir(), "pbot-acp-"))), directory = join(root, "control");
   await mkdir(join(root, ".pbot")); await writeFile(join(root, ".pbot/config.json"), '{"enabled":true}');
-  const python = await preparePythonFailure(join(root, "user"));
-  const environment = { ...python.environment, DSH_HOME: join(root, "dsh"), DSH_AGENTS_HOME: join(root, "agents") };
+  const environment = { HOME: join(root, "user"), XDG_DATA_HOME: join(root, "data"),
+    DSH_HOME: join(root, "dsh"), DSH_AGENTS_HOME: join(root, "agents") };
   const prior = Object.fromEntries(Object.keys(environment).map(key => [key, process.env[key]])); Object.assign(process.env, environment);
   const commands = { dsh: keyless ? { command: process.execPath, args: [new URL("../helpers/dsh-acp-driver.mjs", import.meta.url).pathname] }
     : { command: new URL("../../node_modules/@deepseek-ai/dsh/lib/bin.js", import.meta.url).pathname, args: ["--profile", "acp"] } };

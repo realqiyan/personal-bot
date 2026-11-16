@@ -14,7 +14,7 @@
 
 ## Claude 原生入口
 
-Claude 使用原生技能和 Agent/teams 界面。`/personal-bot:pbot init`、`status`、`python setup` 是标准技能请求，由模型通过 Bash 调用同一 Node CLI；需要确定性执行时直接运行 `node <plugin>/lib/claude.js init|status|python setup`。状态输出集中展示工作区、配置与 Python 信息。
+Claude 使用原生技能和 Agent/teams 界面。`/personal-bot:pbot init`、`status` 是标准技能请求，由模型通过 Bash 调用同一 Node CLI；需要确定性执行时直接运行 `node <plugin>/lib/claude.js init|status`。状态输出集中展示工作区与配置信息。
 
 专家由原生 Agent 使用 `personal-bot:general-purpose` 创建，团队的成员、通信、任务和完成通知由 Claude 管理。用户自行设置实验团队开关与 teammate mode；返回会话后明确要求继续，原生 resume/rewind 不恢复进程内 teammate。
 

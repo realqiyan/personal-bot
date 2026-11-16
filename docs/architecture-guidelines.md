@@ -8,7 +8,7 @@
 
 ## 复用宿主
 
-各宿主负责自己的主会话、模型配置、工具、UI、资源发现与会话恢复。Pi/dsh 共享专家、团队与历史服务；Claude 使用标准 command hooks、原生技能和 Markdown agent，共享资料准备与 Python 环境。Claude 的专家及团队交给原生 Agent/teams，跨宿主 ACP 委派保留在 Pi/dsh。按宿主实际需要装配能力，不构建通用 Host 平台。
+各宿主负责自己的主会话、模型配置、工具、UI、资源发现与会话恢复。Pi/dsh 共享专家、团队与历史服务；Claude 使用标准 command hooks、原生技能和 Markdown agent，共享资料准备与专业方法。Claude 的专家及团队交给原生 Agent/teams，跨宿主 ACP 委派保留在 Pi/dsh。按宿主实际需要装配能力，不构建通用 Host 平台。
 
 角色定义职责，技能描述专业方法，代码实现需要确定执行的规则。优先使用原生 CLI/MCP，执行权限由实际凭据、外部服务和运行环境约束。
 
