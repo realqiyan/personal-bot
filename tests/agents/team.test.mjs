@@ -17,7 +17,6 @@ import { teamParametersSchema, teamActionSchema, teamMessageActionSchema } from 
 import { schema } from "../../dist/common/schema.js";
 import { packageVersion } from "../../dist/common/version.js";
 import { host } from "../helpers/pi-host.mjs";
-import { preparePythonFailure } from "../helpers/python-home.mjs";
 import { initializeWorkspaceConfig } from "../../dist/services/workspace/workspace-config.js";
 
 const owner = { sessionId: "parent", leaf: "anchor", branch: ["anchor"] };
@@ -203,7 +202,6 @@ test("a stopped peer blocks remaining claims before the next parent scan", async
 test("resume seals receipt-only crashes before changing generation and never reclassifies them as unclaimed", { timeout: 20000 }, async t => {
   const f = await fixture(t, 1, { provider: "not-configured", model: "not-configured", noSkills: true, noContextFiles: true });
   const before = { ...process.env }, socketRoot = await mkdtemp(join(tmpdir(), "pbot-receipt-tmux-"));
-  await preparePythonFailure(f.root);
   for (const key of Object.keys(process.env)) delete process.env[key];
   Object.assign(process.env, { PATH: before.PATH, HOME: f.root, TERM: "xterm-256color", PI_OFFLINE: "1",
     PI_CODING_AGENT_DIR: join(f.root, "isolated-config"), TMUX_TMPDIR: socketRoot, XDG_DATA_HOME: before.XDG_DATA_HOME });
@@ -414,7 +412,6 @@ test("real idle Pi children do not call a model, and team use retains the origin
   Object.assign(process.env, { PATH: before.PATH, HOME: root, TERM: "xterm-256color", PI_OFFLINE: "1",
     PI_CODING_AGENT_DIR: join(root, "config"), TMUX_TMPDIR: root, XDG_DATA_HOME: join(root, "data") });
   await initializeWorkspaceConfig(root);
-  await preparePythonFailure(root);
   const agents = new AgentService(root, join(root, "subagents"), new PiAgents()), teams = new TeamService(root, agents.files, agents.teamFiles);
   t.after(async () => {
     try { await agents.close(owner); } finally {

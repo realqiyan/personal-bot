@@ -5,7 +5,6 @@ import { resourceRoot } from "../common/paths.js";
 import { packageVersion } from "../common/version.js";
 import { requireThat } from "../common/validation.js";
 import { agentText } from "../integrations/agent-resources.js";
-import { PythonEnvironmentService } from "../services/workspace/python-environment-service.js";
 import { readWorkspaceConfig } from "../services/workspace/workspace-config.js";
 import { initializeWorkspace } from "../services/workspace/workspace-preparation.js";
 
@@ -17,20 +16,6 @@ export async function claudeWorkspaceRoot(cwd: string, projectDirectory = proces
   return root;
 }
 
-async function pythonStatus(root: string, prepare: boolean, force = false) {
-  const python = new PythonEnvironmentService(root);
-  try {
-    if (force) await python.setup();
-    else {
-      const current = await python.inspect();
-      if (prepare && current.state === "unprepared") await python.setup();
-    }
-  } catch { /* The service retains the preparation or inspection error for status. */ }
-  finally { await python.close(); }
-  const status = python.status;
-  return { ...status, ...(status.state === "ready" ? { executable: join(status.directory!, "bin/python") } : {}) };
-}
-
 function disabled(configuration: Awaited<ReturnType<typeof readWorkspaceConfig>>) {
   return configuration.error ?? "Personal Bot 未在此工作区启用。运行 /personal-bot:pbot init；配置文件：" + configuration.path;
 }
@@ -38,12 +23,10 @@ function disabled(configuration: Awaited<ReturnType<typeof readWorkspaceConfig>>
 export async function claudeCommand(args: readonly string[], cwd: string) {
   const root = await claudeWorkspaceRoot(cwd);
   const action = args.join(" ");
-  requireThat(["init", "status", "python setup"].includes(action), "用法：node <插件目录>/lib/claude.js init|status|python setup");
+  requireThat(["init", "status"].includes(action), "用法：node <插件目录>/lib/claude.js init|status");
   if (action === "init") await initializeWorkspace(root);
   const configuration = await readWorkspaceConfig(root);
-  if (action === "python setup") requireThat(configuration.enabled, disabled(configuration));
-  return { version: packageVersion, workspaceRoot: root, resourceRoot, configuration,
-    python: configuration.enabled ? await pythonStatus(root, action !== "status", action === "python setup") : { state: "unprepared" as const } };
+  return { version: packageVersion, workspaceRoot: root, resourceRoot, configuration };
 }
 
 /** Standard command hooks consume documented stdin fields; native sessions remain entirely host-owned. */
@@ -51,7 +34,7 @@ export async function claudeHook(value: unknown): Promise<Record<string, unknown
   requireThat(object(value) && typeof value.hook_event_name === "string", "Claude hook 输入无效。");
   if (process.env.PBOT_SUBAGENT_RUN_ID) return {};
   const event = value.hook_event_name;
-  requireThat(["SessionStart", "UserPromptSubmit", "SubagentStart", "PreToolUse", "UserPromptExpansion"].includes(event), "Claude hook 事件未支持。");
+  requireThat(["UserPromptSubmit", "SubagentStart", "PreToolUse", "UserPromptExpansion"].includes(event), "Claude hook 事件未支持。");
   const skillCheck = event === "PreToolUse" || event === "UserPromptExpansion";
   if (skillCheck) {
     const skill = event === "UserPromptExpansion"
@@ -72,8 +55,6 @@ export async function claudeHook(value: unknown): Promise<Record<string, unknown
     hookSpecificOutput: { hookEventName: event, additionalContext: disabled(configuration) },
   };
   if (event === "SubagentStart" && value.agent_type !== "personal-bot:general-purpose") return {};
-  const python = await pythonStatus(root, event === "SessionStart" || event === "UserPromptSubmit");
-  if (event === "SessionStart") return python.state === "error" ? { systemMessage: python.error } : {};
   const member = event === "SubagentStart" || typeof value.agent_id === "string";
   const role = event === "SubagentStart" ? readFile(join(root, "agents/general-purpose.md"), "utf8").catch(error => {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return "";
@@ -87,8 +68,7 @@ export async function claudeHook(value: unknown): Promise<Record<string, unknown
       throw error;
     }),
   ]);
-  return { ...(python.state === "error" ? { systemMessage: python.error } : {}),
-    hookSpecificOutput: { hookEventName: event, additionalContext: [
-      workspace, duties, agents, JSON.stringify({ workspaceRoot: root, resourceRoot, python }),
+  return { hookSpecificOutput: { hookEventName: event, additionalContext: [
+      workspace, duties, agents, JSON.stringify({ workspaceRoot: root, resourceRoot }),
     ].filter(Boolean).join("\n\n") } };
 }

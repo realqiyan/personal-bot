@@ -25,8 +25,7 @@ export async function apply(ctx: Context) {
     await agent.ctx.plugin({ name: "pbot-acp-expert", inject, apply: async scope => {
       registerDshSkills(scope, agent);
       dshExpertTools(scope, agent, member.d.options);
-      await dshResources(scope, agent, member.d.workspace, "general-purpose", () => process.env.PBOT_ACP_PYTHON_STATE === "ready" && process.env.VIRTUAL_ENV
-        ? { state: "ready", directory: process.env.VIRTUAL_ENV } : { state: process.env.PBOT_ACP_PYTHON_STATE ?? "unavailable" }, member.check);
+      await dshResources(scope, agent, member.d.workspace, "general-purpose", member.check);
       registerDshFileEvents(scope, agent, member.d.workspace, true, member.check);
       let input: AcpInput | undefined, answer = "";
       scope.on("session/event", (session, event) => {

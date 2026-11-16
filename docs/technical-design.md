@@ -1,6 +1,6 @@
 # 技术设计
 
-Personal Bot 提供按工作区加载的 Pi 扩展、原生 dsh Host/Web 接入及 Claude Code 标准插件。模型负责分析、协调和工具使用；Pi/dsh 提供专家协作与历史归档，Claude 通过标准 hooks、技能和原生专家复用资料与共享 Python。安装与命令见[项目 README](../README.md)及 [Claude 使用指南](claude-code.md)。
+Personal Bot 提供按工作区加载的 Pi 扩展、原生 dsh Host/Web 接入及 Claude Code 标准插件。模型负责分析、协调和工具使用；Pi/dsh 提供专家协作与历史归档，Claude 通过标准 hooks、技能和原生专家复用资料与专业方法。安装与命令见[项目 README](../README.md)及 [Claude 使用指南](claude-code.md)。
 
 ## 模块与依赖
 
@@ -17,7 +17,7 @@ Claude command hooks / Node 命令
           integrations
 ```
 
-src/pbot.ts 装配 Pi，src/dsh.ts 装配 dsh Host，src/ui/dsh/index.ts 装配 Web 客户端。src/claude.ts 是 Claude 标准 command hook 与 Node 命令入口，src/extension/claude-hooks.ts 调用共用工作区和 Python 服务。Claude 静态发现 Markdown 技能与专家，不装配 pbot 历史、ACP 或面板。各宿主共享资料与适用的业务服务。
+src/pbot.ts 装配 Pi，src/dsh.ts 装配 dsh Host，src/ui/dsh/index.ts 装配 Web 客户端。src/claude.ts 是 Claude 标准 command hook 与 Node 命令入口，src/extension/claude-hooks.ts 调用共用工作区服务。Claude 静态发现 Markdown 技能与专家，不装配 pbot 历史、ACP 或面板。各宿主共享资料与适用的业务服务。
 
 src/extension/setup-cli.ts 装配独立 Pi 安装命令；`pbot setup` 通过原生 npm/Pi 准备工作区，再启动 Pi 执行 `/pbot init`。Claude 使用原生插件 marketplace。安装器顺序、来源保留与失败恢复由 services/installation 管理，详见[安装与升级](installation-design.md)。
 
@@ -26,21 +26,20 @@ src/extension/setup-cli.ts 装配独立 Pi 安装命令；`pbot setup` 通过原
 | src/tools/ | 输入、输出、schema、执行适配和工具列表 |
 | src/services/ | 业务规则、状态变更和操作顺序，按 agents、workspace、history、installation 聚合 |
 | src/model/ | 业务数据类型与窄能力约定，不包含业务实现或宿主 SDK 类型 |
-| src/integrations/ | Pi/dsh 原生会话、ACP 连接与进程、Python 环境激活 |
+| src/integrations/ | Pi/dsh 原生会话、ACP 连接与进程 |
 | src/storage/ | 原子 JSON、子会话、pbot 团队和历史文件 |
 | src/extension/ | 命令、事件和资源生命周期 |
 | src/ui/ | 确认队列、对话框和专家展示 |
 | src/common/ | JSON、校验、文件、包路径和版本辅助逻辑 |
 | resources/ | 角色、技能、提示词、模板和参考资料 |
 
-服务不依赖宿主 SDK、工具或 UI。共享进程执行可直接使用，其他宿主能力通过窄接口传入。接入层可引用服务类型；命令和工具通过服务执行状态变更。模型层用 interface/type 描述普通数据和窄能力契约；数据以普通对象进入 JSON、存储和工具结果。
+服务不依赖宿主 SDK、工具、UI 或接入层实现，宿主能力通过窄接口传入。接入层可引用服务类型；命令和工具通过服务执行状态变更。模型层用 interface/type 描述普通数据和窄能力契约；数据以普通对象进入 JSON、存储和工具结果。
 
-Claude command hook 是独立 Node 进程，只使用 Node 内置模块和共用资料/Python 服务。通用断言保留在 common/validation，依赖 Ajv 的 JSON Schema 编译放在 common/schema，由 Pi/dsh 工具适配显式引用，避免资料和配置读取加载第三方模块。hook 的 stdout 输出标准 JSON，诊断写 stderr；不加载宿主 SDK、mod API 或内部 MCP。
+Claude command hook 是独立 Node 进程，只使用 Node 内置模块和共用工作区服务。通用断言保留在 common/validation，依赖 Ajv 的 JSON Schema 编译放在 common/schema，由 Pi/dsh 工具适配显式引用，避免资料和配置读取加载第三方模块。hook 的 stdout 输出标准 JSON，诊断写 stderr；不加载宿主 SDK、mod API 或内部 MCP。
 
 | 主体 | 管理内容 |
 | --- | --- |
 | initializeWorkspace / prepareWorkspace | 初始化依次准备资料并写入共用启用配置；资料准备补建目录与根 AGENTS.md |
-| PythonEnvironmentService | venv 准备、依赖检查、状态与取消等待 |
 | AgentService / AgentRun / AcpAgentRun | 专家实例、启动预约、代次、inbox、领取/进入/消费/完成与交付资格；ACP prompt 收尾、固定报告与确认关联；拒绝向被团队占用的成员发送私人任务 |
 | TeamService | Pi/dsh 的固定成员、公共消息、有限轮次、团队占用与暂停规则 |
 | HistoryService | 三来源问答索引、四叉摘要、查询、来源写锁与精确输入提交核验 |
@@ -48,27 +47,27 @@ Claude command hook 是独立 Node 进程，只使用 Node 内置模块和共用
 
 ## Claude 标准插件入口
 
-`hooks/hooks.json` 声明 SessionStart、UserPromptSubmit、SubagentStart、PreToolUse/Skill 和 UserPromptExpansion 的 command handlers，使用独立 `command` 与 `args`，不经 shell 拼接路径。stdin 只消费公开事件字段，stdout 返回标准 hook JSON。固定根目录取 `CLAUDE_PROJECT_DIR`，普通 Node 命令无该变量时使用 cwd。
+`hooks/hooks.json` 声明 UserPromptSubmit、SubagentStart、PreToolUse/Skill 和 UserPromptExpansion 的 command handlers，使用独立 `command` 与 `args`，不经 shell 拼接路径。stdin 只消费公开事件字段，stdout 返回标准 hook JSON。固定根目录取 `CLAUDE_PROJECT_DIR`，普通 Node 命令无该变量时使用 cwd。
 
-SessionStart 检查并按需准备共享 Python。UserPromptSubmit 重读共用配置、公共约定、角色、根 AGENTS 与工作区职责补充，连同环境状态加入上下文；宿主提供子代理身份时使用专家职责。SubagentStart 只为插件的原生专家添加资料。未启用时不准备环境或加入业务资料，PreToolUse/Skill 与 UserPromptExpansion 分别检查模型调用和用户直接展开的 pbot 方法，拦截时返回初始化入口，管理技能仍可调用。
+UserPromptSubmit 重读共用配置、公共约定、角色、根 AGENTS 与工作区职责补充，连同工作区和资源路径加入上下文；宿主提供子代理身份时使用专家职责。SubagentStart 只为插件的原生专家添加资料。未启用时不加入业务资料，PreToolUse/Skill 与 UserPromptExpansion 分别检查模型调用和用户直接展开的 pbot 方法，拦截时返回初始化入口，管理技能仍可调用。
 
-`node <插件>/lib/claude.js init|status|python setup` 调用共用初始化与 Python 服务；`/personal-bot:pbot` 是执行同一入口的原生技能，会调用模型。原生专家 Markdown 由共用职责生成。Claude 不读取内部 transcript、团队配置、启动参数或消息收据，不注册 pbot 模型工具或管理面板。
+`node <插件>/lib/claude.js init|status` 调用共用工作区服务；`/personal-bot:pbot` 是执行同一入口的原生技能，会调用模型。原生专家 Markdown 由共用职责生成。Claude 不读取内部 transcript、团队配置、启动参数或消息收据，不注册 pbot 模型工具或管理面板。
 
 ## 加载与关闭
 
 宿主原生配置决定插件加载范围，工作区根目录下的 `.pbot/config.json` 决定业务实例是否启动。`services/workspace/workspace-config` 为三种宿主读取同一 JSON；缺失、false 或无效配置保持未启用，错误由状态入口报告，不向父目录继承。规则与修改生效方式见[工作区配置](workspace-configuration.md)。
 
-Pi 的 session_start 读取启动目录配置，仅在 enabled 为 true 时创建实例、注册工具和准备 Python。未启用时保留状态和初始化入口，不注册包内技能，也不注入 pbot 提示词；状态栏显示未启用或已启动。加载本身不开展模型任务。
+Pi 的 session_start 读取启动目录配置，仅在 enabled 为 true 时创建实例和注册工具。未启用时保留状态和初始化入口，不注册包内技能，也不注入 pbot 提示词；状态栏显示未启用或已启动。加载本身不开展模型任务。
 
 Pi 的 `/pbot` 打开原生菜单，状态与长记录使用只读阅读页；dsh 使用独立工作台。见[界面设计](interaction-design.md)。
 
-`/pbot init` 先准备资料，再将共用配置中的 enabled 设为 true，保留其他字段；无效配置在写入前报错。Pi 从未启用状态初始化后调用原生 ctx.reload，让实例、工具、技能和新建根 AGENTS 一起生效；已启动会话仅补建资料，新建 AGENTS 经 `/reload` 加载。`/pbot status` 展示运行状态、路径、版本和完整 Python 状态；模型环境只保留工作区、资源根目录及 Python 状态与就绪目录。实际 cwd 由宿主提供，准备错误日志保留在状态入口。
+`/pbot init` 先准备资料，再将共用配置中的 enabled 设为 true，保留其他字段；无效配置在写入前报错。Pi 从未启用状态初始化后调用原生 ctx.reload，让实例、工具、技能和新建根 AGENTS 一起生效；已启动会话仅补建资料，新建 AGENTS 经 `/reload` 加载。`/pbot status` 展示运行状态、路径和版本；模型环境提供 `workspaceRoot` 与 `resourceRoot`，实际 cwd 由宿主提供。
 
-Pi 主 reload 在配置仍启用时保留子进程并重新关联，但暂停团队，不继续安排旧批次；配置关闭或损坏时停止所属专家；退出或切换会话时清理子进程、取消环境准备并恢复本实例持有的环境变量。关闭操作幂等。子会话的分支归属、通知和恢复规则见[专家协作](agent-collaboration.md)。
+Pi 主 reload 在配置仍启用时保留子进程并重新关联，但暂停团队，不继续安排旧批次；配置关闭或损坏时停止所属专家；退出或切换会话时清理子进程。关闭操作幂等。子会话的分支归属、通知和恢复规则见[专家协作](agent-collaboration.md)。
 
-dsh 为原生 registry 中的每个根 Agent 读取其原始 cwd 下的配置，仅对已启用根目录建立协调者工作区。关闭的工作区保留只读状态和初始化入口，其余业务命令与 Remote 查询拒绝进入；init 写入配置后重新打开同一根目录下尚未启用的主会话，按目录合并并发初始化；首个已启用工作区触发共享 Python 准备。专家使用同进程独立 Agent/Session；组件或所属父 Agent 关闭时取消预约、暂停安排并等待自己拥有的执行资源释放。打开页面、轮询、重连不恢复专家或启动模型，已接纳工作不归浏览器生命周期所有。原生存在但由其他实例持有的专家不能替换或假称已释放。
+dsh 为原生 registry 中的每个根 Agent 读取其原始 cwd 下的配置，仅对已启用根目录建立协调者工作区。关闭的工作区保留只读状态和初始化入口，其余业务命令与 Remote 查询拒绝进入；init 写入配置后重新打开同一根目录下尚未启用的主会话，按目录合并并发初始化。专家使用同进程独立 Agent/Session；组件或所属父 Agent 关闭时取消预约、暂停安排并等待自己拥有的执行资源释放。打开页面、轮询、重连不恢复专家或启动模型，已接纳工作不归浏览器生命周期所有。原生存在但由其他实例持有的专家不能替换或假称已释放。
 
-Claude 在每次用户提交和适用 hook 中读取固定根目录的配置。hook 没有常驻实例、租约、心跳或后台摘要；配置停用后不再加入业务资料或准备 Python。宿主关闭与原生会话恢复由 Claude 自己管理。Python 用完整解释器路径，不修改宿主环境，插件停用无需恢复 PATH。实现边界见[Claude 接入](claude-code-design.md)。
+Claude 在每次用户提交和适用 hook 中读取固定根目录的配置。hook 没有常驻实例、租约、心跳或后台摘要；配置停用后不再加入业务资料。宿主关闭与原生会话恢复由 Claude 自己管理。实现边界见[Claude 接入](claude-code-design.md)。
 
 ## 资源加载
 
@@ -145,15 +144,11 @@ Pi/dsh 的 pbot 团队采用独立 team.json，不改动旧 AgentMessage、Agent
 
 Web 拥有草稿、上传和查询；接纳后的命令归服务端。命令不重复记录私人输入正文，人工对话要求团队暂停成功后才进入 inbox。原生工具成功读取或上下文实际消费才确认通知；PTC 内层 read 还要求根调用成功，页面读取不确认。
 
-## Python 环境
+## 计算方法
 
-所有工作区共用当前用户的 venv。PythonEnvironmentService 调用 scripts/setup-python.py，按 python/requirements.lock 创建或对齐依赖，完成 pip check、库导入和基础计算检查后标记就绪。安装仅使用 wheel。
+计算通过宿主原生 Bash 和第三方库 API 执行，使用项目声明的解释器、依赖、工作目录、输入和输出。Python 版本及库的选择由项目和任务决定。Pi、dsh、Claude 与 ACP worker 沿用其启动环境，不修改 Python 相关进程变量。
 
-共享锁串行化跨进程 setup，同一服务合并重叠请求。失败或取消时保留环境并报告状态，其他扩展功能继续可用；可通过 `/pbot python setup` 重试。共享 venv 的解释器无法运行时（基础解释器被移除或升级），在锁内重建该 venv；非 venv 数据、符号链接和其他环境仍拒绝覆盖。
-
-Pi/dsh 在当前宿主进程激活 PATH、VIRTUAL_ENV 和 Python 路径变量，供随后启动的 Bash 继承；同一 dsh 进程内工作区共用激活生命周期。恢复只修改仍由本实例持有的变量。Claude hooks 检查共享环境并给出 `python.executable` 完整路径，由 Bash 显式使用，不修改父宿主环境。环境更新会影响其他工作区，更新前应停止相关脚本。
-
-计算通过原生 Bash 和第三方库 API 执行，使用项目自身的目录、输入和输出约定。路径、安装条件与许可见 [Python 说明](../python/README.md)。
+通用方法保留在 `resources/references/compute.md`，指标与回测方法保留在 `compute-finance.md`，按任务读取。它们说明库的使用方法与影响结果的计算口径；项目依赖由项目管理，不增加 pbot 计算工具或统一库包装。
 
 ## 工具与分发
 

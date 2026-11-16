@@ -90,8 +90,6 @@ export function showManagement(ctx: Context, parentSessionId: SessionId) {
   const counts = note(""), workspaceInfo = group(status); status.querySelector("header")!.after(counts); counts.classList.add("pbot-counts");
   const materials = group(status, "pbot-setting"); materials.append(element("h3", "资料目录"));
   const initializeButton = button(materials, "准备目录", async () => { await command("init", undefined, "工作区已初始化并启用。"); });
-  const pythonCard = group(status, "pbot-setting"), pythonInfo = group(pythonCard);
-  const pythonButton = button(pythonCard, "准备 Python", async () => { await command("python setup", undefined, "Python 准备完成。"); });
   const diagnostic = details(status, "环境详情"), statusBody = block(""); statusBody.classList.add("pbot-raw"); diagnostic.append(statusBody);
   const permissions = group(status, "pbot-setting"); permissions.hidden = true;
   let permissionKey = "";
@@ -383,27 +381,23 @@ export function showManagement(ctx: Context, parentSessionId: SessionId) {
       counts.textContent = configuration.error ? "Personal Bot 配置错误" : "Personal Bot 未启用";
       workspaceInfo.replaceChildren(facts([["状态", configuration.error ? "配置错误" : "未启用"], ["工作区", snapshot.workspaceRoot], ["配置文件", configuration.path]]),
         note(configuration.error ? "修复配置文件后执行 /pbot init。" : "执行 /pbot init，或点击下方按钮初始化并启用。"));
-      pythonInfo.replaceChildren(note("启用工作区后自动准备共享 Python 环境。"));
       materials.hidden = false; initializeButton.textContent = "初始化并启用";
       enabled(initializeButton, !configuration.error);
       for (const [id, control] of tabs) enabled(control, id === "status");
-      enabled(pythonButton, false); activate("status");
+      activate("status");
       statusBody.textContent = JSON.stringify(snapshot, null, 2);
       if (configuration.error) inform(text(configuration.error), "error");
       return;
     }
     for (const control of tabs.values()) enabled(control, true);
     materials.hidden = false; initializeButton.textContent = "准备目录"; enabled(initializeButton, true);
-    const agents = rows(snapshot.agents), teams = rows(snapshot.teams), python = record(snapshot.python), history = record(snapshot.history);
+    const agents = rows(snapshot.agents), teams = rows(snapshot.teams), history = record(snapshot.history);
     tabCounts.get("experts")!.textContent = text(agents.length); tabCounts.get("teams")!.textContent = text(teams.length);
     const active = agents.filter(agent => ["starting", "busy", "stopping"].includes(text(agent.state))).length;
     counts.textContent = `Personal Bot 已启动 · 专家 ${agents.length} · 执行中 ${active} · 团队 ${teams.length}`;
     const model = object(snapshot.model) ? snapshot.model : {};
     workspaceInfo.replaceChildren(facts([["状态", "已启动"], ["工作区", snapshot.workspaceRoot], ["配置文件", record(snapshot.configuration).path], ["模型", model.model || "尚未选择"], ["Provider", model.provider || "—"],
       ["历史", history.organizing ? "整理中" : history.pending === null ? "查询时更新索引" : `${history.pending} 项待整理`]]));
-    pythonInfo.replaceChildren(element("h3", "Python"), badge(python.state));
-    if (python.error) pythonInfo.append(element("p", text(python.error), "pbot-warning"));
-    enabled(pythonButton, python.state !== "preparing");
     const { agents: _agents, teams: _teams, ...summary } = snapshot; statusBody.textContent = JSON.stringify(summary, null, 2);
     const pending = rows(snapshot.permissions), nextPermissionKey = pending.map(request => text(request.agentId) + ":" + text(request.requestId)).join(",");
     permissions.hidden = !pending.length;

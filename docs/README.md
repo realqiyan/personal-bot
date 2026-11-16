@@ -4,11 +4,11 @@
 
 - [项目介绍与安装](../README.zh-CN.md) / [English](../README.md)
 - [dsh 使用](dsh.md)：profile、插件、Web 管理与聊天命令
-- [Claude Code 使用](claude-code.md)：标准插件安装、原生技能、CLI、专家与 Python
+- [Claude Code 使用](claude-code.md)：标准插件安装、原生技能、CLI 与专家
 - [工作区配置](workspace-configuration.md)：三宿主共用启用、静态技能例外与配置生效
 - [专家协作](agent-collaboration.md)：原生专家、Pi/dsh 的 pbot 团队、Claude 原生团队与 ACP
 - [历史对话](history.md)：Pi/dsh 查询、摘要与既有归档兼容
-- [Python 环境](../python/README.md)：准备、排障、计算库与许可
+- [Python 计算](../resources/references/compute.md)：项目运行与第三方库方法；[指标与回测](../resources/references/compute-finance.md)
 - [领域术语](../CONTEXT.md)
 
 ## 开发

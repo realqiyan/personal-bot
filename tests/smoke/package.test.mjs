@@ -5,7 +5,6 @@ import { mkdir, readFile, readdir, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { packageRoot, rpcWorkspace } from "../helpers/pi-rpc.mjs";
-import { pythonExecutable } from "../helpers/python-home.mjs";
 
 const exec = promisify(execFile);
 
@@ -41,7 +40,7 @@ test("smoke: obsolete state cannot block Personal Bot and preparation preserves 
   assert.deepEqual(await pi.stop(), { code: 0, signal: null });
 });
 
-test("smoke: packed sources load tools and the standalone setup script without dist or initialization", { timeout: 60_000 }, async t => {
+test("smoke: packed sources load tools and the standalone CLI without dist or initialization", { timeout: 60_000 }, async t => {
   const workspace = await rpcWorkspace(t);
   const { temp } = workspace;
   const { stdout } = await exec("npm", ["pack", "--offline", "--ignore-scripts", "--json", "--pack-destination", temp], {
@@ -51,11 +50,6 @@ test("smoke: packed sources load tools and the standalone setup script without d
   const [{ filename }] = JSON.parse(stdout);
   await exec("tar", ["-xzf", join(temp, filename), "-C", temp], { timeout: 10_000 });
   const packed = join(temp, "package");
-  const plan = await exec(pythonExecutable, ["-I", "-B", join(packed, "scripts/setup-python.py"), "--check"],
-    { env: { HOME: temp, XDG_DATA_HOME: join(temp, "empty-data") } });
-  assert.equal(JSON.parse(plan.stdout).python, join(temp, process.platform === "darwin"
-    ? "Library/Application Support/pbot/python/.venv/bin/python" : "empty-data/pbot/python/.venv/bin/python"));
-  await assert.rejects(readdir(join(temp, "empty-data")), { code: "ENOENT" });
   assert.deepEqual(await readdir(workspace.root), [".pbot"]);
   // Supply the already installed locked dependencies; do not download or install packages.
   await symlink(join(packageRoot, "node_modules"), join(packed, "node_modules"), "dir");

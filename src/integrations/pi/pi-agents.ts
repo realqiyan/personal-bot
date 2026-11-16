@@ -58,11 +58,18 @@ export class PiAgents implements AgentHost {
       if (o.thinking) args.push("--thinking", o.thinking);
     }
     if (o.tools) args.push("--tools", o.tools.join(","));
-    const result = spawnSync("tmux", ["new-session", "-d", "-s", tmuxName(d.agentId), "-x", "120", "-y", "40", "-c", d.cwd, "--",
-      "env", `PBOT_SUBAGENT_RUN_ID=${d.agentId}`, `PBOT_SUBAGENT_DIR=${directory}`, `PBOT_SUBAGENT_GENERATION=${generation}`,
-      `PI_CODING_AGENT_DIR=${getAgentDir()}`, `PI_CODING_AGENT_SESSION_DIR=${process.env.PI_CODING_AGENT_SESSION_DIR ?? ""}`,
-      ...["PATH", "HOME", "XDG_DATA_HOME", "XDG_CONFIG_HOME"].flatMap(key => process.env[key] === undefined ? [] : [`${key}=${process.env[key]}`]),
-      process.execPath, join(getPackageDir(), "dist/cli.js"), ...args], { encoding: "utf8" });
+    const environment: NodeJS.ProcessEnv = { ...process.env, PWD: d.cwd,
+      PBOT_SUBAGENT_RUN_ID: d.agentId, PBOT_SUBAGENT_DIR: directory, PBOT_SUBAGENT_GENERATION: generation,
+      PI_CODING_AGENT_DIR: getAgentDir() };
+    const terminalKeys = ["TERM", "TMUX", "TMUX_PANE", "TERM_PROGRAM", "TERM_PROGRAM_VERSION"];
+    for (const key of terminalKeys) delete environment[key];
+    const cached = spawnSync("tmux", ["show-environment", "-g"], { encoding: "utf8" }).stdout ?? "";
+    const removed = cached.split("\n").map(line => line.replace(/^-/, "").split("=", 1)[0]!)
+      .filter(key => key && environment[key] === undefined && !terminalKeys.includes(key));
+    // Session environment values stay out of the pane command; clear values cached only by the server.
+    const result = spawnSync("tmux", ["new-session", "-d", "-s", tmuxName(d.agentId), "-x", "120", "-y", "40", "-c", d.cwd,
+      ...Object.entries(environment).flatMap(([key, value]) => value === undefined ? [] : ["-e", `${key}=${value}`]), "--",
+      "/usr/bin/env", ...removed.flatMap(key => ["-u", key]), process.execPath, join(getPackageDir(), "dist/cli.js"), ...args], { encoding: "utf8" });
     requireThat(result.status === 0, result.stderr || "子会话启动失败。");
   }
   report(d: AgentDescriptor, reference: AgentSessionReference, leaf: string) {

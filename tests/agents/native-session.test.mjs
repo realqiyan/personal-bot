@@ -14,7 +14,6 @@ import { PiAgents, tmuxName } from "../../dist/integrations/pi/pi-agents.js";
 import { packageVersion } from "../../dist/common/version.js";
 import childEntry from "../../dist/extension/subagent-entry.js";
 import { initializeWorkspaceConfig, workspaceConfigPath } from "../../dist/services/workspace/workspace-config.js";
-import { preparePythonFailure } from "../helpers/python-home.mjs";
 
 const owner = { sessionId: "parent", leaf: null, branch: [] };
 const options = { provider: "openai", model: "gpt-4.1", noSkills: true, noContextFiles: true, noPromptTemplates: true };
@@ -33,7 +32,6 @@ async function isolated(t) {
     }
   });
   await initializeWorkspaceConfig(root);
-  await preparePythonFailure(root);
   await mkdir(join(root, "config"), { recursive: true });
   return { root, agents, agentDir: join(root, "config") };
 }
@@ -65,6 +63,8 @@ async function probeExtension(agentDir) {
         writeFileSync(join(process.env.PBOT_SUBAGENT_DIR, "probe-" + process.env.PBOT_SUBAGENT_GENERATION + ".json"), JSON.stringify({
           id: ctx.sessionManager.getSessionId(), file: ctx.sessionManager.getSessionFile(), cwd: ctx.cwd,
           model: ctx.model?.id, thinking: pi.getThinkingLevel(),
+          environment: Object.fromEntries(["PBOT_TEST_CHANGED", "PBOT_TEST_REMOVED", "PBOT_TEST_NEW", "PBOT_TEST_EMPTY", "TERM", "TMUX", "TMUX_PANE"]
+            .filter(key => process.env[key] !== undefined).map(key => [key, process.env[key]])),
           users: ctx.sessionManager.getEntries().filter(e => e.type === "message" && e.message.role === "user").map(e => e.message.content)
         }));
       });
@@ -107,6 +107,32 @@ test("real CLI chooses native cwd directories and settings, clears stale tmux ov
     await until(() => !agents.host.alive(child.agentId));
     assert.equal(agents.files.session(child.agentId), null); assert.equal(existsSync(reopened.file), false);
   }
+});
+
+test("real tmux child inherits current parent values and deletions while keeping its terminal identity", { timeout: 30000 }, async t => {
+  const { agents, agentDir } = await isolated(t);
+  await probeExtension(agentDir);
+  const server = spawnSync("tmux", ["-f", "/dev/null", "new-session", "-d", "-s", "environment-keeper", "sleep", "120"], {
+    env: { ...process.env, PBOT_TEST_CHANGED: "server-value", PBOT_TEST_REMOVED: "server-only" }, encoding: "utf8",
+  });
+  assert.equal(server.status, 0, server.stderr);
+  process.env.PBOT_TEST_CHANGED = "current parent ' \" $value `literal`\nsecond line";
+  process.env.PBOT_TEST_NEW = "parent-only";
+  process.env.PBOT_TEST_EMPTY = "";
+  delete process.env.PBOT_TEST_REMOVED;
+  process.env.TERM = "parent-terminal";
+  process.env.TMUX_PANE = "%999999";
+  const child = await agents.start({ ...options, noExtensions: false }, owner), native = await probe(agents, child);
+  assert.equal(native.environment.PBOT_TEST_CHANGED, process.env.PBOT_TEST_CHANGED);
+  assert.equal(native.environment.PBOT_TEST_NEW, "parent-only");
+  assert.equal(native.environment.PBOT_TEST_EMPTY, "");
+  assert.equal(Object.hasOwn(native.environment, "PBOT_TEST_REMOVED"), false);
+  const terminal = spawnSync("tmux", ["list-panes", "-s", "-t", "=" + tmuxName(child.agentId), "-F", "#{socket_path},#{pid},#{session_id}|#{pane_id}"], { encoding: "utf8" });
+  assert.equal(terminal.status, 0, terminal.stderr);
+  const [tmux, pane] = terminal.stdout.trim().split("|");
+  assert.equal(native.environment.TMUX, tmux.replace(/,\$(\d+)$/, ",$1"));
+  assert.equal(native.environment.TMUX_PANE, pane);
+  assert.notEqual(native.environment.TERM, process.env.TERM);
 });
 
 test("real managed resume opens the bound native file and leaves saved model selection to Pi despite directory changes", { timeout: 30000 }, async t => {

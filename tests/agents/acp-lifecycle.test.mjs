@@ -42,10 +42,17 @@ test("Claude discovers bundled and project skills through its native catalog wit
   const configuration = await claudeOptions({ command: entry, args: [] }, root);
   let end;
   const pending = new Promise(resolve => { end = resolve; });
+  let exited;
   // Native initialization discovers resources before any user input or provider request.
   const session = query({ prompt: (async function* () { await pending; })(), options: {
     ...configuration.options, cwd: root, settingSources: ["project"], persistSession: false,
     env: { PATH: process.env.PATH, CLAUDE_CONFIG_DIR: config, DISABLE_AUTOUPDATER: "1" },
+    spawnClaudeCodeProcess: options => {
+      const child = spawn(options.command, options.args, { cwd: options.cwd, env: options.env, signal: options.signal, stdio: "pipe" });
+      exited = new Promise(resolve => child.once("close", resolve));
+      child.stderr.resume();
+      return child;
+    },
   } });
   const close = () => { session.close(); end(); };
   t.signal.addEventListener("abort", close, { once: true });
@@ -55,7 +62,11 @@ test("Claude discovers bundled and project skills through its native catalog wit
       ["personal-bot:project-maintenance", "personal-bot:provider-connections"]);
     assert.equal(commands.filter(command => command.name === "local-check").length, 1);
     assert.equal((await session.supportedAgents()).some(agent => agent.name.startsWith("personal-bot:")), false);
-  } finally { t.signal.removeEventListener("abort", close); close(); }
+  } finally {
+    t.signal.removeEventListener("abort", close); close();
+    // Query.close() starts shutdown; wait for the native writer before removing its config.
+    await exited;
+  }
 });
 
 test("closing a real ACP connection leaves no referenced grace timer in the client process", { timeout: 30000 }, async t => {

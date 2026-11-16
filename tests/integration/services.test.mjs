@@ -10,7 +10,6 @@ import { PiAgents } from "../../dist/integrations/pi/pi-agents.js";
 import { agentFileTools } from "../../dist/integrations/pi/agent-tools.js";
 import { AgentService } from "../../dist/services/agents/agent-service.js";
 import { TeamService } from "../../dist/services/agents/team-service.js";
-import { PythonEnvironmentService } from "../../dist/services/workspace/python-environment-service.js";
 import { WorkspaceInstance } from "../../dist/extension/lifecycle.js";
 import { Confirmations } from "../../dist/ui/confirmation.js";
 import { HistoryService } from "../../dist/services/history/history-service.js";
@@ -21,7 +20,7 @@ async function fixture(t) {
   const { root, session } = await host(t);
   const confirmations = new Confirmations(), ctx = session.extensionRunner.createToolContext("local", undefined);
   const agents = new AgentService(root, join(root, "agent-state"), new PiAgents());
-  const instance = new WorkspaceInstance(root, new PythonEnvironmentService(root), agents,
+  const instance = new WorkspaceInstance(root, agents,
     new TeamService(root, agents.files, agents.teamFiles), new HistoryService(root, new HistoryFiles(join(root, "history-index")), new PiHistory(root)));
   t.after(() => instance.close());
   return { root, ctx, confirmations, instance };
@@ -57,15 +56,13 @@ test("native agent file tools allow workspace documents and reject outside write
   await assert.rejects(access(join(f.root, "../not-authorized")));
 });
 
-test("workspace close cancels setup and invalidates access without changing user documents", async t => {
-  const f = await fixture(t), service = f.instance.pythonEnvironment;
+test("workspace close invalidates access without changing user documents", async t => {
+  const f = await fixture(t);
   await writeFile(join(f.root, "AGENTS.md"), "User instructions");
-  const signal = f.instance.signal(), pending = service.setup(), rejected = assert.rejects(pending);
+  const signal = f.instance.signal();
   await f.instance.close();
-  await rejected;
   assert.equal(signal.aborted, true);
   assert.throws(() => f.instance.check());
   assert.equal(await readFile(join(f.root, "AGENTS.md"), "utf8"), "User instructions");
   assert.deepEqual(JSON.parse(await readFile(join(f.root, ".pbot/config.json"), "utf8")), { enabled: true });
-  await assert.rejects(service.setup());
 });

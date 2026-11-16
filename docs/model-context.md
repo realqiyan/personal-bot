@@ -23,7 +23,7 @@ Personal Bot 分别接入 Pi、dsh 和 Claude Code 原生主会话。Pi/dsh 也�
 
 ## Pi
 
-工作区通过 `.pbot/config.json` 显式启用后，主会话保留 Pi 原生系统提示、工具、AGENTS、技能目录和 cwd，再加入公共约定、协调者职责、Pi/dsh 操作导航、工作区补充和环境状态。未启用时只保留状态和初始化入口，不创建 pbot 实例，不注册业务工具、提示词或包内技能。专家使用 general-purpose 职责；原生资料由专家 cwd 决定，pbot 职责补充从原工作区读取。
+工作区通过 `.pbot/config.json` 显式启用后，主会话保留 Pi 原生系统提示、工具、AGENTS、技能目录和 cwd，再加入公共约定、协调者职责、Pi/dsh 操作导航、工作区补充及工作区与资源路径。未启用时只保留状态和初始化入口，不创建 pbot 实例，不注册业务工具、提示词或包内技能。专家使用 general-purpose 职责；原生资料由专家 cwd 决定，pbot 职责补充从原工作区读取。
 
 已启用的 Pi 主会话通过 `resources_discover` 提供包内技能路径，由原生加载器读取，遵守 CLI `--no-skills` 和包级过滤；专家使用自己的 noSkills 选项。技能与提示模板正文在读取或展开时加入。
 
@@ -49,29 +49,28 @@ Claude 自己加载原生系统提示、`CLAUDE.md`、用户规则、工具、�
 
 | 入口 | 加载行为 |
 | --- | --- |
-| SessionStart | 已启用时准备共享 Python venv |
-| UserPromptSubmit | 已启用时读取公共约定、共有协调者职责、Claude 操作导航、工作区 `agents/coordinator.md`、根 `AGENTS.md` 与环境状态 |
-| SubagentStart | 仅对 `personal-bot:general-purpose` 加载公共约定、专家职责、工作区 `agents/general-purpose.md`、根资料与环境 |
+| UserPromptSubmit | 已启用时读取公共约定、共有协调者职责、Claude 操作导航、工作区 `agents/coordinator.md`、根 `AGENTS.md` 及工作区与资源路径 |
+| SubagentStart | 仅对 `personal-bot:general-purpose` 加载公共约定、专家职责、工作区 `agents/general-purpose.md`、根资料及工作区与资源路径 |
 | PreToolUse / Skill、UserPromptExpansion | 检查模型调用和用户直接展开的 pbot 工作方法；未启用或配置无效时拦截并给出初始化入口，保留 `personal-bot:pbot` 初始化技能可用 |
 
 `resources/claude/agents/general-purpose.md` 在构建时从共享职责生成，原生 Agent 负责启动与完成。SubagentStart 按确切 agent 类型补充工作区资料，不读取私有团队文件或父进程参数来推断身份。其他原生专家及团队沿用 Claude 自己的上下文规则。
 
 根 `AGENTS.md` 通过 hook 提供，pbot 保留用户 `CLAUDE.md`。公共约定、职责与工作区补充在下一次相应 hook 执行时读取当前内容。插件不检查或解析私人 transcript。
 
-原生 `/personal-bot:pbot init`、`status`、`python setup` 是技能请求，模型通过 Bash 调用 `node <plugin>/lib/claude.js` 的同名操作。需要确定性执行时可直接调用该 CLI。包内工作方法使用原生静态技能发现，未启用时仍可显示名称和简介。
+原生 `/personal-bot:pbot init`、`status` 是技能请求，模型通过 Bash 调用 `node <plugin>/lib/claude.js` 的同名操作。需要确定性执行时可直接调用该 CLI。包内工作方法使用原生静态技能发现，未启用时仍可显示名称和简介。
 
-Claude 环境提供工作区、资源位置及 Python 状态；就绪时包含 `python.executable` 完整路径。Bash 用该路径运行脚本，插件不修改 Claude PATH 或环境变量。Claude 会话、原生团队通信、完成通知与恢复由宿主管理；pbot 不采集或查询新的 Claude 历史，也不生成自动摘要。
+Claude 环境提供 `workspaceRoot` 与 `resourceRoot`，脚本通过原生 Bash 按项目约定运行。Claude 会话、原生团队通信、完成通知与恢复由宿主管理；pbot 不采集或查询新的 Claude 历史，也不生成自动摘要。
 
 ## ACP 成员
 
-Pi 和 dsh 的 ACP 成员使用专用入口加载公共约定、general-purpose 职责、工作区补充和环境状态，并使用各自原生资源发现。入口不消费 pbot inbox，输入由 ACP worker 投递。Pi 的 before_agent_start 刷新 section；dsh 的 system-prompt/assemble 刷新原生 section。
+Pi 和 dsh 的 ACP 成员使用专用入口加载公共约定、general-purpose 职责、工作区补充及工作区与资源路径，并使用各自原生资源发现。入口不消费 pbot inbox，输入由 ACP worker 投递。Pi 的 before_agent_start 刷新 section；dsh 的 system-prompt/assemble 刷新原生 section。
 
-Pi/dsh 委派的 Claude ACP 子代理通过协商后的 systemPrompt append 加入同一公共约定、职责和环境状态。包内 `resources/skills/` 作为该子会话的原生本地插件注册，技能元数据进入 Claude 目录，正文按需读取；该插件清单只声明技能。原生 CLAUDE、用户与项目技能、工具由 Claude 自己加载。恢复时重新提供 pbot 内容和插件路径。ACP 成员只处理独立工作，不加入 pbot 团队上下文。
+Pi/dsh 委派的 Claude ACP 子代理通过协商后的 systemPrompt append 加入同一公共约定、职责及工作区与资源路径。包内 `resources/skills/` 作为该子会话的原生本地插件注册，技能元数据进入 Claude 目录，正文按需读取；该插件清单只声明技能。原生 CLAUDE、用户与项目技能、工具由 Claude 自己加载。恢复时重新提供 pbot 内容和插件路径。ACP 成员只处理独立工作，不加入 pbot 团队上下文。
 
-worker 独立准备并激活共享 Python 环境。协议流中的 thought 和工具进度用于活动状态，Pi/dsh 的最终答复按原生完成边界提取，Claude 按消息 ID 和 prompt 完成边界定稿。
+协议流中的 thought 和工具进度用于活动状态，Pi/dsh 的最终答复按原生完成边界提取，Claude 按消息 ID 和 prompt 完成边界定稿。
 
 ## 环境与历史
 
-Pi/dsh 模型环境提供 `workspaceRoot`、`resourceRoot`、`python.state` 和就绪时的 `python.directory`。实际 cwd 由宿主提供，Python 准备错误在 `/pbot status` 查看。Claude 的 status 只检查当前环境，准备错误在当次 hook 或 init/python setup 结果中显示。
+各宿主的 pbot 模型环境提供 `workspaceRoot` 与 `resourceRoot`，实际 cwd 由宿主提供。公共提示保留资料目录用途，计算方法按任务读取；解释器与依赖沿用项目约定。
 
 Pi/dsh 历史摘要只接收 `resources/prompts/history-summary.md` 与当前问答或下层摘要，附带时段和未完成标记，不提供工具或普通会话上下文。长文本按预算分段汇总，完整原文保留；查询、面板和资源加载不触发摘要。

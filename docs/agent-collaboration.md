@@ -22,7 +22,7 @@ Pi 的 start 支持 noExtensions、noSkills、noPromptTemplates 和 noContextFil
 
 以下附件、进程模型与 TUI 说明面向 Pi；dsh 的差异见下一节。初始 files 相对工作区根目录解析。子入口在每份附件前标出绝对来源路径，保留 Pi 原生 read 的文本、图像及截断提示；未读完的附件由成员沿该路径续读。message 与 prompts 合并为一次输入，不继承父聊天历史。
 
-初始模型与思考级别默认继承主会话；恢复时交由 Pi 使用保存的原生模型配置，不重新传入初始模型选项。模型不可用或缺少认证时仍遵循 Pi 的原生回退与错误行为。子会话从自己的 cwd 和 Pi agent dir 取得原生配置与认证，不继承父进程临时注册的模型或 MCP。环境与授权规则见[工具与执行](capability-design.md)。
+初始模型与思考级别默认继承主会话；恢复时交由 Pi 使用保存的原生模型配置，不重新传入初始模型选项。模型不可用或缺少认证时仍遵循 Pi 的原生回退与错误行为。子会话从自己的 cwd 和 Pi agent dir 取得原生配置与认证，不继承父进程临时注册的模型或 MCP。Pi 专家在启动与恢复时继承当前父进程的环境变量，终端身份由新 tmux pane 设置；父进程已删除的变量不会从 tmux server 的缓存中重新传入。环境与授权规则见[工具与执行](capability-design.md)。
 
 ## dsh 专家
 
@@ -36,7 +36,7 @@ dsh 使用原生 provider/model/reasoning effort，拒绝 Pi 专属扩展、提�
 
 ## Claude 原生专家与团队
 
-Claude 插件通过静态 Markdown agent 提供 `personal-bot:general-purpose`，由原生 Agent 创建专家。构建从共享职责生成该文件；工作区启用后，SubagentStart 仅为这一类型补充公共约定、工作区专家职责、根资料与环境。模型、effort、权限、完成通知与会话记录遵循 Claude 原生规则，pbot 不读取私有团队格式来判断成员身份。
+Claude 插件通过静态 Markdown agent 提供 `personal-bot:general-purpose`，由原生 Agent 创建专家。构建从共享职责生成该文件；工作区启用后，SubagentStart 仅为这一类型补充公共约定、工作区专家职责、根资料及工作区与资源路径。模型、effort、权限、完成通知与会话记录遵循 Claude 原生规则，pbot 不读取私有团队格式来判断成员身份。
 
 完成后明确发送要求可继续原生专家上下文。团队需要用户在启动环境中设置 `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`，并自行选择原生 teammateMode；pbot 安装与 init 不修改开关。成员通过原生消息与任务工具交流，组织和状态由 Claude 管理。
 
@@ -72,7 +72,7 @@ ACP 成员支持待命、独立委派、持续对话、状态、固定周期报�
 
 返回的 transport 为 acp，selection 给出 provider、model 和有效 thinking，包含宿主默认值。Claude 的 model 保留配置别名，resolvedModel 在原生会话报告后给出实际模型 ID；Pi 详情与 dsh 工作区页一起显示两者。Claude 的默认思考等级遵循原生环境设置，显式 thinking 只覆盖当前成员的启动配置。capabilities 给出当前能力。首批不提供运行中 steer、团队通信和完整原生记录；工具在忙碌时拒绝 steer，团队使用原生专家。Pi 专属启动开关只对 Pi 目标生效；Claude 的工具与技能通过 Claude 原生配置选择。
 
-成员加载公共约定、general-purpose 职责和工作区同名补充，并按需使用包内技能。Claude 的原生技能目录中可见 personal-bot:provider-connections 和 personal-bot:project-maintenance，用户与项目技能继续沿用 Claude 配置。worker 准备并激活共享 Python 环境，准备失败时继续提供协作能力，并向成员报告环境状态。
+成员加载公共约定、general-purpose 职责、工作区同名补充及 `workspaceRoot`、`resourceRoot`，并按需使用包内技能。Claude 的原生技能目录中可见 personal-bot:provider-connections 和 personal-bot:project-maintenance，用户与项目技能继续沿用 Claude 配置。计算使用目标宿主可用的项目环境。
 
 Pi 的 `/pbot agents` 对 ACP 成员提供任务、报告、补充要求及携新要求恢复；原生 Pi 成员继续通过 tmux 进入。dsh 专家页展示 ACP 任务与报告，也支持人工消息和附件。
 

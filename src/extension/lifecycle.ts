@@ -1,9 +1,7 @@
 import { realpath } from "node:fs/promises";
-import { activatePython } from "../integrations/python-activation.js";
 import { requireThat } from "../common/validation.js";
 import { authorizeMutation } from "../services/workspace/workspace-files.js";
 import type { AgentOwner } from "../model/agent.js";
-import type { PythonEnvironmentService } from "../services/workspace/python-environment-service.js";
 import type { AgentService } from "../services/agents/agent-service.js";
 import type { TeamService } from "../services/agents/team-service.js";
 import type { CallAccess } from "../tools/access.js";
@@ -15,18 +13,7 @@ export class WorkspaceInstance implements CallAccess {
   readonly #controller = new AbortController();
   #work = new AbortController();
   #closing: Promise<void> | undefined;
-  #restorePython: (() => void) | undefined;
-  constructor(readonly root: string, readonly pythonEnvironment: PythonEnvironmentService, readonly agents: AgentService,
-    readonly teams: TeamService, readonly history: HistoryService) {}
-  async preparePython(signal?: AbortSignal) {
-    this.check();
-    this.#restorePython?.();
-    this.#restorePython = undefined;
-    const result = await this.pythonEnvironment.setup(signal);
-    this.check();
-    this.#restorePython ??= activatePython(result.directory);
-    return result;
-  }
+  constructor(readonly root: string, readonly agents: AgentService, readonly teams: TeamService, readonly history: HistoryService) {}
   check() {
     requireThat(!this.#controller.signal.aborted, "pbot 工作区实例已关闭。");
   }
@@ -49,15 +36,13 @@ export class WorkspaceInstance implements CallAccess {
     this.#controller.abort();
     this.#work.abort();
     this.#closing = (async () => {
-      try {
-        const errors: unknown[] = [];
-        try { if (this.agentOwner) this.teams.pauseAll(this.agentOwner, "主会话关闭或重新载入"); }
-        catch (error) { errors.push(error); }
-        this.teams.dispose();
-        const results = await Promise.allSettled([this.agents.close(this.agentOwner, preserveAgents), this.pythonEnvironment.close(), this.history.close()]);
-        errors.push(...results.filter(result => result.status === "rejected").map(result => result.reason));
-        if (errors.length) throw new AggregateError(errors, "工作区关闭失败。");
-      } finally { this.#restorePython?.(); this.#restorePython = undefined; }
+      const errors: unknown[] = [];
+      try { if (this.agentOwner) this.teams.pauseAll(this.agentOwner, "主会话关闭或重新载入"); }
+      catch (error) { errors.push(error); }
+      this.teams.dispose();
+      const results = await Promise.allSettled([this.agents.close(this.agentOwner, preserveAgents), this.history.close()]);
+      errors.push(...results.filter(result => result.status === "rejected").map(result => result.reason));
+      if (errors.length) throw new AggregateError(errors, "工作区关闭失败。");
     })();
     return this.#closing;
   }

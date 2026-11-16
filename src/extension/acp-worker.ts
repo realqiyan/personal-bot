@@ -9,8 +9,6 @@ import { acpExecutable } from "../integrations/acp/launch.js";
 import { claudeOptions } from "../integrations/acp/claude.js";
 import { acpContent } from "../integrations/acp/input.js";
 import { agentText } from "../integrations/agent-resources.js";
-import { activatePython } from "../integrations/python-activation.js";
-import { PythonEnvironmentService } from "../services/workspace/python-environment-service.js";
 import { resourceRoot } from "../common/paths.js";
 import { requireThat } from "../common/validation.js";
 import { packageVersion, releaseLine } from "../common/version.js";
@@ -25,18 +23,13 @@ requireThat(files.directory(id) === directory, "ACP worker 目录不匹配。");
 const d = files.read(id, "descriptor.json", descriptor), reference = files.read(id, "acp-session.json", acpReference);
 requireThat(d.agentId === id && releaseLine(d.release) === releaseLine(packageVersion), "ACP worker 身份或版本不匹配。");
 const validating = args.includes("--validate"), lifetime = new AbortController();
-let execution: AcpAgentRun | undefined, restorePython: (() => void) | undefined;
-const python = new PythonEnvironmentService(d.workspace);
+let execution: AcpAgentRun | undefined;
 const stop = () => { void execution?.stop().catch(error => lifetime.abort(error)); if (!execution) lifetime.abort(); };
 process.on("SIGTERM", stop); process.on("SIGINT", stop);
 
 async function main() {
   requireThat(files.read(id!, "launch.json", launch).generation === generation, "ACP worker 启动代次已失效。");
-  if (!validating) {
-    try { const prepared = await python.setup(lifetime.signal); restorePython = activatePython(prepared.directory); }
-    catch { lifetime.signal.throwIfAborted(); }
-  }
-  const env = { ...process.env, PBOT_ACP_PYTHON_STATE: validating ? "unavailable" : python.status.state, PBOT_SUBAGENT_RUN_ID: id!, PBOT_SUBAGENT_DIR: directory!, PBOT_SUBAGENT_GENERATION: generation!,
+  const env = { ...process.env, PBOT_SUBAGENT_RUN_ID: id!, PBOT_SUBAGENT_DIR: directory!, PBOT_SUBAGENT_GENERATION: generation!,
     ...(validating ? { PBOT_ACP_VALIDATE: "1" } : {}) };
   const command = { ...reference, args: [...reference.args] };
   const packageRoot = resolve(resourceRoot, "..");
@@ -52,8 +45,7 @@ async function main() {
   let prompt: string | undefined;
   if (reference.backend === "claude") {
     prompt = [await readFile(join(resourceRoot, "prompts/workspace.md"), "utf8"), await agentText("general-purpose", d.workspace),
-      JSON.stringify({ workspaceRoot: d.workspace, resourceRoot, python: python.status.state === "ready"
-        ? { state: "ready", directory: process.env.VIRTUAL_ENV } : { state: python.status.state } })].join("\n\n");
+      JSON.stringify({ workspaceRoot: d.workspace, resourceRoot })].join("\n\n");
   }
   const saveSelection = (selection: AcpModelSelection) => {
     if (validating) return;
@@ -118,7 +110,6 @@ try {
   process.exitCode = 1;
 } finally {
   lifetime.abort();
-  try { await python.close(); } finally { restorePython?.(); }
   if (process.connected) process.disconnect();
   // Keep child processes in this worker's process group so forced release covers descendants.
 }

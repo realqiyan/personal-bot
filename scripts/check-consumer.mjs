@@ -35,15 +35,11 @@ try {
   const driver = join(consumer, "verify.mjs");
   await writeFile(driver, `
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
-import { mkdir, readdir, writeFile } from "node:fs/promises";
+import { mkdir, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { createAgentSession, DefaultResourceLoader, ModelRuntime, SessionManager, SettingsManager } from "@earendil-works/pi-coding-agent";
 const [workspace, agentDir, packed] = process.argv.slice(2);
 await mkdir(agentDir);
-const plan = JSON.parse(execFileSync("python3", ["-I", "-B", join(packed, "scripts/setup-python.py"), "--check"], { encoding: "utf8" }));
-await mkdir(plan.directory, { recursive: true });
-await writeFile(join(plan.directory, "keep"), "unrelated test data");
 const settingsManager = SettingsManager.inMemory({ packages: [packed] });
 const loader = new DefaultResourceLoader({ cwd: workspace, agentDir, settingsManager, noContextFiles: true });
 await loader.reload();

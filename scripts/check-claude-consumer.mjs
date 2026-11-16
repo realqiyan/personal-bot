@@ -54,10 +54,10 @@ try {
     { cwd: workspace, env, encoding: "utf8", timeout: 30_000 }));
   assert.equal(rawStatus.version, manifest.version);
   assert.equal(rawStatus.configuration.enabled, false);
-  assert.equal(rawStatus.python.state, "unprepared");
+  assert.equal(rawStatus.workspaceRoot, workspace);
   assert.equal(status.version, manifest.version);
   assert.equal(status.configuration.enabled, false);
-  assert.equal(status.python.state, "unprepared");
+  assert.equal(status.workspaceRoot, workspace);
   const hook = hooks.hooks.UserPromptSubmit[0].hooks[0];
   assert.equal(hook.command, "node");
   const args = hook.args.map(value => value.replaceAll("${CLAUDE_PLUGIN_ROOT}", raw));
@@ -76,8 +76,7 @@ try {
     { cwd: enabled, env, encoding: "utf8", timeout: 30_000,
       input: JSON.stringify({ hook_event_name: "SubagentStart", cwd: enabled, agent_type: "personal-bot:general-purpose" }) }));
   const environment = JSON.parse(member.hookSpecificOutput.additionalContext.split("\n\n").at(-1));
-  assert.equal(environment.resourceRoot, join(raw, "resources") + "/");
-  assert.notEqual(environment.python.state, "error", JSON.stringify(environment.python));
+  assert.deepEqual(environment, { workspaceRoot: enabled, resourceRoot: join(raw, "resources") + "/" });
   assert.equal(member.hookSpecificOutput.hookEventName, "SubagentStart");
   await assert.rejects(stat(join(workspace, ".pbot")), { code: "ENOENT" });
   console.log(`Packed Claude command hooks, native plugin validation and standalone CLI passed; extracted Claude hooks and CLI ran without node_modules: personal-bot@${version}, Node ${process.version}.`);

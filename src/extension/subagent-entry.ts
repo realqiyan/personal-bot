@@ -11,8 +11,6 @@ import { teamContext } from "../integrations/pi/team-context.js";
 import { teamBrief } from "../integrations/team-context.js";
 import { readAgentSession } from "../integrations/pi/pi-agents.js";
 import type { TeamLink } from "../model/team.js";
-import { PythonEnvironmentService } from "../services/workspace/python-environment-service.js";
-import { activatePython } from "../integrations/python-activation.js";
 import { authorizeMutation } from "../services/workspace/workspace-files.js";
 import { agentText } from "../integrations/agent-resources.js";
 import { agentInput } from "../integrations/pi/agent-input.js";
@@ -38,7 +36,7 @@ export default async function subagent(pi: ExtensionAPI) {
   let activeTeam: TeamLink | undefined, pendingPause: string | undefined;
   let ready = false, disposed = false;
   let ctx: ExtensionContext | undefined, timer: ReturnType<typeof setInterval> | undefined;
-  let python: PythonEnvironmentService | undefined, restorePython: (() => void) | undefined;
+  let initialized = false;
   let processing = false, closing = false, startLeaf: string | null = null;
   const execution = new AgentRun(files, id, generation);
   let lastActivity = 0;
@@ -47,7 +45,7 @@ export default async function subagent(pi: ExtensionAPI) {
     lifetime.signal.throwIfAborted(); files.check();
     const run = files.read(id, "launch.json", launch);
     requireThat(run.generation === generation && !run.stop, "子会话已停止或启动代次变化。");
-    requireThat(python, "子会话尚未就绪。");
+    requireThat(initialized, "子会话尚未就绪。");
   };
   const bindSession = () => {
     const file = ctx?.sessionManager.getSessionFile();
@@ -79,7 +77,7 @@ export default async function subagent(pi: ExtensionAPI) {
       teams.files.setReady(id, generation, false); ready = false;
       pauseTeam("成员停止");
       save({ state: "stopping", activity: "停止" });
-    } finally { try { await python?.close(); } finally { ctx?.shutdown(); } }
+    } finally { ctx?.shutdown(); }
   };
   const pump = async () => {
     if (processing || !ctx || closing) return;
@@ -175,9 +173,7 @@ export default async function subagent(pi: ExtensionAPI) {
       })) pi.registerTool(tool);
       // Keep the native CLI loadout, including MCP exposure and explicit --tools choices.
       pi.setActiveTools(active);
-      python = new PythonEnvironmentService(d.workspace);
-      try { const result = await python.setup(lifetime.signal); restorePython = activatePython(result.directory); }
-      catch (error) { ctx.ui.notify(String(error), "warning"); }
+      initialized = true;
       save({ state: "idle", activity: "空闲" });
       ready = !pendingPause && pi.getActiveTools().includes("pbot_team_message");
       teams.files.setReady(id, generation, ready);
@@ -195,7 +191,6 @@ export default async function subagent(pi: ExtensionAPI) {
     ctx = context;
     try {
       ensure(); bindSession();
-      requireThat(python, "子会话计算环境状态不可用。");
       const workspace = await readFile(join(resourceRoot, "prompts/workspace.md"), "utf8");
       const role = await agentText("general-purpose", d.workspace);
       let brief: string | undefined, message;
@@ -205,9 +200,8 @@ export default async function subagent(pi: ExtensionAPI) {
         brief = teamBrief(link);
         message = teamContext(link, context, link.request.throughSeq);
       }
-      const { state, directory } = python.status;
       Object.assign(event.systemPromptOptions.sections, {
-        pbot_environment: JSON.stringify({ workspaceRoot: d.workspace, resourceRoot, python: { state, directory } }),
+        pbot_environment: JSON.stringify({ workspaceRoot: d.workspace, resourceRoot }),
         pbot_workspace: workspace, pbot_child: role,
       });
       if (brief) event.systemPromptOptions.sections.pbot_team = brief;
@@ -270,7 +264,7 @@ export default async function subagent(pi: ExtensionAPI) {
       if (execution.current) finish(true);
       if (event.reason !== "reload" && execution.state !== "error") save({ state: "stopped", activity: "已停止" });
     } finally {
-      try { await python?.close(); } finally { restorePython?.(); teams.dispose(); ctx = undefined; }
+      initialized = false; teams.dispose(); ctx = undefined;
     }
   });
 }

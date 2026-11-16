@@ -17,7 +17,6 @@ import { agentBoard } from "../../dist/ui/agent-display.js";
 import { loadThemeFromPath } from "../../node_modules/@earendil-works/pi-coding-agent/dist/modes/interactive/theme/theme.js";
 import { visibleWidth } from "@earendil-works/pi-tui";
 import { host } from "../helpers/pi-host.mjs";
-import { preparePythonFailure } from "../helpers/python-home.mjs";
 import { initializeWorkspaceConfig } from "../../dist/services/workspace/workspace-config.js";
 
 async function temp(t) {
@@ -75,7 +74,6 @@ test("stopped history remains readable, enforces branch ownership and never resu
 test("a real tmux Pi process with an unavailable model exits without a fake model or replay", { timeout: 30000 }, async t => {
   assert.equal(spawnSync("tmux", ["-V"]).status, 0, "tmux is required for process acceptance");
   const root = await realpath(await mkdtemp(join(tmpdir(), "pbot-agent-process-"))), before = { ...process.env };
-  await preparePythonFailure(root);
   for (const key of Object.keys(process.env)) delete process.env[key];
   Object.assign(process.env, { PATH: before.PATH, HOME: root, TERM: "xterm-256color", PI_OFFLINE: "1",
     PI_CODING_AGENT_DIR: join(root, "config"), TMUX_TMPDIR: root, XDG_DATA_HOME: before.XDG_DATA_HOME });
@@ -103,7 +101,6 @@ test("a real tmux Pi process with an unavailable model exits without a fake mode
 
 test("agent tool exposes control and report data without replaying launch context or storage identities", { timeout: 30000 }, async t => {
   const directory = await temp(t), before = { ...process.env };
-  await preparePythonFailure(directory);
   for (const key of Object.keys(process.env)) delete process.env[key];
   Object.assign(process.env, { PATH: before.PATH, HOME: directory, TERM: "xterm-256color", PI_OFFLINE: "1",
     PI_CODING_AGENT_DIR: join(directory, "config"), TMUX_TMPDIR: directory, XDG_DATA_HOME: before.XDG_DATA_HOME });
@@ -239,8 +236,7 @@ test("actual child entry uses native tools without provider state or recursive d
   assert.deepEqual(loader.getSkills().skills, []);
   const started = await session.extensionRunner.emitBeforeAgentStart({ messageType: "user", prompt: "" }, { cwd });
   const environment = JSON.parse(started.systemPromptOptions.sections.pbot_environment);
-  assert.equal(environment.workspaceRoot, root); assert.equal(environment.resourceRoot, resourceRoot);
-  assert.deepEqual(environment.python, { state: "error" });
+  assert.deepEqual(environment, { workspaceRoot: root, resourceRoot });
   const bash = session.agent.state.tools.find(t => t.name === "bash");
   const output = await bash.execute("native", { command: "printf 42" });
   assert.notEqual(output.isError, true);

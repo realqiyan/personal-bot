@@ -20,14 +20,6 @@ export function registerEvents(pi: ExtensionAPI, lifecycle: Lifecycle, confirmat
         return;
       }
       ctx.ui.setStatus("pbot", "PBot 已启动");
-      if (ctx.mode === "tui") ctx.ui.setStatus("pbot-python", "Python 准备中");
-      else ctx.ui.notify("正在准备共享 Python 环境；首次安装可能需要数分钟。", "info");
-      try { await lifecycle.get().preparePython(); }
-      catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        if (ctx.mode === "tui") ctx.ui.notify("Python 未就绪；/pbot status 查看详情。", "warning");
-        else if (ctx.hasUI) ctx.ui.notify(message, "warning"); else console.error(message);
-      } finally { if (ctx.mode === "tui") ctx.ui.setStatus("pbot-python", undefined); }
     } catch (error) {
       ctx.ui.setStatus("pbot", "PBot 启动失败");
       if (ctx.hasUI) ctx.ui.notify(error instanceof Error ? error.message : "pbot 启动失败。", "error");
@@ -46,10 +38,9 @@ export function registerEvents(pi: ExtensionAPI, lifecycle: Lifecycle, confirmat
       const role = await agentText("coordinator", instance.root);
       const workspace = await readFile(join(resourceRoot, "prompts/workspace.md"), "utf8");
       instance.check();
-      const { state, directory } = instance.pythonEnvironment.status;
       Object.assign(event.systemPromptOptions.sections, {
         pbot_workspace: workspace,
-        pbot_environment: JSON.stringify({ workspaceRoot: instance.root, resourceRoot, python: { state, directory } }),
+        pbot_environment: JSON.stringify({ workspaceRoot: instance.root, resourceRoot }),
         pbot: role,
       });
     } catch (error) {
@@ -65,7 +56,7 @@ export function registerEvents(pi: ExtensionAPI, lifecycle: Lifecycle, confirmat
   pi.on("session_shutdown", async (event, ctx) => {
     const preserve = event.reason === "reload" && lifecycle.root && (await readWorkspaceConfig(lifecycle.root)).enabled;
     try { await lifecycle.close(Boolean(preserve)); }
-    finally { ctx.ui.setStatus("pbot", undefined); ctx.ui.setStatus("pbot-python", undefined); }
+    finally { ctx.ui.setStatus("pbot", undefined); }
   });
   pi.on("tool_call", async (event, ctx) => {
     const instance = lifecycle.active;

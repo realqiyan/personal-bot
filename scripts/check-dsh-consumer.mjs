@@ -33,7 +33,7 @@ try {
     { cwd: workspace, env, encoding: "utf8" }).trim();
   assert.equal(version, manifest.version);
 
-  // The native schema collector imports the Host entry without mounting plugins or starting Python/model work.
+  // The native schema collector imports the Host entry without mounting plugins or starting model work.
   const dump = JSON.parse(dsh(["--profile", "pbot-consumer", "--dump-config-schema"]));
   const entries = dump["x-cordis"].entries.filter(entry => entry.name === "personal-bot");
   assert.equal(entries.length, 1);

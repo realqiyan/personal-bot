@@ -5,17 +5,15 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { createAgentSession, createCodemodeExtension, DefaultResourceLoader, ModelRuntime, SessionManager, SettingsManager } from "@earendil-works/pi-coding-agent";
 
-import { preparePythonFailure } from "./python-home.mjs";
 import { initializeWorkspaceConfig } from "../../dist/services/workspace/workspace-config.js";
 
-// Exercise a real damaged shared environment on the current platform, with an isolated user home.
 const previousDataHome = process.env.XDG_DATA_HOME, previousHome = process.env.HOME;
-const pythonDataHome = await realpath(await mkdtemp(join(tmpdir(), "pbot-python-host-")));
-Object.assign(process.env, (await preparePythonFailure(pythonDataHome)).environment);
+const userHome = await realpath(await mkdtemp(join(tmpdir(), "pbot-pi-home-")));
+Object.assign(process.env, { HOME: userHome, XDG_DATA_HOME: join(userHome, "data") });
 after(async () => {
   if (previousDataHome === undefined) delete process.env.XDG_DATA_HOME; else process.env.XDG_DATA_HOME = previousDataHome;
   if (previousHome === undefined) delete process.env.HOME; else process.env.HOME = previousHome;
-  await rm(pythonDataHome, { recursive: true, force: true });
+  await rm(userHome, { recursive: true, force: true });
 });
 
 export async function host(t, { prepare, enabled = true, workspaceEnabled = true, extensions = [], noSkills = false, noContextFiles = true, packageEntry = resolve(".") } = {}) {

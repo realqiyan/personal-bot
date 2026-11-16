@@ -11,17 +11,14 @@ import { requireThat } from "../../common/validation.js";
 import type { AgentOptions } from "../../model/agent.js";
 
 export async function dshResources(ctx: Context, _agent: Agent, root: string,
-  role: "coordinator" | "general-purpose", python: () => { state: string; directory?: string; error?: string }, check: () => void) {
+  role: "coordinator" | "general-purpose", check: () => void) {
   const read = () => Promise.all([agentText(role, root), readFile(join(resourceRoot, "prompts/workspace.md"), "utf8")]);
   const [text, workspace] = await read();
   check();
   ctx.systemPrompt.section({ name: "pbot:role", order: 1, text, interpolate: false });
   ctx.systemPrompt.section({ name: "pbot:workspace", order: 2, text: workspace, interpolate: false });
   ctx.systemPrompt.context({ name: "pbot:environment", order: 300, required: true, interpolate: false,
-    text: () => {
-      const { state, directory } = python();
-      return JSON.stringify({ workspaceRoot: root, resourceRoot, python: { state, ...(directory ? { directory } : {}) } });
-    } });
+    text: JSON.stringify({ workspaceRoot: root, resourceRoot }) });
   ctx.on("system-prompt/assemble", async (_assembly, _context, next) => {
     check();
     const [roleText, workspaceText] = await read();

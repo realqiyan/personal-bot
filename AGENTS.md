@@ -12,16 +12,15 @@ Personal Bot connects knowledge, research, and action. It provides a workspace-s
 - `src/tools/`: complete tool contracts, execution adapters, and explicit tool lists.
 - `src/services/`: business rules, state changes, and operation order.
 - `src/model/`: business data types and narrow capability contracts; no business behavior or host SDK types.
-- `src/integrations/`: native Pi/dsh sessions, ACP targets including Claude, Python environment activation, and process execution.
+- `src/integrations/`: native Pi/dsh sessions, ACP targets including Claude, and process execution.
 - `src/storage/`: atomic JSON and subagent file storage.
 - `src/extension/`: commands, events, activation, and resource lifetime.
 - `src/ui/`: confirmation queue, dialogs, and agent display.
 - `src/common/`: shared JSON, validation, file, and package-path helpers.
 - `resources/`: roles, skills, and references; shared coordinator duties compose `prompts/native-coordinator.md` for Pi/dsh or `prompts/claude-coordinator.md` for Claude.
 - `tests/`: necessary Node tests using real local logic and host SDKs; dedicated real-model acceptance runs separately.
-- `python/`: locked calculation dependencies, usage guidance, and native-library integration tests.
 - `docs/`: current architecture and usage guides.
-- `scripts/`: build helpers and shared Python venv preparation.
+- `scripts/`: build helpers and consumer checks.
 - `bin/pbot.mjs`: standalone installation CLI launcher.
 - `lib/`: generated installation CLI, dsh Host/Web, and Claude Node artifacts shipped in the npm package. Do not edit generated files.
 - `dist/`: generated test imports. Do not edit generated files.
@@ -34,7 +33,7 @@ Release versions use `MAJOR.MINOR.PATCH` from `package.json`; bundled components
 
 ## Commands
 
-Use Linux with Node.js 24.9 or later for full development and acceptance. Pi consumers, the standalone CLI, and Claude command hooks/CLI retain Node.js 22.19+. Claude Code requires 2.1.325+; this is the current validation baseline. dsh currently requires Node.js 24.9+; check the current release's engines when updating. User installation instructions follow the latest dsh release, without an exact version pin. Declare the minimum host version in engines.dsh and host-provided dsh SDKs as "*" optional peers; keep exact development dependencies and the lockfile for reproducible checks, and record the versions actually tested. The current development baseline is 0.2.2-rc.1. Computation requires Python 3.11+.
+Use Linux with Node.js 24.9 or later for full development and acceptance. Pi consumers, the standalone CLI, and Claude command hooks/CLI retain Node.js 22.19+. Claude Code requires 2.1.325+; this is the current validation baseline. dsh currently requires Node.js 24.9+; check the current release's engines when updating. User installation instructions follow the latest dsh release, without an exact version pin. Declare the minimum host version in engines.dsh and host-provided dsh SDKs as "*" optional peers; keep exact development dependencies and the lockfile for reproducible checks, and record the versions actually tested. The current development baseline is 0.2.2-rc.1.
 
 - `npm ci --ignore-scripts`: install locked dependencies.
 - `npm run check`: check TypeScript and dependency boundaries without emitting files.
@@ -54,7 +53,7 @@ Pi loads the source extension with jiti. The standalone CLI uses prebuilt lib fi
 - Prefer each host’s native tools, UI, resource discovery, configuration, and sessions over custom equivalents. Keep Pi, dsh, and Claude native configuration and session ownership separate; share business services and materials.
 - Claude uses native Agent/teams, static Markdown agents, skills, and standard Node command hooks. Do not add a pbot panel, history, ACP management, MCP bridge, mod, private transcript/team parsing, parent argv inspection, heartbeat instance, notifications, or automatic summaries there. Pi/dsh may still use Claude as an ACP target; keep its SDK as an optional peer and development dependency for that adapter.
 - The user owns CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 and teammate mode. Continue work explicitly; native resume/rewind does not restore in-process teammates.
-- Claude SessionStart prepares shared Python; UserPromptSubmit loads workspace material guidance, coordinator duties, root AGENTS, and environment; SubagentStart adds specialist context only for personal-bot:general-purpose. The native /personal-bot:pbot skill invokes the same Node CLI for init, status, and python setup; it is a model-driven skill. Direct node <plugin>/lib/claude.js init|status|python setup is deterministic.
+- Claude UserPromptSubmit loads workspace material guidance, coordinator duties, root AGENTS, and workspace/resource paths; SubagentStart adds specialist context only for personal-bot:general-purpose. The native /personal-bot:pbot skill invokes the same Node CLI for init and status; it is a model-driven skill. Direct node <plugin>/lib/claude.js init|status is deterministic.
 - Define roles in documents and professional methods in skills.
 - Keep business decisions separate from host integration. Services receive plain data and narrow capabilities, not complete host contexts.
 - Keep tool inputs, outputs, schemas, and execution adapters together. Commands and tools call the same services.
@@ -66,7 +65,7 @@ Pi loads the source extension with jiti. The standalone CLI uses prebuilt lib fi
 - pbot is a trusted-model personal assistant. Use native CLI commands, help, and concise workspace guides; use each host's native MCP configuration, discovery, authentication, and tools.
 - Do not recreate a provider catalog, parameter bindings, private MCP client, per-tool permission table, or generic call wrapper.
 - Follow the user's task and existing agreements. Do not add generic evidence, permission, approval, independent-review, or acceptance workflows to model instructions. Keep concrete operational requirements in the relevant tool or method. Hard execution limits belong to credentials, the external service, or a restricted environment, not a bypassable Personal Bot tool gate.
-- All pbot workspaces share one user-scoped Python venv. An enabled workspace automatically prepares locked dependencies; errors are reported without changing system Python. Pi/dsh activate the venv in the owning process; dsh workspaces share the Host component's activation lifetime. Claude uses the full python.executable path through native Bash and does not modify Claude PATH or environment variables, so disabling needs no environment restoration procedure. Python uses the project working directory. Setup does not execute research or create run records. Do not add a calculation tool, unified library wrapper, or implicit market rules. Project builds and tests use their declared environment.
+- Computation uses native Bash and the project's declared interpreter, dependencies, and working directory. Keep compute and compute-finance as task-specific methods with third-party API guidance. Personal Bot does not manage Python environments or alter Python-related process variables in Pi, dsh, Claude, or ACP workers. Do not add a calculation tool, unified library wrapper, or implicit market rules. Project builds and tests use their declared environment.
 - Do not claim host isolation for Bash, Python, or extensions.
 - Do not add file hash verification in code, tests, builds, or checks.
 
