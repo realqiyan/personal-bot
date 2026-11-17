@@ -185,19 +185,20 @@ task-conductor setup
 | `/pbot chat {"agentId":"AGENT_ID","text":"补充要求"}` | 人工对话，可附文件；自动先暂停所属团队 |
 | `/pbot records {"agentId":"AGENT_ID"}` | 读取原生专家事件，或 ACP 专家的任务与报告 |
 | `/pbot approval {"agentId":"AGENT_ID","requestId":"REQUEST_ID","optionId":"OPTION_ID"}` | 回答工作区页列出的专家确认请求；optionId 为 null 时取消 |
-| `/pbot team {"action":"list"}` | 团队管理与公共消息读取 |
+| `/pbot team {"action":"list"}` | 团队管理与批次状态 |
+| `/pbot messages {"teamId":"TEAM_ID","afterSeq":0}` | 读取团队公共原文 |
 | `/pbot post {"teamId":"TEAM_ID","text":"公开信息"}` | 以人工用户身份发布公共消息，不唤醒模型 |
 | `/pbot history {"action":"search"}` | 查询历史归档；也支持 read |
 
-`chat`、`post`、`records`、`approval` 不带 `action`。dsh 没有 `/pbot help`、`/pbot agents` 或 `/pbot teams` 子命令；后两个复数入口属于 Pi。
+`chat`、`messages`、`post`、`records`、`approval` 不带 `action`。dsh 没有 `/pbot help`、`/pbot agents` 或 `/pbot teams` 子命令；后两个复数入口属于 Pi。
 
 ## 专家命令
 
-`/pbot agent` 与模型工具 `pbot_agent` 使用相同输入契约，拒绝未知及跨 action 字段：
+`/pbot agent` 与模型工具 `pbot_agent` 使用相同输入契约：只读取对应 action 的字段；未知字段拒绝，其他已声明字段忽略。
 
 | action | 除 action 外必填字段 | 可选字段 | 用途 |
 | --- | --- | --- | --- |
-| `start` | 无 | `backend`, `name`, `message`, `prompts`, `files`, `provider`, `model`, `thinking`, `cwd`, `tools`, `noSkills` | 创建专家，接纳后返回，不等待完成 |
+| `start` | 无 | `backend`, `name`, `message`, `files`, `provider`, `model`, `thinking`, `cwd`, `tools`, `noSkills`, `noExtensions`, `noPromptTemplates`, `noContextFiles` | 创建专家，接纳后返回，不等待完成 |
 | `list` | 无 | 无 | 列出当前父会话的专家 |
 | `status` | `agentId` | 无 | 查看执行与最近周期状态，不读报告正文 |
 | `send` | `agentId`, `message` | `delivery` | 向存活专家追加委派任务 |
@@ -211,7 +212,7 @@ task-conductor setup
 | 启动参数 | 说明 |
 | --- | --- |
 | `name` | 1–64 字符的单行名称，省略使用 ID 前 8 位 |
-| `message`, `prompts` | message 和每条 prompt 各为 1–24000 字符；prompts 最多 32 条，按 message、prompts 顺序合并成一次输入 |
+| `message` | 1–24000 字符的初始文字；省略时只创建待命专家 |
 | `files` | 最多 32 个服务器文件路径，相对原工作区根目录；可只带文件启动任务 |
 | `cwd` | 默认原工作区根目录；相对路径也以该根目录解析 |
 | `provider`, `model` | dsh 原生 provider route 与模型 ID，各 1–128 字符，默认继承父会话选择 |
@@ -221,7 +222,7 @@ task-conductor setup
 
 专家创建和恢复时应用父会话的原生 preset，保留其文件工具、AGENTS 和技能发现，再应用专家工具限制。显式 complete persona 由宿主按其完整配置提供行为要求。
 
-Pi 专属的 noExtensions、noPromptTemplates、noContextFiles 仅对 backend 为 pi 的 ACP 成员可用，原生 dsh 与其他目标拒绝。`send.delivery` 为 `steer`（默认，补充当前工作）或 `followUp`（当前工作之后）。`send/resume` 不支持 files、prompts 或模型切换参数。成员被团队占用时私人 send 被拒绝，应先 pause 并等在途工作结束。
+Pi 专属的 noExtensions、noPromptTemplates、noContextFiles 仅对 Pi 原生专家或 backend 为 pi 的 ACP 成员生效；其他目标忽略。`send.delivery` 为 `steer`（默认，补充当前工作）或 `followUp`（当前工作之后）。`send/resume` 不支持 files 或模型切换参数。成员被团队占用时私人 send 被拒绝，应先 pause 并等在途工作结束。
 
 ```text
 /pbot agent {"action":"start","name":"证据核对"}
@@ -266,14 +267,13 @@ Pi 专属的 noExtensions、noPromptTemplates、noContextFiles 仅对 backend �
 
 ## 团队与公共消息
 
-`/pbot team` 与模型工具 `pbot_team` 的 action 相同：
+`/pbot team` 与模型工具 `pbot_team` 的 action 相同；公共原文由 `/pbot messages` 与 `pbot_team_message read` 读取：
 
 | action | 除 action 外必填字段 | 可选字段 | 用途 |
 | --- | --- | --- | --- |
 | `create` | `name`, `brief`, `members` | 无 | 创建固定成员团队，不调用模型 |
 | `list` | 无 | 无 | 列出团队 |
 | `status` | `teamId` | 无 | 查看批次、占用和未确认结果 |
-| `read` | `teamId` | `afterSeq`, `seq`, `offset`, `limit` | 读取公共原文 |
 | `run` | `teamId`, `instruction`, `mode` | `rounds`, `maxConcurrent`, `timeoutSeconds` | 开始新批次 |
 | `pause` | `teamId` | 无 | 停止新安排，允许在途收尾 |
 | `close` | `teamId` | 无 | 无运行批次及在途请求时关闭，保留成员和历史 |
@@ -289,7 +289,7 @@ run 的 instruction 为非空文字，最多 24000 字符。mode 必填：`round
 /pbot post {"teamId":"TEAM_ID","text":"只使用提供的资料，明确列出证据缺口。"}
 /pbot team {"action":"run","teamId":"TEAM_ID","instruction":"各自给出发现与未决问题。","mode":"parallel","rounds":1,"maxConcurrent":2,"timeoutSeconds":900}
 /pbot team {"action":"status","teamId":"TEAM_ID"}
-/pbot team {"action":"read","teamId":"TEAM_ID","afterSeq":0,"limit":4000}
+/pbot messages {"teamId":"TEAM_ID","afterSeq":0,"limit":4000}
 /pbot team {"action":"pause","teamId":"TEAM_ID"}
 ```
 
@@ -330,8 +330,8 @@ Pi/dsh 使用 `.pbot/history/`，查询已有各来源归档，只更新和整�
 | 工具 | 操作 |
 | --- | --- |
 | `pbot_agent` | start、send、rename、status、list、read、stop、resume |
-| `pbot_team` | create、list、status、read、run、pause、close |
-| `pbot_team_message` | read、post；read 分页同 team read，post 使用 teamId/text/可选 replyTo |
+| `pbot_team` | create、list、status、run、pause、close |
+| `pbot_team_message` | read、post；read 用 afterSeq/seq/offset/limit 分页，post 使用 teamId/text/可选 replyTo |
 | `pbot_history` | search、read |
 
 模型使用实际工具 schema；人工使用上面的命令或管理页。chat、records 是人工管理入口，没有同名模型工具。

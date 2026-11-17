@@ -13,7 +13,7 @@ import { AgentService } from "../../dist/services/agents/agent-service.js";
 import { TeamService } from "../../dist/services/agents/team-service.js";
 import { PiAgents } from "../../dist/integrations/pi/pi-agents.js";
 import { teamContext, deliveredTeams } from "../../dist/integrations/pi/team-context.js";
-import { teamParametersSchema, teamActionSchema, teamMessageActionSchema } from "../../dist/tools/teams/contract.js";
+import { teamParametersSchema, teamMessageParametersSchema, teamInput, teamMessageInput } from "../../dist/tools/teams/contract.js";
 import { schema } from "../../dist/common/schema.js";
 import { packageVersion } from "../../dist/common/version.js";
 import { host } from "../helpers/pi-host.mjs";
@@ -268,42 +268,41 @@ test("bounded message pages retain every original character and reject invalid s
   assert.throws(() => teamRecord(bad)); assert.throws(() => f.files.save(bad));
   assert.equal(f.service.post(f.team.teamId, actor, "valid", "Still usable").seq, 3);
   assert.equal(schema(teamParametersSchema)({ action: "run", teamId: f.team.teamId, mode: "parallel", instruction: "Work" }), true);
-  assert.equal(schema(teamActionSchema)({ action: "run", teamId: f.team.teamId, mode: "parallel" }), false);
-  assert.equal(schema(teamMessageActionSchema)({ action: "post", teamId: f.team.teamId, text: "x", author: "other" }), false);
+  assert.throws(() => teamInput({ action: "run", teamId: f.team.teamId, mode: "parallel" }), /instruction/);
+  assert.throws(() => teamMessageInput({ action: "post", teamId: f.team.teamId, text: "x", author: "other" }), /author/);
 });
 
-test("native team tools reject missing and action-inapplicable fields before accessing team state", async t => {
+test("native team tools ignore action-inapplicable fields, retain shape checks and name missing inputs", async t => {
   const { session } = await host(t);
   await session.extensionRunner.emit({ type: "agent_settled", aborted: true });
   const team = session.agent.state.tools.find(tool => tool.name === "pbot_team");
   const message = session.agent.state.tools.find(tool => tool.name === "pbot_team_message");
-  const validTeam = schema(teamActionSchema), validMessage = schema(teamMessageActionSchema);
   const actions = [
     { action: "create", name: "local", brief: "Review", members: [{ agentId: "member", role: "review" }] },
     { action: "list" },
     ...["status", "pause", "close"].map(action => ({ action, teamId: "team" })),
     { action: "run", teamId: "team", instruction: "Review", mode: "parallel" },
-    { action: "read", teamId: "team", seq: 1, offset: 0, limit: 10 },
   ];
   for (const input of actions) {
     assert.equal(schema(team.parameters)(input), true);
-    assert.equal(validTeam(input), true);
-    const extra = { ...input, ...(input.action === "create" ? { teamId: "team" } : { name: "unexpected" }) };
-    assert.equal(validTeam(extra), false);
-    await assert.rejects(team.execute("invalid", extra));
+    const extra = input.action === "create" ? { teamId: "unused", instruction: "unused" } : { name: "unused", brief: "unused" };
+    const projected = teamInput({ ...input, ...extra });
+    assert.deepEqual(Object.keys(projected).sort(), Object.keys(input).sort(), input.action);
     const required = input.action === "create" ? ["name", "brief", "members"]
       : input.action === "run" ? ["teamId", "instruction", "mode"] : input.action === "list" ? [] : ["teamId"];
     for (const key of required) {
       const missing = { ...input }; delete missing[key];
-      assert.equal(validTeam(missing), false);
-      await assert.rejects(team.execute("invalid", missing));
+      assert.throws(() => teamInput(missing), new RegExp(key));
     }
   }
-  for (const input of [{ action: "read", teamId: "team", text: "unexpected" },
-    { action: "post", teamId: "team", text: "public", offset: 0 }, { action: "post", teamId: "team" }]) {
-    assert.equal(validMessage(input), false);
-    await assert.rejects(message.execute("invalid", input));
-  }
+  assert.deepEqual(await team.execute("listed", { action: "list", teamId: "unused", name: "unused" }).then(value => value.structuredContent.teams), []);
+  assert.throws(() => teamInput({ action: "read", teamId: "team" }), /action/);
+  const post = teamMessageInput({ action: "post", teamId: "team", text: "public", afterSeq: 3, offset: 0 });
+  assert.deepEqual(post, { action: "post", teamId: "team", text: "public" });
+  const read = teamMessageInput({ action: "read", teamId: "team", text: "ignored", replyTo: 2 });
+  assert.equal(read.action, "read"); assert.equal(Object.hasOwn(read, "text"), false); assert.equal(Object.hasOwn(read, "replyTo"), false);
+  assert.throws(() => teamMessageInput({ action: "post", teamId: "team" }), /text/);
+  await assert.rejects(message.execute("invalid", { action: "post", teamId: "team" }), /text/);
 });
 
 test("team concurrency defaults and limits apply before saving a new batch", async t => {

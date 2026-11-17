@@ -1,7 +1,7 @@
 import type { Context } from "@deepseek-ai/cordis";
 import type { Agent, AgentHandle, AgentSetup } from "@deepseek-ai/dsh-agent";
 import { SessionId } from "@deepseek-ai/dsh-session";
-import type { AgentDescriptor, AgentOptions, AgentSessionReference } from "../../model/agent.js";
+import type { AgentDescriptor, AgentSessionReference } from "../../model/agent.js";
 import type { AgentHost } from "../../services/agents/agent-service.js";
 import { requireThat } from "../../common/validation.js";
 import { openDshAgent, readDshAgentSession, readDshReport } from "./session.js";
@@ -25,9 +25,6 @@ export class DshAgents implements AgentHost {
       ready(agent: Agent, generation: string): void;
       stopping(agent: Agent, generation: string): Promise<void>;
     }, readonly lifetime: AbortSignal) {}
-  validateOptions(options: AgentOptions) {
-    for (const key of ["noExtensions", "noPromptTemplates", "noContextFiles"] as const) requireThat(options[key] === undefined, "dsh 不支持宿主选项：" + key);
-  }
   available() {
     this.lifetime.throwIfAborted();
     requireThat(!this.#closed && this.ctx.agents.get(this.parent.id) === this.parent, "dsh 父会话或执行组件已关闭。");

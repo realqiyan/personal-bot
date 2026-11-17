@@ -44,7 +44,6 @@ export class DshWorkspace {
     this.owner = { sessionId: agent.id, leaf: null, branch: [] };
     this.host = new DshAgents(ctx, agent, {
       setup: (d, _directory, generation) => async (agentCtx, child) => {
-        for (const key of ["noExtensions", "noPromptTemplates", "noContextFiles"] as const) requireThat(d.options[key] === undefined, "dsh 不支持宿主选项：" + key);
         await agentCtx.plugin({ name: "pbot-expert", inject: dshDependencies, apply: async scope => {
           const runtime = new DshAgentRuntime(scope, child, d, generation, this.agents.files, this.teams,
             { check: this.check, release: () => this.host.release(d.agentId, generation) });

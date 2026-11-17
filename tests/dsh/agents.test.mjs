@@ -77,9 +77,14 @@ async function until(read, accept) {
 test("native expert tools preserve owner, original workspace, empty sessions and explicit resume", async t => {
   const { root, host, parents, call, run } = await fixture(t);
   const [first, second] = parents.map(handle => handle.agent);
-  const bad = await call(first, "pbot_agent", { action: "start", noExtensions: true });
+  const bad = await call(first, "pbot_agent", { action: "start", agentId: 42 });
   assert.equal(bad.isError, true);
   assert.deepEqual((await run(first, "pbot_agent", { action: "list" })).agents, []);
+  const complete = await run(first, "pbot_agent", { action: "start", agentId: "unused", cycleId: "unused",
+    delivery: "steer", offset: 0, limit: 16000, name: "complete-object", noExtensions: true, noSkills: false,
+    noContextFiles: false, noPromptTemplates: false });
+  assert.equal(complete.name, "complete-object");
+  await run(first, "pbot_agent", { action: "stop", agentId: complete.agentId });
   await host.ctx.workingDirectory.set(first, join(root, "b"));
   const expert = await run(first, "pbot_agent", { action: "start", name: "empty", noSkills: true });
   const other = await run(second, "pbot_agent", { action: "start", name: "other" });
@@ -300,7 +305,7 @@ test("native team tools retain public text and pause a finite batch after a real
   const admitted = await run(parent, "pbot_team", { action: "run", teamId: team.teamId,
     instruction: "admitted-batch-" + randomUUID(), mode: "roundRobin", rounds: 1, timeoutSeconds: 30 });
   await until(() => run(parent, "pbot_team", { action: "status", teamId: team.teamId }), value => value.run?.runId === admitted.run.runId && value.run.state === "paused");
-  assert.equal((await run(parent, "pbot_team", { action: "read", teamId: team.teamId })).messages[0].text, text);
+  assert.equal((await run(parent, "pbot_team_message", { action: "read", teamId: team.teamId })).messages[0].text, text);
   await member.whenIdle();
   const contexts = () => member.session.snapshotEvents().filter(event => event.type === "user/message" && event.data.source.kind === "pbot-team-context");
   assert.equal(contexts().length, 1);

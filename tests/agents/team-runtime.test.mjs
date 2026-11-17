@@ -102,7 +102,7 @@ test("main team tools use real SDK schemas, keep reads separate from notificatio
       author: { kind: "member", agentId: member.agentId, name: member.name }, text: report, runId, source: { requestId, cycleId } });
     teamFiles.save(record);
   });
-  await execute(team, "read", { action: "read", teamId: created.teamId });
+  await execute(message, "read", { action: "read", teamId: created.teamId });
   assert.equal(deliveredTeams(ctx).size, 0);
   await session.extensionRunner.emitInput("Inspect the completed batch", undefined, "interactive");
   const notice = await session.extensionRunner.emitBoundary({ type: "turn_end", outcome: "completed" }, entries => boundaryPreview(session, entries));

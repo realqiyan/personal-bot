@@ -8,7 +8,7 @@ export function teamNotice(values: ReturnType<TeamService["notifications"]>, kno
   const notes = values.filter(value => !known.has(value.key)).slice(0, 8);
   if (!notes.length) return;
   return { kind: "teams" as const, keys: notes.map(value => value.key), content: ["# 团队批次状态", "",
-    "团队批次状态已变化，用 pbot_team status/read 查看状态和结果。暂停时可能仍有在途工作，重跑前先查看原请求结果。", "",
+    "团队批次状态已变化，用 pbot_team status 与 pbot_team_message read 查看状态和结果。暂停时可能仍有在途工作，重跑前先查看原请求结果。", "",
     notes.map(value => ["## " + value.name, "", "- `teamId`: `" + value.teamId + "`", "- `runId`: `" + value.runId + "`",
       "- 状态：" + value.state, "- 在途工作：" + value.activeCount, ...(value.reason ? ["", "### 原因", "", value.reason] : [])].join("\n")).join("\n\n")].join("\n") };
 }

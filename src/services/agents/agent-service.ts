@@ -9,6 +9,7 @@ import type { TeamAgent, TeamInput } from "../../model/team.js";
 import type { AgentOwner, AgentOptions, AgentStartOptions, AgentDescriptor, AgentCycle, AgentCompletion, AgentSessionReference, NativeAgentHost } from "../../model/agent.js";
 import type { AcpBackend, AcpSessionReference } from "../../model/acp.js";
 import { acpModelState, acpPermission, acpPermissionReply, acpReference } from "../../storage/acp-files.js";
+import { applicableStartOptions } from "./start-options.js";
 
 export interface AgentHost {
   readonly kind: NativeAgentHost;
@@ -72,7 +73,8 @@ export class AgentService {
     this.check();
     const { backend, ...supplied } = input;
     this.host.available(backend);
-    const options: AgentOptions = Object.fromEntries(Object.entries(supplied).filter(([, v]) => v !== undefined));
+    const options: AgentOptions = applicableStartOptions(this.host.kind, backend,
+      Object.fromEntries(Object.entries(supplied).filter(([, v]) => v !== undefined)));
     this.host.validateOptions?.(options, backend);
     requireThat(backend || options.provider && options.model, "请选择可在专家会话使用的模型。");
     const reference = backend ? this.host.prepare?.(backend, options) : undefined;
@@ -86,7 +88,7 @@ export class AgentService {
         parentSessionId: owner.sessionId, parentLeaf: owner.leaf, createdAt: Date.now(), options: { ...options, files, cwd } };
       const run = { generation: randomUUID(), name: options.name ?? agentId.slice(0, 8), sequence: 0, stop: false, startedAt: Date.now() };
       this.files.create(d, run, reference);
-      const initial = [options.message, ...(options.prompts ?? [])].filter(Boolean).join("\n\n");
+      const initial = options.message ?? "";
       const request = initial || files.length ? this.files.enqueue(agentId, initial, "steer", files) : undefined;
       this.#starting.set(agentId, { generation: run.generation, controller: new AbortController(), stage: "launch" });
       return { d, run, request };

@@ -4,14 +4,13 @@ import { Type, type Static } from "typebox";
 import { object, json } from "../../common/json.js";
 import { requireThat } from "../../common/validation.js";
 import { schema } from "../../common/schema.js";
-import { executeAgent, type AgentInput } from "../../tools/agents/actions.js";
-import { dshAgentActionSchema } from "../../tools/agents/dsh-contract.js";
+import { executeAgent } from "../../tools/agents/actions.js";
+import { agentInput } from "../../tools/agents/contract.js";
 import { executeTeam, executeTeamMessage } from "../../tools/teams/actions.js";
-import { teamActionSchema, teamParametersSchema, teamMessageActionSchema, teamMessageParametersSchema } from "../../tools/teams/contract.js";
+import { teamInput, teamMessageInput } from "../../tools/teams/contract.js";
 import { dshWorkspaceStatus, type PbotManagement } from "./management.js";
 import type { DshWorkspaces } from "./workspace.js";
 
-const validAgent = schema(dshAgentActionSchema), validTeam = schema(teamActionSchema), validMessage = schema(teamMessageActionSchema);
 const chatSchema = Type.Object({ agentId: Type.String({ minLength: 1 }), text: Type.Optional(Type.String({ maxLength: 24000 })),
   delivery: Type.Optional(Type.Union([Type.Literal("steer"), Type.Literal("followUp")])),
   files: Type.Optional(Type.Array(Type.String({ minLength: 1 }), { maxItems: 32 })) }, { additionalProperties: false });
@@ -19,11 +18,11 @@ const validChat = schema(chatSchema);
 const approvalSchema = Type.Object({ agentId: Type.String({ minLength: 1 }), requestId: Type.String({ minLength: 1 }),
   optionId: Type.Union([Type.String({ minLength: 1 }), Type.Null()]) }, { additionalProperties: false });
 const validApproval = schema(approvalSchema);
-const usage = '用法：/pbot status | init | agent {"action":…} | chat {"agentId":…,"text":…} | team {"action":…} | post {"teamId":…,"text":…} | history {"action":…} | records {"agentId":…}';
+const usage = '用法：/pbot status | init | agent {"action":…} | chat {"agentId":…,"text":…} | team {"action":…} | messages {"teamId":…} | post {"teamId":…,"text":…} | history {"action":…} | records {"agentId":…}';
 
 export function registerDshCommand(ctx: Context, workspaces: DshWorkspaces, management: PbotManagement) {
   ctx.commands.register({ name: "pbot", description: "Personal Bot 工作区与协作管理", recordInput: false,
-    input: { hint: "status | init | agent/chat/team/post/history/records JSON", attachments: true },
+    input: { hint: "status | init | agent/chat/team/messages/post/history/records JSON", attachments: true },
     async handler({ agent, rawInput, signal, attachments, commandId }) {
       signal.throwIfAborted();
       const command = rawInput.trim(), split = command.search(/\s/);
@@ -48,12 +47,10 @@ export function registerDshCommand(ctx: Context, workspaces: DshWorkspaces, mana
       let result: unknown;
       switch (verb) {
         case "agent": {
-          requireThat(validAgent(input), "dsh 专家参数无效或包含不支持的宿主选项。");
           const selection = agent.model.current();
-          const output = await executeAgent(workspace.agents, input as AgentInput, workspace.owner, selection ? {
+          const output = await executeAgent(workspace.agents, agentInput(input), workspace.owner, selection ? {
             provider: selection.provider, model: selection.model,
-            ...(selection.reasoningEffort && (!input.provider || input.provider === selection.provider) && (!input.model || input.model === selection.model)
-              ? { thinking: selection.reasoningEffort } : {}),
+            ...(selection.reasoningEffort ? { thinking: selection.reasoningEffort } : {}),
           } : {});
           result = output.structuredContent; break;
         }
@@ -68,16 +65,14 @@ export function registerDshCommand(ctx: Context, workspaces: DshWorkspaces, mana
           workspace.agents.answerPermission(args.agentId, args.requestId, args.optionId, workspace.owner);
           result = { answered: true }; break;
         }
-        case "team": {
-          requireThat(validTeam(input), "团队参数无效。");
-          result = executeTeam(workspace.teams, workspace.agents, input as Static<typeof teamParametersSchema>, workspace.owner).structuredContent; break;
-        }
-        case "post": {
-          const args = { ...input, action: "post" as const };
-          requireThat(input.action === undefined && validMessage(args), "公共消息参数无效。");
-          result = executeTeamMessage(workspace.teams, args as Static<typeof teamMessageParametersSchema>,
+        case "team":
+          result = executeTeam(workspace.teams, workspace.agents, teamInput(input), workspace.owner).structuredContent; break;
+        case "messages":
+          result = executeTeamMessage(workspace.teams, teamMessageInput({ ...input, action: "read" }),
+            { kind: "coordinator", owner: workspace.owner }, commandId).structuredContent; break;
+        case "post":
+          result = executeTeamMessage(workspace.teams, teamMessageInput({ ...input, action: "post" }),
             { kind: "user", owner: workspace.owner }, commandId).structuredContent; break;
-        }
         case "history": result = await management.history({ parentSessionId: agent.id, input: json(input) }, signal); break;
         case "records": result = await management.expert({ parentSessionId: agent.id, input: json(input) }, signal); break;
         default: throw new Error(usage);

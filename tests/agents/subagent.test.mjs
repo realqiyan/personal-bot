@@ -108,7 +108,7 @@ test("agent tool exposes control and report data without replaying launch contex
     const { root, session } = await host(t);
     await session.extensionRunner.emit({ type: "agent_settled", aborted: true });
     const files = new AgentFiles(agentDirectory()), ctx = session.extensionRunner.createToolContext("local", undefined);
-    const options = { message: "Original task", prompts: ["Original context"], provider: "not-configured", model: "not-configured" };
+    const options = { message: "Original task", provider: "not-configured", model: "not-configured" };
     const identity = saved(files, root, agentOwner(ctx), options);
     const report = "Historical answer\n\n```json\n{\"value\": 42}\n```\n````\n";
     const manager = SessionManager.create(root, join(directory, "sessions"), { id: identity.agentId });

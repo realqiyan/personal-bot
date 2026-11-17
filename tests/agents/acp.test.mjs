@@ -11,6 +11,7 @@ import { AcpAnswerBuffer } from "../../dist/services/agents/acp-run.js";
 import { AgentBackends } from "../../dist/integrations/acp/agents.js";
 import { PiAgents } from "../../dist/integrations/pi/pi-agents.js";
 import { acpLaunch } from "../../dist/integrations/acp/launch.js";
+import { applicableStartOptions } from "../../dist/services/agents/start-options.js";
 import { acpContent } from "../../dist/integrations/acp/input.js";
 import { launch } from "../../dist/storage/agent-files.js";
 import { acpModelState, acpPermission, acpPermissionReply, acpReference, acpReport } from "../../dist/storage/acp-files.js";
@@ -73,9 +74,11 @@ test("ACP attachments preserve source files, binary links and image bytes withou
 
 test("ACP launch configuration validates the target and keeps native model defaults separate", async t => {
   const { root, service } = await fixture(t);
-  const before = service.list(owner);
-  await assert.rejects(service.start({ backend: "dsh", noExtensions: true }, owner));
-  assert.deepEqual(service.list(owner), before);
+  assert.deepEqual(applicableStartOptions("dsh", "dsh", { noExtensions: true, noSkills: true, provider: "p", model: "m" }),
+    { provider: "p", model: "m" });
+  assert.deepEqual(applicableStartOptions("dsh", undefined, { noExtensions: true, noSkills: true }), { noSkills: true });
+  assert.deepEqual(applicableStartOptions("claude", "claude",
+    { provider: "p", model: "m", tools: ["read"], noSkills: true, noExtensions: true }), { model: "m" });
   assert.throws(() => acpLaunch("claude", { claude: { command: process.execPath, args: [] } }, { provider: "pi-provider" }));
   const ref = acpLaunch("pi", { pi: { command: process.execPath, args: ["--version"] } }, {});
   assert.equal(ref.command, await realpath(process.execPath)); assert.equal(ref.sessionId, null);

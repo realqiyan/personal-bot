@@ -111,7 +111,7 @@ export function registerAgentEvents(pi: ExtensionAPI, lifecycle: Lifecycle, conf
     if (sent !== undefined && now - sent < 5000) return;
     submitting.set(failure.key, now);
     const recovery = failure.recovery === "reload"
-      ? "团队服务或协作存储已停用，修复文件后当前实例仍不可用。先按错误信息排障，再请用户在当前 Pi 会话执行 /reload；重载前不要反复调用 pbot_team。重载后用 pbot_team status/read 核对团队状态与公共原文。"
+      ? "团队服务或协作存储已停用，修复文件后当前实例仍不可用。先按错误信息排障，再请用户在当前 Pi 会话执行 /reload；重载前不要反复调用 pbot_team。重载后用 pbot_team status 与 pbot_team_message read 核对团队状态与公共原文。"
       : failure.recovery === "retry"
         ? "团队控制锁持续被占用，后台会继续重试；锁释放后自动恢复扫描，不自动删除锁或重新提交任务。"
         : "报告或控制记录读取失败。先按错误信息排障；修复后后台扫描会重试。";

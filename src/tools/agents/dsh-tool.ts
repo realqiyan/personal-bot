@@ -7,15 +7,13 @@ import { object, json } from "../../common/json.js";
 import { requireThat } from "../../common/validation.js";
 import { schema } from "../../common/schema.js";
 import { markdownFields } from "../../common/markdown.js";
-import { executeAgent, type AgentInput } from "./actions.js";
-import { agentDescription, agentResultSchema } from "./contract.js";
-import { dshAgentActionSchema, dshAgentParametersSchema } from "./dsh-contract.js";
+import { executeAgent } from "./actions.js";
+import { agentDescription, agentInput, agentParametersSchema, agentResultSchema } from "./contract.js";
 
 export function registerDshAgentTool(ctx: Context, agent: Agent, service: AgentService, owner: AgentOwner, check: () => void) {
-  const validators = new Map(dshAgentActionSchema.anyOf.map(row => [row.properties.action.const, schema(row)]));
   const validOutput = schema(agentResultSchema);
   ctx.tools.register({ name: "pbot_agent", description: agentDescription,
-    parameters: dshParameters(dshAgentParametersSchema),
+    parameters: dshParameters(agentParametersSchema),
     output: {
       schema: dshOutputSchema(agentResultSchema),
       render: (_args, value) => [{ type: "text", text: "# 专家\n\n" + markdownFields(value) }],
@@ -26,14 +24,11 @@ export function registerDshAgentTool(ctx: Context, agent: Agent, service: AgentS
     },
     async execute(args, exec) {
       check(); exec.signal.throwIfAborted();
-      requireThat(exec.agent === agent && object(args) && typeof args.action === "string", "专家工具会话或参数无效。");
-      const valid = validators.get(args.action);
-      requireThat(valid && valid(args), "dsh 专家参数无效或包含不支持的宿主选项。");
-      const selection = agent.model.current();
-      const output = await executeAgent(service, args as AgentInput, owner, selection ? {
+      requireThat(exec.agent === agent, "专家工具不属于当前会话。");
+      const input = agentInput(args), selection = agent.model.current();
+      const output = await executeAgent(service, input, owner, selection ? {
         provider: selection.provider, model: selection.model,
-        ...(selection.reasoningEffort && (!args.provider || args.provider === selection.provider) && (!args.model || args.model === selection.model)
-          ? { thinking: selection.reasoningEffort } : {}),
+        ...(selection.reasoningEffort ? { thinking: selection.reasoningEffort } : {}),
       } : {});
       requireThat(validOutput(output.structuredContent), "专家输出不符合契约。");
       return output.structuredContent;

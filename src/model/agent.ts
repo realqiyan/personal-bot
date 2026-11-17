@@ -2,7 +2,7 @@ import type { AcpBackend, AcpModelSelection, AcpSessionReference } from "./acp.j
 
 export interface AgentStartOptions extends AgentOptions { backend?: AcpBackend }
 export interface AgentOptions {
-  name?: string; message?: string; files?: string[]; prompts?: string[];
+  name?: string; message?: string; files?: string[];
   provider?: string; model?: string; thinking?: string; cwd?: string; tools?: string[];
   noExtensions?: boolean; noSkills?: boolean; noPromptTemplates?: boolean; noContextFiles?: boolean;
 }

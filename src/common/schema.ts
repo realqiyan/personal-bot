@@ -9,3 +9,13 @@ export function schema(value: unknown): ValidateFunction {
   addFormats.default(ajv);
   return ajv.compile(value);
 }
+
+/** Name the concrete shape violation so the caller can correct the same field. */
+export function schemaDetail(validate: ValidateFunction): string {
+  return (validate.errors ?? []).map(error => {
+    const params = error.params as Record<string, unknown>;
+    const field = typeof params.additionalProperty === "string" ? params.additionalProperty
+      : error.instancePath ? error.instancePath.slice(1).replaceAll("/", ".") : "参数";
+    return field + " " + (error.message ?? "不符合 schema");
+  }).join("；") || "不符合 schema";
+}

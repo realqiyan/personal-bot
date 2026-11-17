@@ -8,7 +8,7 @@ Personal Bot 保留独立工作和团队工作。Pi 原生专家由 tmux 和独�
 
 | pbot_agent action | 行为 |
 | --- | --- |
-| start | 新建上下文，可指定 name/provider/model/thinking/cwd/tools；有 message/prompts/files 时执行初始工作，否则只启动待命进程 |
+| start | 新建上下文，可指定 name/provider/model/thinking/cwd/tools；有 message/files 时执行初始工作，否则只启动待命进程 |
 | send | 向 agentId 发送 message；delivery 默认为 steer，followUp 排到当前工作之后 |
 | rename | 修改名称，agentId 保持不变 |
 | status/list | 查询状态或当前父会话的子会话；status 不读取报告正文，报告通过 read 获取 |
@@ -20,13 +20,13 @@ Personal Bot 保留独立工作和团队工作。Pi 原生专家由 tmux 和独�
 
 Pi 的 start 支持 noExtensions、noSkills、noPromptTemplates 和 noContextFiles。noExtensions 默认 true，显式保留子入口及 Pi 内置 MCP、codemode、工具搜索；设为 false 时按 Pi 规则发现其他扩展。tools 遵循 Pi 原生选择。子入口只增加 pbot_team_message，不提供 pbot_agent 或 pbot_team 管理能力。
 
-以下附件、进程模型与 TUI 说明面向 Pi；dsh 的差异见下一节。初始 files 相对工作区根目录解析。子入口在每份附件前标出绝对来源路径，保留 Pi 原生 read 的文本、图像及截断提示；未读完的附件由成员沿该路径续读。message 与 prompts 合并为一次输入，不继承父聊天历史。
+以下附件、进程模型与 TUI 说明面向 Pi；dsh 的差异见下一节。初始 files 相对工作区根目录解析。子入口在每份附件前标出绝对来源路径，保留 Pi 原生 read 的文本、图像及截断提示；未读完的附件由成员沿该路径续读。message 是唯一初始文字输入，不继承父聊天历史。
 
 初始模型与思考级别默认继承主会话；恢复时交由 Pi 使用保存的原生模型配置，不重新传入初始模型选项。模型不可用或缺少认证时仍遵循 Pi 的原生回退与错误行为。子会话从自己的 cwd 和 Pi agent dir 取得原生配置与认证，不继承父进程临时注册的模型或 MCP。Pi 专家在启动与恢复时继承当前父进程的环境变量，终端身份由新 tmux pane 设置；父进程已删除的变量不会从 tmux server 的缓存中重新传入。环境与授权规则见[工具与执行](capability-design.md)。
 
 ## dsh 专家
 
-dsh 使用原生 provider/model/reasoning effort，拒绝 Pi 专属扩展、提示模板和上下文文件开关。创建与恢复时通过原生 composeFrom 应用父 preset，保留其文件工具、AGENTS 和技能发现；tools 使用原生能力名，专家排除协调管理及递归委派工具。noSkills 关闭模型技能目录和 skill 工具，用户显式技能手势仍按宿主处理。只在模型选择仍与父一致时继承父 effort。恢复保留原生选择，不用新父默认值覆盖旧会话。
+dsh 使用原生 provider/model/reasoning effort，忽略 Pi 专属扩展、提示模板和上下文文件开关。创建与恢复时通过原生 composeFrom 应用父 preset，保留其文件工具、AGENTS 和技能发现；tools 使用原生能力名，专家排除协调管理及递归委派工具。noSkills 关闭模型技能目录和 skill 工具，用户显式技能手势仍按宿主处理。只在模型选择仍与父一致时继承父 effort。恢复保留原生选择，不用新父默认值覆盖旧会话。
 
 服务器文件由原生附件存储保留内容，图片使用原生准入；Web 人工对话还接受本机文件与图片。人工对话先成功暂停所属团队，再进入原生 inbox；队列接纳、实际进入、模型消费和完成分别记录，未来排队输入不提前改变此前回答的归因。
 
@@ -107,7 +107,6 @@ ACP 工作由独立 worker 持有。Pi reload 保留仍启用工作区的 worker
 | --- | --- |
 | create | name、brief、members[{agentId, role}]；仅建团队，不启动模型 |
 | list/status | 查看归属、成员、当前批次、activeCount 及 unresolved 请求 |
-| read | afterSeq/limit 读取公共记录；单条长消息用 seq/offset/limit |
 | run | teamId、instruction、mode，可选 rounds/maxConcurrent/timeoutSeconds；开展新批次 |
 | pause | 停止新增安排和领取，已领取请求继续收尾 |
 | close | 已暂停或结束且没有在途工作时关闭，保留历史；不阻塞等待 |
@@ -122,7 +121,7 @@ run 要求全部成员空闲、无未消费的私人输入，并已加载可用�
 2. 用 pbot_team create 指定成员、职责与共同目标。
 3. 确认成员就绪，再 run，例如：
    `{ action: "run", teamId: "...", instruction: "分别核对证据，下一轮回应分歧", mode: "parallel", rounds: 2, maxConcurrent: 2 }`。
-4. 主会话不逐条转发消息。批次结束或暂停后，用 read 核对成员原文及实际产物。
+4. 主会话不逐条转发消息。批次结束或暂停后，用 pbot_team_message read 核对成员原文及实际产物。
 5. 继续讨论须显式 run 新批次。需要私人工作时，先 pause 并等待 activeCount 为 0；必要时 stop 成员，再 send/resume。
 
 运行中的团队占用全部成员，已领取但尚未收尾的请求也占用对应成员。私人 steer/followUp 均返回 TEAM_BUSY，不另建私人等待队列。其他未被占用的 agent 可以同时独立工作。
@@ -186,6 +185,6 @@ dsh 的管理界面与命令见[dsh 使用说明](dsh.md)，Claude 的原生专�
 
 当前父会话没有团队记录时，团队恢复、暂停和调度直接返回，不申请 `.control` 锁。后台扫描遇到短暂的 `.control` 锁竞争时，在下一次扫描重试；连续至少 5 秒仍无法取得锁，包括主会话中断后暂停团队仍被锁阻塞的情况，会保留 UI 错误并通知模型。暂停未成功时，通知明确说明暂停尚未确认。报告或控制记录读取失败也会通知模型。同一持续故障在当前分支去重；恢复要求升级时补发一次通知。主会话中断期间延后投递，恢复输入后再通知。
 
-通知按实际服务状态说明恢复方式：锁释放后自动恢复扫描；可恢复的读取错误先排障，修复后由后台重试；团队服务或协作存储已停用时，修复文件仍不能恢复当前实例，须请用户在当前 Pi 会话执行 `/reload`。重载前不反复调用 pbot_team，可通过 pbot_agent list/status/read 核对仍可读取的成员状态与报告；重载后再用 pbot_team status/read 核对团队。完整扫描成功且待暂停、待入队操作不再受阻后清除故障状态。当前实例中已恢复的故障若曾在当前分支通知，会补发一次关联的恢复消息；中断期间延后投递，成员结果优先交付。未投递的故障不补发恢复消息，重载不追认旧实例的恢复。通知不重发任务、不删除锁，命令和工具的错误仍直接返回。
+通知按实际服务状态说明恢复方式：锁释放后自动恢复扫描；可恢复的读取错误先排障，修复后由后台重试；团队服务或协作存储已停用时，修复文件仍不能恢复当前实例，须请用户在当前 Pi 会话执行 `/reload`。重载前不反复调用 pbot_team，可通过 pbot_agent list/status/read 核对仍可读取的成员状态与报告；重载后再用 pbot_team status 与 pbot_team_message read 核对团队。完整扫描成功且待暂停、待入队操作不再受阻后清除故障状态。当前实例中已恢复的故障若曾在当前分支通知，会补发一次关联的恢复消息；中断期间延后投递，成员结果优先交付。未投递的故障不补发恢复消息，重载不追认旧实例的恢复。通知不重发任务、不删除锁，命令和工具的错误仍直接返回。
 
 进入成员前提示返回快捷键，团队成员使用相同入口。默认 tmux 绑定下，普通终端按 Ctrl+B 后按 d 脱离；主会话已在 tmux 中时，按 Ctrl+B 后按小写 l 切回。自定义绑定以自己的配置为准。返回不停止成员，不要用 /exit 代替。

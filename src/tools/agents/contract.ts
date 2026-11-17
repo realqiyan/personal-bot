@@ -1,46 +1,81 @@
 import { Type } from "typebox";
+import type { AgentStartOptions } from "../../model/agent.js";
+import { requireThat } from "../../common/validation.js";
+import { schema } from "../../common/schema.js";
+import { inputObject, need, nullable, pick } from "../input.js";
 
-export const agentDescription = "委派专家并继续对话。start 启动后即返回，完成自动通知，无需轮询；省略初始输入时待命。send 继续对话，团队占用期间不可私人 send。status 查看状态，read 读取报告；读取已结束周期即领取其通知，包括部分读取。续读固定 cycle.cycleId 并使用 nextOffset。state 表示执行状态，cycle.state 表示工作结果，queued 只表示入队。stop 保留历史，resume 携新 message 继续。每个父会话最多 50 个存活专家，空闲也计入。";
+export const agentDescription = "委派专家并继续对话。start 启动后即返回，完成自动通知，无需轮询；省略初始输入时待命。send 继续对话，团队占用期间不可私人 send。status 查看状态，read 读取报告；读取已结束周期即领取其通知，包括部分读取。续读固定 cycle.cycleId 并使用 nextOffset。state 表示执行状态，cycle.state 表示工作结果，queued 只表示入队。stop 保留历史，resume 携新 message 继续。每个父会话最多 50 个存活专家，空闲也计入。动作只读取自己的字段；其他已声明字段忽略。";
 
 const id = Type.String({ minLength: 1, maxLength: 128 });
 const message = Type.String({ minLength: 1, maxLength: 24000, description: "本次目标、相关资料、约束和交付要求。" });
 const name = Type.String({ minLength: 1, maxLength: 64, pattern: "^[^\\r\\n\\x00-\\x1f]+$" });
-export const agentStartOptions = {
-  backend: Type.Optional(Type.Union([Type.Literal("pi"), Type.Literal("dsh"), Type.Literal("claude")], { description: "选择已安装并配置的子代理程序：pi、dsh 或 claude（Claude Code）。省略时使用当前宿主的原生专家；显式选择时使用目标程序自己的配置。团队成员须省略 backend。" })),
-  name: Type.Optional(name), message: Type.Optional(message),
-  files: Type.Optional(Type.Array(Type.String({ minLength: 1 }), { maxItems: 32, description: "随初始消息读取的文件；相对路径基于原工作区根目录。" })),
-  prompts: Type.Optional(Type.Array(message, { maxItems: 32, description: "与 message 按顺序合并为同一初始消息。" })),
-  provider: Type.Optional(Type.String({ ...id, description: "模型提供方。省略 backend 时默认继承主会话；指定 backend 时，此参数须与 model 一起提供。Claude 子代理省略此参数。" })),
-  model: Type.Optional(Type.String({ ...id, description: "模型 ID；指定 backend 时也可使用目标公开的完整模型值。默认值：省略 backend 时继承主会话，指定时使用目标配置。Pi/dsh 同名模型可用 provider 区分。" })),
-  thinking: Type.Optional(Type.String({ minLength: 1, maxLength: 128, description: "思考等级 ID，可单独指定。默认值：省略 backend 时继承主会话，指定时使用目标配置。Pi 使用 off/minimal/low/medium/high/xhigh/max，其他程序使用其原生等级 ID。" })),
-  cwd: Type.Optional(Type.String({ minLength: 1, description: "执行目录，相对原工作区根目录；省略时使用工作区根目录。" })),
-  tools: Type.Optional(Type.Array(id, { minItems: 1, description: "Pi/dsh 子代理的工具名；省略时使用所选程序默认工具。Claude 子代理省略此参数并沿用原生配置。" })),
-  noExtensions: Type.Optional(Type.Boolean({ description: "仅用于 Pi 子代理：关闭其他扩展的自动发现，默认 true。" })),
-  noSkills: Type.Optional(Type.Boolean({ description: "Pi/dsh 子代理关闭技能发现，默认 false；Claude 子代理省略此参数并沿用原生配置。" })),
-  noPromptTemplates: Type.Optional(Type.Boolean({ description: "仅用于 Pi 子代理：关闭提示模板发现，默认 false。" })),
-  noContextFiles: Type.Optional(Type.Boolean({ description: "仅用于 Pi 子代理：关闭原生上下文文件加载，默认 false。" })),
-};
-const page = {
-  cycleId: Type.Optional(Type.String({ ...id, description: "仅 read：省略时读取最近周期；按 nextOffset 续读时须固定为上页返回的 cycle.cycleId，避免切换到新周期。" })),
-  offset: Type.Optional(Type.Integer({ minimum: 0, description: "仅 read：报告正文的 UTF-16 字符偏移，默认 0；续读使用上页 nextOffset。" })),
-  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 16000, description: "仅 read：最多返回的正文 UTF-16 字符数，默认 16000，不是消息数或 token 数。" })),
-};
-const delivery = Type.Optional(Type.Union([Type.Literal("steer"), Type.Literal("followUp")], { description: "send 默认 steer 补充当前工作；followUp 排到当前工作之后。capabilities.steer 为 false 的成员运行中使用 followUp。" }));
+const startFields = {
+  backend: nullable(Type.Union([Type.Literal("pi"), Type.Literal("dsh"), Type.Literal("claude")], { description: "选择 ACP 子代理程序：pi、dsh 或 claude（Claude Code）。省略时使用当前宿主的原生专家；指定时使用目标程序自己的配置。" })),
+  name: nullable(name), message: nullable(message),
+  files: nullable(Type.Array(Type.String({ minLength: 1 }), { maxItems: 32, description: "随初始消息读取的文件；相对路径基于原工作区根目录。" })),
+  provider: nullable(Type.String({ ...id, description: "模型提供方覆盖项；省略时继承主会话或使用 ACP 目标配置。指定时须同时指定 model。" })),
+  model: nullable(Type.String({ ...id, description: "模型 ID 覆盖项；省略时继承主会话或使用 ACP 目标配置。Pi/dsh 同名模型可用 provider 区分。" })),
+  thinking: nullable(Type.String({ minLength: 1, maxLength: 128, description: "思考等级覆盖项；省略时继承主会话或使用 ACP 目标配置。Pi 使用 off/minimal/low/medium/high/xhigh/max，其他程序使用其原生等级 ID。" })),
+  cwd: nullable(Type.String({ minLength: 1, description: "执行目录，相对原工作区根目录；省略时使用工作区根目录。" })),
+  tools: nullable(Type.Array(id, { minItems: 1, description: "Pi/dsh 子代理的工具名；省略时使用所选程序默认工具。Claude 子代理忽略此项并沿用原生配置。" })),
+  noExtensions: nullable(Type.Boolean({ description: "仅用于 Pi 子代理：关闭其他扩展的自动发现，默认 true。" })),
+  noSkills: nullable(Type.Boolean({ description: "Pi/dsh 子代理关闭技能发现，默认 false；Claude 子代理忽略此项并沿用原生配置。" })),
+  noPromptTemplates: nullable(Type.Boolean({ description: "仅用于 Pi 子代理：关闭提示模板发现，默认 false。" })),
+  noContextFiles: nullable(Type.Boolean({ description: "仅用于 Pi 子代理：关闭原生上下文文件加载，默认 false。" })),
+} as const;
 export const agentParametersSchema = Type.Object({
   action: Type.Union([Type.Literal("start"), Type.Literal("send"), Type.Literal("rename"), Type.Literal("status"), Type.Literal("list"), Type.Literal("read"), Type.Literal("stop"), Type.Literal("resume")], {
-    description: "start 仅接受启动选项，可省略 message/prompts/files 创建待命会话，禁止 agentId/delivery/分页字段；list 只接受 action；status/stop 只接受并必填 agentId；send 必填 agentId/message，仅可选 delivery；resume 必填 agentId/message；rename 必填 agentId/name；read 必填 agentId，仅可选 cycleId/offset/limit。禁止携带其他 action 的字段。",
+    description: "start 创建专家；省略 message/files 即待命。send 必填 agentId/message，可选 delivery。resume 必填 agentId/message。stop/status 必填 agentId。rename 必填 agentId/name。read 必填 agentId，可选 cycleId/offset/limit。list 只需 action。动作只读取自己的字段；其他已声明字段忽略。",
   }),
-  agentId: Type.Optional(id), ...agentStartOptions, ...page, delivery,
+  agentId: nullable(id), ...startFields,
+  cycleId: nullable(Type.String({ ...id, description: "仅 read：省略时读取最近周期；按 nextOffset 续读时须固定为上页返回的 cycle.cycleId，避免切换到新周期。" })),
+  offset: nullable(Type.Integer({ minimum: 0, description: "仅 read：报告正文的 UTF-16 字符偏移，默认 0；续读使用上页 nextOffset。" })),
+  limit: nullable(Type.Integer({ minimum: 1, maximum: 16000, description: "仅 read：最多返回的正文 UTF-16 字符数，默认 16000，不是消息数或 token 数。" })),
+  delivery: nullable(Type.Union([Type.Literal("steer"), Type.Literal("followUp")], { description: "仅 send：默认 steer 补充当前工作；followUp 排到当前工作之后。capabilities.steer 为 false 的成员运行中使用 followUp。" })),
 }, { additionalProperties: false });
-export const agentActionSchema = Type.Union([
-  Type.Object({ action: Type.Literal("start"), ...agentStartOptions }, { additionalProperties: false }),
-  Type.Object({ action: Type.Literal("send"), agentId: id, message, delivery }, { additionalProperties: false }),
-  Type.Object({ action: Type.Literal("rename"), agentId: id, name }, { additionalProperties: false }),
-  Type.Object({ action: Type.Literal("resume"), agentId: id, message }, { additionalProperties: false }),
-  Type.Object({ action: Type.Literal("list") }, { additionalProperties: false }),
-  ...["stop", "status"].map(action => Type.Object({ action: Type.Literal(action), agentId: id }, { additionalProperties: false })),
-  Type.Object({ action: Type.Literal("read"), agentId: id, ...page }, { additionalProperties: false }),
-]);
+
+export type AgentAction = "start" | "send" | "rename" | "status" | "list" | "read" | "stop" | "resume";
+export type AgentInput =
+  | ({ action: "start" } & AgentStartOptions)
+  | { action: "send"; agentId: string; message: string; delivery?: "steer" | "followUp" }
+  | { action: "resume"; agentId: string; message: string }
+  | { action: "rename"; agentId: string; name: string }
+  | { action: "stop" | "status"; agentId: string }
+  | { action: "list" }
+  | { action: "read"; agentId: string; cycleId?: string; offset?: number; limit?: number };
+
+const startKeys = Object.keys(startFields);
+const valid = schema(agentParametersSchema);
+
+/** One flat record, one interpreter. Fields outside the selected action are inert. */
+export function agentInput(value: unknown): AgentInput {
+  const args = inputObject(value, valid, "专家参数格式无效");
+  const action = args.action as AgentAction;
+  switch (action) {
+    case "start":
+      requireThat(!args.provider || args.model !== undefined, "start 需要同时提供 provider 与 model。");
+      return { action, ...(pick(args, startKeys) as AgentStartOptions) };
+    case "send":
+      return { action, agentId: need("send", args, "agentId"), message: need("send", args, "message"),
+        ...(args.delivery === undefined ? {} : { delivery: args.delivery as "steer" | "followUp" }) };
+    case "resume":
+      return { action, agentId: need("resume", args, "agentId"), message: need("resume", args, "message") };
+    case "rename":
+      return { action, agentId: need("rename", args, "agentId"), name: need("rename", args, "name") };
+    case "stop":
+    case "status":
+      return { action, agentId: need(action, args, "agentId") };
+    case "list":
+      return { action };
+    case "read":
+      return { action, agentId: need("read", args, "agentId"),
+        ...(args.cycleId === undefined ? {} : { cycleId: args.cycleId as string }),
+        ...(args.offset === undefined ? {} : { offset: args.offset as number }),
+        ...(args.limit === undefined ? {} : { limit: args.limit as number }) };
+    default:
+      throw new Error("未知的专家 action。");
+  }
+}
 
 const cycle = Type.Object({ cycleId: Type.String(), startedAt: Type.Number(), finishedAt: Type.Optional(Type.Number()),
   state: Type.Union([Type.Literal("running"), Type.Literal("completed"), Type.Literal("failed"), Type.Literal("cancelled"), Type.Literal("interrupted")], { description: "本周期的工作结果，正文用 read 读取。" }),
