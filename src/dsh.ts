@@ -3,6 +3,7 @@ import { registerDshCommand } from "./extension/dsh/command.js";
 import { registerDshManagement } from "./extension/dsh/management.js";
 import { DshWorkspaces, dshDependencies } from "./extension/dsh/workspace.js";
 import { requireThat } from "./common/validation.js";
+import { rootAgents } from "./integrations/dsh/root-agents.js";
 
 export const name = "personal-bot";
 export const inject = ["commands", "typert", ...dshDependencies];
@@ -16,7 +17,7 @@ export async function apply(ctx: Context) {
   const management = registerDshManagement(ctx, workspaces);
   registerDshCommand(ctx, workspaces, management);
   ctx.on("agent/created", async ({ agent }) => {
-    if (ctx.agents.roots().includes(agent) && agent.session.header.origin !== "subagent") await workspaces.open(agent);
+    if (rootAgents(ctx.agents).includes(agent)) await workspaces.open(agent);
   });
-  for (const agent of ctx.agents.roots()) if (agent.session.header.origin !== "subagent") await workspaces.open(agent);
+  for (const agent of rootAgents(ctx.agents)) await workspaces.open(agent);
 }

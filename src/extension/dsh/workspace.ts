@@ -6,6 +6,7 @@ import type { FileBlock, ImageBlock } from "@deepseek-ai/dsh-llm";
 import { AgentBackends } from "../../integrations/acp/agents.js";
 import type { AcpCommands } from "../../model/acp.js";
 import type { AgentOwner } from "../../model/agent.js";
+import { rootAgents } from "../../integrations/dsh/root-agents.js";
 import { DshAgents } from "../../integrations/dsh/dsh-agents.js";
 import { dshResources, dshExpertTools } from "../../integrations/dsh/resources.js";
 import { AgentService } from "../../services/agents/agent-service.js";
@@ -157,7 +158,7 @@ export class DshWorkspaces {
 
   async open(agent: Agent) {
     this.#lifetime.signal.throwIfAborted();
-    requireThat(this.ctx.agents.roots().includes(agent) && agent.session.header.origin !== "subagent", "专家不拥有协调者管理入口。");
+    requireThat(rootAgents(this.ctx.agents).includes(agent), "专家不拥有协调者管理入口。");
     const current = this.#parents.get(agent);
     if (current) return current;
     const opening = (async () => {

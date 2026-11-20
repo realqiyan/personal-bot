@@ -1,6 +1,7 @@
 import type { Context } from "@deepseek-ai/cordis";
 import type { AcpInput } from "../../model/acp.js";
 import { acpMember } from "../acp-member.js";
+import { rootAgents } from "../../integrations/dsh/root-agents.js";
 import { dshResources, dshExpertTools } from "../../integrations/dsh/resources.js";
 import { registerDshSkills } from "../../integrations/dsh/skills.js";
 import { finalDshAnswer } from "../../integrations/dsh/messages.js";
@@ -17,7 +18,7 @@ export async function apply(ctx: Context) {
     member.input(); return next();
   });
   ctx.on("agent/created", async ({ agent, source }) => {
-    if (!ctx.agents.roots().includes(agent)) return;
+    if (!rootAgents(ctx.agents).includes(agent)) return;
     if (source === "resume") agent.inbox.clear();
     const reference = member.files.reference(member.id);
     requireThat(reference.host === "acp" && reference.backend === "dsh" && agent.session.header.cwd === member.d.cwd &&
