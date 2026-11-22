@@ -52,7 +52,9 @@ export class DshHistory implements HistorySource {
     requireThat(location.host === "dsh", "dsh 历史只读取 dsh 原生会话。");
     signal?.throwIfAborted();
     const records = await this.ctx.sessionQuery.listSessions(signal), selected = new Set<string>(), warnings: string[] = [];
-    try { for (const id of this.relatedSessions()) selected.add(id); } catch (error) { warnings.push("专家引用：" + String(error)); }
+    // Expert records also name ACP members and sessions that dsh no longer stores; only real dsh sessions are readable.
+    const stored = new Set<string>(records.map(record => record.header.id));
+    try { for (const id of this.relatedSessions()) if (stored.has(id)) selected.add(id); } catch (error) { warnings.push("专家引用：" + String(error)); }
     if (location.sessionId) selected.add(location.sessionId);
     for (const record of records) {
       signal?.throwIfAborted();

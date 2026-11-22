@@ -205,6 +205,16 @@ test("both hosts query equal native ids independently, preserve peer archives an
   assert.equal(await readFile(dshPath, "utf8"), dshBytes); assert.equal(await readFile(manager.getSessionFile(), "utf8"), original);
 });
 
+test("dsh ignores related expert ids that are not native dsh sessions", async t => {
+  const { root, host } = await fixture(t), handle = await host.ctx.agents.create({ sessionId: randomUUID(), meta: { cwd: root } });
+  exchange(handle.agent.session, 1, "工作区问题", "工作区答复");
+  await flushDshAgent(handle.agent); await handle.dispose();
+  const acpMember = randomUUID(), stale = "session-" + randomUUID();
+  const source = new DshHistory(host.ctx, root, () => [acpMember, stale]), result = await source.scan({ host: "dsh" });
+  assert.deepEqual(result.warnings, []);
+  assert.deepEqual(result.sessions.map(value => value.sessionId), [handle.agent.id]);
+});
+
 test("dsh replaces a tool-phase observation while retaining a later interrupted turn", async t => {
   const { root, host } = await fixture(t), handle = await host.ctx.agents.create({ sessionId: randomUUID(), meta: { cwd: root } });
   const session = handle.agent.session;
