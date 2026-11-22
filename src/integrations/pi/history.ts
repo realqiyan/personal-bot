@@ -56,17 +56,21 @@ export const historyLocation = (ctx: ExtensionContext): HistoryLocation => {
 export class PiHistory implements HistorySource {
   readonly host = "pi";
   constructor(private readonly root: string, private readonly relatedFiles: () => string[] = () => []) {}
-  async scan(location: HistoryLocation, signal?: AbortSignal) {
+  async scan(location: HistoryLocation, signal?: AbortSignal, excluded?: ReadonlySet<string>) {
     requireThat(location.host === "pi", "Pi 历史只读取 Pi 原生会话。");
     const lists = await Promise.all([SessionManager.list(this.root, undefined, undefined, signal),
       SessionManager.list(this.root, location.directory, undefined, signal)]);
-    const files = new Set([...lists.flat().map(session => session.path), ...this.relatedFiles(), ...(location.file ? [location.file] : [])]);
+    const files = new Set([...this.relatedFiles(), ...(location.file ? [location.file] : [])]);
+    for (const session of lists.flat()) {
+      if (excluded?.has(session.id)) files.delete(session.path);
+      else files.add(session.path);
+    }
     const sessions: HistorySession[] = [], warnings: string[] = [];
     for (const file of files) {
       signal?.throwIfAborted();
       try {
         const session = projectHistory(await readFile(file, { encoding: "utf8", signal }));
-        if (session.branches.length) sessions.push(session);
+        if (session.branches.length && !excluded?.has(session.sessionId)) sessions.push(session);
       } catch (error) {
         signal?.throwIfAborted();
         // Pi reserves a filename before the first message; copied archives may also outlive their native files.

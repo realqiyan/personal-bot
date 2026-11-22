@@ -4,7 +4,9 @@ import { mkdtemp, mkdir, realpath, readFile, writeFile, rm, stat } from "node:fs
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
-import { SessionManager } from "@earendil-works/pi-coding-agent";
+import { pathToFileURL } from "node:url";
+import { getAgentDir, SessionManager } from "@earendil-works/pi-coding-agent";
+import { DshHistoryWork } from "../../dist/extension/dsh/history.js";
 import { createAssistantMessage, createUserMessage, createToolResultMessage } from "@deepseek-ai/dsh-llm";
 import { dshHost } from "../helpers/dsh-host.mjs";
 import { flushDshAgent } from "../../dist/integrations/dsh/session.js";
@@ -14,6 +16,7 @@ import { HistoryService } from "../../dist/services/history/history-service.js";
 import { historySummaries, historyView, indexHistory } from "../../dist/services/history/history-index.js";
 import { assertArchiveReadable, legacyArchive } from "../helpers/history-archive.mjs";
 import { HistoryFiles } from "../../dist/storage/history-files.js";
+import { acpHistorySessions } from "../../dist/storage/acp-history.js";
 import { PiHistory, projectHistory } from "../../dist/integrations/pi/history.js";
 
 // Durable protocol fixtures through public Session APIs. No model or tool execution is substituted.
@@ -213,6 +216,66 @@ test("dsh ignores related expert ids that are not native dsh sessions", async t 
   const source = new DshHistory(host.ctx, root, () => [acpMember, stale]), result = await source.scan({ host: "dsh" });
   assert.deepEqual(result.warnings, []);
   assert.deepEqual(result.sessions.map(value => value.sessionId), [handle.agent.id]);
+});
+
+test("ACP backend session IDs exclude fresh and already archived members across hosts", async t => {
+  const { root, host, temp } = await fixture(t), controls = { pi: join(temp, "pi-members"), dsh: join(temp, "dsh-members") };
+  const native = SessionManager.create(root, join(root, "pi-native")), sessionId = native.getSessionId();
+  native.appendMessage({ role: "user", content: "Pi 输入", timestamp: Date.now() });
+  const handle = await host.ctx.agents.create({ sessionId, meta: { cwd: root } });
+  for (let i = 1; i <= 4; i++) exchange(handle.agent.session, i, "成员问题 " + i, "成员回答");
+  await flushDshAgent(handle.agent); await handle.dispose();
+  const piFiles = new HistoryFiles(join(root, ".pbot/history")), dshFiles = new HistoryFiles(piFiles.directory, "dsh");
+  const members = () => acpHistorySessions(controls);
+  const pi = new HistoryService(root, piFiles, new PiHistory(root), [dshFiles], members);
+  const dsh = new HistoryService(root, dshFiles, new DshHistory(host.ctx, root), [piFiles], members);
+  t.after(() => Promise.all([pi.close(), dsh.close()]));
+  const piLocation = { host: "pi", directory: native.getSessionDir(), file: native.getSessionFile() };
+  // Pi's SDK persists its reserved session after the first assistant message.
+  const usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } };
+  native.appendMessage({ role: "assistant", api: "openai-responses", provider: "openai", model: "gpt-4.1", timestamp: Date.now(), usage,
+    content: [{ type: "text", text: "Pi 回答" }], stopReason: "stop" });
+  const dshLocation = { host: "dsh", sessionId };
+  await dsh.refresh(dshLocation);
+  const [old] = dshFiles.list(); assert.equal(dsh.status.pending, 1);
+  async function bind(owner, backend, id) {
+    const directory = join(controls[owner], randomUUID()); await mkdir(directory, { recursive: true });
+    await writeFile(join(directory, "acp-session.json"), JSON.stringify({ host: "acp", backend, sessionId: id, command: process.execPath, args: [] }));
+  }
+  await bind("pi", "dsh", sessionId); await bind("dsh", "pi", null);
+  const dshScan = await new DshHistory(host.ctx, root, () => [sessionId]).scan(dshLocation, undefined, members().ids.dsh);
+  assert.deepEqual(dshScan, { sessions: [], warnings: [] });
+  await pi.refresh(piLocation); await dsh.refresh(dshLocation);
+  for (const service of [pi, dsh]) {
+    assert.deepEqual(service.warnings, []);
+    assert.deepEqual(service.search({ sessionId }).matches.map(hit => hit.host), ["pi"]);
+    assert.throws(() => service.read(old.raw.exchanges[0].id));
+  }
+  assert.equal(dsh.status.pending, 0);
+  await dsh.organize(dshHistorySummarizer(host.ctx, { provider: "not-configured", model: "none" }, sessionId), new AbortController().signal);
+  assert.deepEqual(dshFiles.list(), [old]);
+  const fresh = new HistoryFiles(join(temp, "fresh"));
+  await bind("dsh", "pi", sessionId);
+  const piSource = new PiHistory(root, () => [piLocation.file]);
+  assert.deepEqual(await piSource.scan(piLocation, undefined, members().ids.pi), { sessions: [], warnings: [] });
+  const clean = new HistoryService(root, fresh, piSource, [], members); t.after(() => clean.close());
+  await clean.refresh(piLocation);
+  assert.deepEqual(clean.warnings, []); assert.equal(clean.search().total, 0); assert.deepEqual(fresh.list(), []);
+});
+
+test("dsh discovers Pi-owned ACP sessions with a file URL for the Pi agent directory", async t => {
+  const { root, host, temp } = await fixture(t);
+  const prior = { PI_CODING_AGENT_DIR: process.env.PI_CODING_AGENT_DIR, DSH_HOME: process.env.DSH_HOME };
+  Object.assign(process.env, { PI_CODING_AGENT_DIR: pathToFileURL(join(temp, "Pi home")).href, DSH_HOME: join(temp, "dsh-home") });
+  t.after(() => { for (const [key, value] of Object.entries(prior)) { if (value === undefined) delete process.env[key]; else process.env[key] = value; } });
+  const handle = await host.ctx.agents.create({ sessionId: randomUUID(), meta: { cwd: root } });
+  exchange(handle.agent.session, 1, "成员问题", "成员回答"); await flushDshAgent(handle.agent); await handle.dispose();
+  const directory = join(getAgentDir(), "pbot/subagents", randomUUID()); await mkdir(directory, { recursive: true });
+  await writeFile(join(directory, "acp-session.json"), JSON.stringify({ host: "acp", backend: "dsh", sessionId: handle.agent.id, command: process.execPath, args: [] }));
+  const work = new DshHistoryWork(host.ctx, root); t.after(() => work.close());
+  await work.service.refresh({ host: "dsh", sessionId: handle.agent.id });
+  assert.deepEqual(work.service.warnings, []); assert.equal(work.service.search().total, 0);
+  assert.deepEqual(new HistoryFiles(join(root, ".pbot/history"), "dsh").list(), []);
 });
 
 test("dsh replaces a tool-phase observation while retaining a later interrupted turn", async t => {

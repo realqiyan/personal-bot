@@ -58,7 +58,8 @@ export class HistoryService {
   #sourceWarnings: string[] = [];
   #summaryError: string | undefined;
   constructor(readonly root: string, private readonly files: HistoryFiles, private readonly source: HistorySource,
-    private readonly otherFiles: readonly HistoryReader[] = []) {
+    private readonly otherFiles: readonly HistoryReader[] = [],
+    private readonly acpSessions?: () => { ids: Record<HistoryHost, ReadonlySet<string>>; warnings: string[] }) {
     requireThat((source.host === "pi" || source.host === "dsh") && source.host === files.host &&
       new Set([files.host, ...otherFiles.map(value => value.host)]).size === otherFiles.length + 1,
       "历史来源与归档目录不匹配。");
@@ -79,17 +80,23 @@ export class HistoryService {
     this.check(); signal?.throwIfAborted();
     const warnings: string[] = [], records: LocatedRecord[] = [];
     const warning = (host: HistoryHost, error: unknown) => { this.check(); signal?.throwIfAborted(); warnings.push(host + ": " + String(error)); };
-    let known: HistoryArchive[] = [];
+    let known: HistoryArchive[] = [], sessions: HistorySession[] = [];
     try {
       try { this.files.migrate(this.root); } finally { known = this.files.list(this.root); }
-      const before = new Map(known.map(({ raw }) => [raw.sessionId, raw]));
-      let sessions: HistorySession[] = [];
-      try {
-        const scanned = await this.source.scan(location, signal); sessions = scanned.sessions;
-        warnings.push(...scanned.warnings.map(value => this.files.host + ": " + value));
-      } catch (error) { warning(this.files.host, error); }
-      this.check(); signal?.throwIfAborted();
+      const scanned = await this.source.scan(location, signal, this.acpSessions?.().ids[this.files.host]); sessions = scanned.sessions;
+      warnings.push(...scanned.warnings.map(value => this.files.host + ": " + value));
+    } catch (error) { warning(this.files.host, error); }
+    this.check(); signal?.throwIfAborted();
+    // The worker binds the actual backend ID before delivery, possibly during the native scan.
+    const excluded = this.acpSessions?.();
+    if (excluded) {
+      warnings.push(...excluded.warnings);
+      sessions = sessions.filter(session => !excluded.ids[this.files.host].has(session.sessionId));
+    }
+    const visible = ({ raw }: HistoryArchive) => !excluded?.ids[raw.host].has(raw.sessionId);
+    try {
       if (sessions.length) {
+        const before = new Map(known.map(({ raw }) => [raw.sessionId, raw]));
         known = this.files.control(() => {
           this.check(); signal?.throwIfAborted();
           const current = new Map(this.files.list().map(archive => [archive.raw.sessionId, archive]));
@@ -114,9 +121,9 @@ export class HistoryService {
         });
       }
     } catch (error) { warning(this.files.host, error); }
-    records.push(...known.map(view));
+    records.push(...known.filter(visible).map(view));
     for (const files of this.otherFiles) {
-      try { records.push(...files.list(this.root).map(view)); }
+      try { records.push(...files.list(this.root).filter(visible).map(view)); }
       catch (error) { warning(files.host, error); }
     }
     this.check(); signal?.throwIfAborted(); this.#records = records; this.#sourceWarnings = warnings; this.#loaded = true;
@@ -162,7 +169,8 @@ export class HistoryService {
     const run = async () => {
       for (;;) {
         this.check(); active.throwIfAborted();
-        const pending = nextSummary(this.files.list());
+        const archives = this.files.list(), excluded = this.acpSessions?.().ids[this.files.host];
+        const pending = nextSummary(archives.filter(({ raw }) => !excluded?.has(raw.sessionId)));
         if (!pending) return;
         const { record, node, children } = pending;
         const text = await summarize({ system: readFileSync(join(resourceRoot, "prompts/history-summary.md"), "utf8"), maxTokens: 2048,

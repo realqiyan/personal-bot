@@ -3,6 +3,7 @@ import type { Context } from "@deepseek-ai/cordis";
 import type { Agent } from "@deepseek-ai/dsh-agent";
 import { dshHomePath } from "@deepseek-ai/dsh-home-paths";
 import { AgentFiles } from "../../storage/agent-files.js";
+import { acpHistorySessions } from "../../storage/acp-history.js";
 import { HistoryFiles } from "../../storage/history-files.js";
 import { HistoryService } from "../../services/history/history-service.js";
 import { DshHistory } from "../../integrations/dsh/history.js";
@@ -20,7 +21,8 @@ export class DshHistoryWork {
     const agents = new AgentFiles(dshHomePath("pbot", "subagents"), "dsh");
     this.service = new HistoryService(root, new HistoryFiles(join(root, ".pbot/history"), "dsh"),
       new DshHistory(ctx, root, () => agents.list().filter(value => value.workspace === root).map(value => value.agentId)),
-      [new HistoryFiles(join(root, ".pbot/history"), "pi"), new HistoryFiles(join(root, ".pbot/history"), "claude")]);
+      [new HistoryFiles(join(root, ".pbot/history"), "pi"), new HistoryFiles(join(root, ".pbot/history"), "claude")],
+      () => acpHistorySessions({ dsh: agents.root }));
   }
   attach(agent: Agent) { this.#parents.add(agent); return () => { this.#parents.delete(agent); }; }
   cancel() { this.#controller?.abort(); }

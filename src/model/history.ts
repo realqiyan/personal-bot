@@ -49,7 +49,7 @@ export type HistoryLocation = { host: "pi"; directory: string; file?: string } |
   { host: "dsh"; sessionId?: string };
 export interface HistorySource {
   readonly host: HistoryLocation["host"];
-  scan(location: HistoryLocation, signal?: AbortSignal): Promise<{ sessions: HistorySession[]; warnings: string[] }>;
+  scan(location: HistoryLocation, signal?: AbortSignal, excluded?: ReadonlySet<string>): Promise<{ sessions: HistorySession[]; warnings: string[] }>;
 }
 export interface HistorySummaryRequest {
   system: string;

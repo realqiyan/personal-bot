@@ -48,14 +48,15 @@ export function projectDshHistory(header: SessionHeader, events: readonly Sessio
 export class DshHistory implements HistorySource {
   readonly host = "dsh";
   constructor(private readonly ctx: Context, private readonly root: string, private readonly relatedSessions: () => string[] = () => []) {}
-  async scan(location: HistoryLocation, signal?: AbortSignal) {
+  async scan(location: HistoryLocation, signal?: AbortSignal, excluded?: ReadonlySet<string>) {
     requireThat(location.host === "dsh", "dsh 历史只读取 dsh 原生会话。");
     signal?.throwIfAborted();
-    const records = await this.ctx.sessionQuery.listSessions(signal), selected = new Set<string>(), warnings: string[] = [];
+    const records = (await this.ctx.sessionQuery.listSessions(signal)).filter(record => !excluded?.has(record.header.id));
+    const selected = new Set<string>(), warnings: string[] = [];
     // Expert records also name ACP members and sessions that dsh no longer stores; only real dsh sessions are readable.
     const stored = new Set<string>(records.map(record => record.header.id));
     try { for (const id of this.relatedSessions()) if (stored.has(id)) selected.add(id); } catch (error) { warnings.push("专家引用：" + String(error)); }
-    if (location.sessionId) selected.add(location.sessionId);
+    if (location.sessionId && !excluded?.has(location.sessionId)) selected.add(location.sessionId);
     for (const record of records) {
       signal?.throwIfAborted();
       if ((record.header.origin !== "subagent" || !record.header.parentSession) && record.header.cwd &&

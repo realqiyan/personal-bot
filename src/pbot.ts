@@ -13,6 +13,7 @@ import { HistoryService } from "./services/history/history-service.js";
 import { HistoryFiles } from "./storage/history-files.js";
 import { PiHistory } from "./integrations/pi/history.js";
 import { sessionRef } from "./storage/agent-files.js";
+import { acpHistorySessions } from "./storage/acp-history.js";
 import { join } from "node:path";
 import { registerHistoryEvents } from "./extension/history.js";
 
@@ -26,7 +27,8 @@ export default function pbot(pi: ExtensionAPI) {
       agents.files.list().filter(agent => agent.workspace === root).flatMap(agent => {
         const file = agents.files.optional(agent.agentId, "session-ref.json", sessionRef)?.file;
         return file ? [file] : [];
-      })), [new HistoryFiles(join(root, ".pbot/history"), "dsh"), new HistoryFiles(join(root, ".pbot/history"), "claude")]);
+      })), [new HistoryFiles(join(root, ".pbot/history"), "dsh"), new HistoryFiles(join(root, ".pbot/history"), "claude")],
+      () => acpHistorySessions({ pi: agents.files.root }));
     return new WorkspaceInstance(root, agents, new TeamService(root, agents.files, agents.teamFiles), history);
   }, instance => registry.register(mainTools(instance.agents, instance.teams, instance.history, instance)), () => registry.hide());
   registerCommand(pi, lifecycle, confirmations);
