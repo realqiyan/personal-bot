@@ -42,7 +42,7 @@ Claude command hook 是独立 Node 进程，只使用 Node 内置模块和共用
 | initializeWorkspace / prepareWorkspace | 初始化依次准备资料并写入共用启用配置；资料准备补建目录与根 AGENTS.md |
 | AgentService / AgentRun / AcpAgentRun | 专家实例、启动预约、代次、inbox、领取/进入/消费/完成与交付资格；ACP prompt 收尾、固定报告与确认关联；拒绝向被团队占用的成员发送私人任务 |
 | TeamService | Pi/dsh 的固定成员、公共消息、有限轮次、团队占用与暂停规则 |
-| HistoryService | 三来源问答索引、四叉摘要、查询、来源写锁与精确输入提交核验 |
+| HistoryService | Pi/dsh 的原生问答索引、分层摘要与提交核验，跨来源查询 |
 | WorkspaceInstance / DshWorkspaces | Pi/dsh 工作区生命周期；dsh 按父会话装配，按工作区共享历史整理 |
 
 ## Claude 标准插件入口
@@ -94,9 +94,9 @@ Claude 根插件静态声明共用 skills、管理技能与 Markdown 原生专�
 
 ## 历史查询
 
-Pi、dsh 共用 `.pbot/history/`，查询已有归档，各自只收录和整理本宿主来源。HistoryService 接收一个写来源及显式只读来源集合。顶层保存 `host`、`id`、`sessionId`、`name` 和 `nodes`；host 保留 pi、dsh、claude 数据兼容。Pi/dsh 分别使用 `.write-pi`、`.write-dsh` 短写锁，已有 Claude 归档可继续读取，Claude 插件不生成新归档。
+Pi、dsh 的 HistoryService 各接收一个写来源和显式只读的其他来源。`indexHistory` 只合并原生问答与分支；观察到的后缀保留已有前缀，缺失来源不删除归档。查询视图把问答与独立保存的分层摘要组合起来，按已知分支规划四叉分组，补出会话根和反向导航。旧混合归档提供的摘要链接继续可查，但不作为原生分支证据。Claude 归档只读。布局见[文件存储](file-storage.md#历史索引)。
 
-扫描与模型调用在短写锁外，提交时重读，拒绝过期原文或摘要覆盖。organize 在本次调用内保留节点与子节点的精确输入，提交前比较结构化数据并检查取消信号。查询不调用模型；正常主交互结束后在空闲阶段整理，新人工输入优先取消。来源消失或部分扫描不会删除已归档分支。有不可读归档时不为未识别会话重复分配根 ID，其他可读归档继续查询。实现与限制见[历史对话](history.md)。
+扫描与模型调用在来源短写锁外。索引提交时重读原始归档并比较扫描前的内容；若原文确有修订，先使依赖它的摘要及其上级失效，再发布修订后的问答。摘要提交持同一短锁，重读最新资料，逐项核对目标、子节点顺序和精确输入，检查取消信号，仅写派生文件。不可读的原始归档阻止为未识别会话另分配根 ID；单独的摘要文件损坏不阻止问答查询。查询不调用模型，后台整理触发时机见[历史对话](history.md)。
 
 ## 原生子会话存储
 

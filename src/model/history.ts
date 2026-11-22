@@ -12,18 +12,35 @@ export interface HistorySession {
   /** Earlier partial observations replaced along the same native branch or turn; never persisted. */
   supersededEntryIds?: string[];
 }
-export interface HistoryNode extends HistoryExchange {
-  id: string;
-  kind: "session" | "exchange" | "summary";
-  level: number;
-  children: string[];
-  parents: string[];
-  ready: boolean;
-}
-export interface HistoryRecord {
+export interface HistoryIdentity {
   host: HistoryHost;
   id: string;
   sessionId: string;
+}
+export interface RawHistory extends HistoryIdentity {
+  name: string;
+  /** One entry per archived exchange; array order does not describe a conversation. */
+  exchanges: (HistoryExchange & { id: string })[];
+  /** Ordered paths observed in the native source. Legacy exchanges can have no known path. */
+  branches: string[][];
+}
+export interface HistorySummary extends HistoryExchange {
+  id: string;
+  level: number;
+  children: string[];
+  ready: boolean;
+}
+export interface HistoryArchive {
+  raw: RawHistory;
+  /** Empty if absent; null if the derived file is unreadable. */
+  summaries: HistorySummary[] | null;
+}
+export interface HistoryNode extends HistorySummary {
+  kind: "session" | "exchange" | "summary";
+  parents: string[];
+}
+/** Query view and legacy on-disk format. New writers persist raw exchanges and summaries separately. */
+export interface HistoryRecord extends HistoryIdentity {
   name: string;
   nodes: HistoryNode[];
 }

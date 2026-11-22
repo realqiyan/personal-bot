@@ -1,76 +1,11 @@
-import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import type { HistoryExchange, HistoryHost, HistoryLocation, HistoryNode, HistoryRecord, HistorySession, HistorySource, HistorySummarizer } from "../../model/history.js";
+import { isDeepStrictEqual } from "node:util";
+import type { HistoryArchive, HistoryHost, HistoryIdentity, HistoryLocation, HistoryNode, HistoryRecord, HistorySession, HistorySource, HistorySummarizer } from "../../model/history.js";
 import type { HistoryFiles } from "../../storage/history-files.js";
 import { resourceRoot } from "../../common/paths.js";
 import { requireThat } from "../../common/validation.js";
-
-const exchangeSource = (value: HistoryExchange) => [value.entryIds, value.text, value.from, value.to, value.completed];
-
-/** Shared prefixes reuse nodes; a partial scan updates observed nodes and retains archived branches. */
-export function indexHistory(session: HistorySession, previous?: HistoryRecord, host: HistoryHost = previous?.host ?? "pi"): HistoryRecord {
-  requireThat(!previous || previous.host === host && previous.sessionId === session.sessionId, "历史会话与归档来源不匹配。");
-  const id = previous?.id ?? (host === "pi" ? "" : host + "-") + randomUUID();
-  const old = new Map(previous?.nodes.map(node => [node.id, node]));
-  const nodes = new Map<string, HistoryNode>(previous?.nodes.filter(node => node.kind !== "session").map(node => [node.id, {
-    ...node, entryIds: [...node.entryIds], children: [...node.children], parents: [],
-  }] satisfies [string, HistoryNode]));
-  const exchanges = session.branches.flat(), observedEnds = new Set(exchanges.map(value => value.entryIds.at(-1)));
-  const replaced = new Set(session.supersededEntryIds);
-  const superseded = new Set([...nodes.values()].filter(node => node.kind === "exchange" && !node.completed &&
-    !observedEnds.has(node.entryIds.at(-1)) && replaced.has(node.entryIds.at(-1)!) &&
-    exchanges.some(exchange => node.entryIds.slice(0, -1).every(entry => exchange.entryIds.includes(entry)))).map(node => node.id));
-  // Native adapters identify replaced observations along the same branch/turn. Preserve
-  // terminal forks and interrupted exchanges, then rebuild summaries that used old partials.
-  for (const node of [...nodes.values()].filter(node => node.kind === "summary").sort((a, b) => a.level - b.level)) {
-    if (node.children.some(id => superseded.has(id))) superseded.add(node.id);
-  }
-  for (const key of superseded) nodes.delete(key);
-  const observed = new Set<string>(), changed = new Set<string>();
-  const add = (value: HistoryExchange, level: number, children: string[] = []): HistoryNode => {
-    const key = `${id}:${level}:${value.entryIds.at(-1)}`;
-    if (observed.has(key)) return nodes.get(key)!;
-    const before = old.get(key);
-    if (!level && before && value.entryIds.length < before.entryIds.length &&
-      value.entryIds.every((entry, index) => entry === before.entryIds[before.entryIds.length - value.entryIds.length + index])) {
-      observed.add(key); return nodes.get(key)!;
-    }
-    const same = before && JSON.stringify(before.children) === JSON.stringify(children) &&
-      JSON.stringify(exchangeSource({ ...before, text: level ? "" : before.text })) === JSON.stringify(exchangeSource(value));
-    const node: HistoryNode = { ...value, entryIds: [...value.entryIds], id: key, kind: level ? "summary" : "exchange", level, children, parents: [],
-      text: level ? same ? before.text : "" : value.text, ready: level ? Boolean(same && before.ready) : true };
-    if (!same) changed.add(key);
-    observed.add(key); nodes.set(key, node); return node;
-  };
-  for (const branch of session.branches) {
-    let layer = branch.map(exchange => add(exchange, 0)), level = 1;
-    while (layer.length >= 4) {
-      const count = Math.floor(layer.length / 4) * 4, next: HistoryNode[] = [];
-      for (let i = 0; i < count; i += 4) {
-        const children = layer.slice(i, i + 4), first = children[0]!, last = children.at(-1)!;
-        next.push(add({ entryIds: [first.entryIds[0]!, last.entryIds.at(-1)!], text: "", from: first.from, to: last.to,
-          completed: children.every(node => node.completed) }, level, children.map(node => node.id)));
-      }
-      layer = next; level++;
-    }
-  }
-  // Retained summaries can also depend on an observed prefix. Invalidate all affected ancestors.
-  for (const node of [...nodes.values()].filter(node => node.kind === "summary").sort((a, b) => a.level - b.level)) {
-    const children = node.children.map(id => nodes.get(id)!), first = children[0]!, last = children.at(-1)!;
-    const value = { entryIds: [first.entryIds[0]!, last.entryIds.at(-1)!], from: first.from, to: last.to,
-      completed: children.every(child => child.completed) };
-    if (children.some(child => changed.has(child.id))) { node.text = ""; node.ready = false; changed.add(node.id); }
-    Object.assign(node, value);
-  }
-  const dates = [...nodes.values()].flatMap(node => [node.from, node.to]).sort();
-  const nested = new Set([...nodes.values()].flatMap(node => node.children));
-  nodes.set(id, { id, kind: "session", level: -1, entryIds: [], text: session.name, ready: true, completed: [...nodes.values()].every(node => node.completed),
-    from: dates[0] ?? "", to: dates.at(-1) ?? "", parents: [],
-    children: [...nodes.keys()].filter(key => !nested.has(key)).sort((a, b) => nodes.get(a)!.from.localeCompare(nodes.get(b)!.from)) });
-  for (const node of nodes.values()) for (const child of node.children) nodes.get(child)!.parents.push(node.id);
-  return { host, id, sessionId: session.sessionId, name: session.name, nodes: [...nodes.values()] };
-}
+import { historySummaries, historyView, indexHistory, retainHistorySummaries } from "./history-index.js";
 
 export interface HistoryQuery { host?: HistoryHost; query?: string; sessionId?: string; from?: string; to?: string; offset?: number; limit?: number }
 type LocatedRecord = { host: HistoryHost; record: HistoryRecord };
@@ -79,20 +14,38 @@ const page = <T>(values: T[], offset: number, limit: number) => ({ values: value
   nextOffset: offset + limit < values.length ? offset + limit : null });
 const brief = ({ host, record }: LocatedRecord, node: HistoryNode) => ({ host, id: node.id, kind: node.kind, sessionId: record.sessionId,
   name: record.name, preview: node.text.replace(/\s+/g, " ").slice(0, 100), from: node.from, to: node.to, ready: node.ready, completed: node.completed });
-const rawSource = (record?: HistoryRecord) => record && JSON.stringify({ name: record.name,
-  nodes: record.nodes.map(node => [node.id, node.kind, node.level, node.entryIds, node.children,
-    node.kind === "summary" ? "" : node.text, node.from, node.to, node.completed]) });
+const view = ({ raw, summaries }: HistoryArchive): LocatedRecord => ({ host: raw.host, record: historyView(raw, summaries) });
 const summarySource = (node: HistoryNode) => [node.id, node.kind, node.level, node.entryIds, node.children, node.text, node.from, node.to, node.completed, node.ready];
 
-/** Validate the exact target and ordered inputs again; another writer's ready summary wins. */
-export function completeHistorySummary(record: HistoryRecord, expected: HistoryNode, children: readonly HistoryNode[], text: string) {
-  const node = record.nodes.find(value => value.id === expected.id);
-  if (!node || node.kind !== "summary" || node.ready || JSON.stringify(summarySource(node)) !== JSON.stringify(summarySource(expected)) ||
-    JSON.stringify(node.children) !== JSON.stringify(children.map(child => child.id))) return false;
-  const current = node.children.map(id => record.nodes.find(value => value.id === id));
-  if (current.some(value => !value || !value.ready) || JSON.stringify(current.map(value => summarySource(value!))) !== JSON.stringify(children.map(summarySource))) return false;
-  requireThat(text.trim(), "历史摘要为空。");
-  node.text = text.trim(); node.ready = true; return true;
+function nextSummary(archives: HistoryArchive[]) {
+  for (const { raw, summaries } of archives) {
+    if (summaries === null) continue;
+    const record = historyView(raw, summaries), lookup = new Map(record.nodes.map(node => [node.id, node]));
+    const node = record.nodes.find(node => node.kind === "summary" && !node.ready && node.children.every(id => lookup.get(id)!.ready));
+    if (node) return { record, node, children: node.children.map(id => lookup.get(id)!) };
+  }
+}
+
+/** Validate the exact target and ordered inputs under the source lock. Only publish the derived file. */
+export function commitHistorySummary(files: Pick<HistoryFiles, "control" | "list" | "saveSummaries">, identity: HistoryIdentity,
+  expected: HistoryNode, children: readonly HistoryNode[], text: string, signal?: AbortSignal): HistoryRecord | undefined {
+  return files.control(() => {
+    signal?.throwIfAborted();
+    const current = files.list().find(({ raw }) => raw.host === identity.host && raw.id === identity.id && raw.sessionId === identity.sessionId);
+    if (!current || current.summaries === null) return;
+    const record = historyView(current.raw, current.summaries), lookup = new Map(record.nodes.map(node => [node.id, node]));
+    const node = lookup.get(expected.id);
+    if (!node || node.kind !== "summary" || node.ready || !isDeepStrictEqual(summarySource(node), summarySource(expected)) ||
+      !isDeepStrictEqual(node.children, children.map(child => child.id))) return;
+    for (const child of children) {
+      const input = lookup.get(child.id);
+      if (!input?.ready || !isDeepStrictEqual(summarySource(input), summarySource(child))) return;
+    }
+    requireThat(text.trim(), "历史摘要为空。");
+    node.text = text.trim(); node.ready = true;
+    files.saveSummaries(current.raw, historySummaries(record));
+    return record;
+  });
 }
 
 export class HistoryService {
@@ -126,10 +79,10 @@ export class HistoryService {
     this.check(); signal?.throwIfAborted();
     const warnings: string[] = [], records: LocatedRecord[] = [];
     const warning = (host: HistoryHost, error: unknown) => { this.check(); signal?.throwIfAborted(); warnings.push(host + ": " + String(error)); };
-    let known: HistoryRecord[] = [];
+    let known: HistoryArchive[] = [];
     try {
-      try { this.files.migrate(this.root); } finally { known = this.files.list(); }
-      const before = known;
+      try { this.files.migrate(this.root); } finally { known = this.files.list(this.root); }
+      const before = new Map(known.map(({ raw }) => [raw.sessionId, raw]));
       let sessions: HistorySession[] = [];
       try {
         const scanned = await this.source.scan(location, signal); sessions = scanned.sessions;
@@ -139,25 +92,31 @@ export class HistoryService {
       if (sessions.length) {
         known = this.files.control(() => {
           this.check(); signal?.throwIfAborted();
-          const latest = this.files.list(), current = new Map(latest.map(record => [record.sessionId, record]));
+          const current = new Map(this.files.list().map(archive => [archive.raw.sessionId, archive]));
           for (const session of sessions) {
-            const previous = current.get(session.sessionId), captured = before.find(record => record.sessionId === session.sessionId);
-            // An unreadable archive may own this session; avoid assigning it a second root ID.
-            if (!previous && this.files.warnings.length) continue;
-            // A concurrent source update must not be overwritten by this older scan. Summary-only updates remain reusable.
-            if (captured && rawSource(captured) !== rawSource(previous)) continue;
-            if (!captured && previous) continue;
-            const value = indexHistory(session, previous, this.files.host);
-            if (JSON.stringify(previous) !== JSON.stringify(value)) this.files.save(value);
-            current.set(session.sessionId, value);
+            const previous = current.get(session.sessionId);
+            // A damaged raw file may own this session; a damaged summary cannot own a root ID.
+            if (!previous && this.files.rawWarnings.length) continue;
+            if (!isDeepStrictEqual(before.get(session.sessionId), previous?.raw)) continue;
+            const raw = indexHistory(session, previous?.raw, this.files.host);
+            if (isDeepStrictEqual(raw, previous?.raw)) continue;
+            let summaries = previous ? previous.summaries : [];
+            if (previous && summaries?.length) {
+              const retained = retainHistorySummaries(previous.raw, raw, summaries);
+              // Invalidate first: even an interrupted two-file update cannot attach old text to a corrected exchange.
+              if (!isDeepStrictEqual(summaries, retained)) this.files.saveSummaries(previous.raw, retained);
+              summaries = retained;
+            }
+            this.files.saveRaw(raw);
+            current.set(session.sessionId, { raw, summaries });
           }
           return [...current.values()];
         });
       }
     } catch (error) { warning(this.files.host, error); }
-    records.push(...known.map(record => ({ host: record.host, record })));
+    records.push(...known.map(view));
     for (const files of this.otherFiles) {
-      try { records.push(...files.list(this.root).map(record => ({ host: record.host, record }))); }
+      try { records.push(...files.list(this.root).map(view)); }
       catch (error) { warning(files.host, error); }
     }
     this.check(); signal?.throwIfAborted(); this.#records = records; this.#sourceWarnings = warnings; this.#loaded = true;
@@ -203,22 +162,13 @@ export class HistoryService {
     const run = async () => {
       for (;;) {
         this.check(); active.throwIfAborted();
-        const pending = this.files.list().flatMap(record => {
-          const lookup = new Map(record.nodes.map(node => [node.id, node]));
-          const node = [...record.nodes].sort((a, b) => a.level - b.level).find(node => node.kind === "summary" && !node.ready && node.children.every(id => lookup.get(id)!.ready));
-          return node ? [{ record, node, children: node.children.map(id => lookup.get(id)!) }] : [];
-        })[0];
+        const pending = nextSummary(this.files.list());
         if (!pending) return;
         const { record, node, children } = pending;
         const text = await summarize({ system: readFileSync(join(resourceRoot, "prompts/history-summary.md"), "utf8"), maxTokens: 2048,
           prompt: children.map(child => `[${child.from} — ${child.to}${child.completed ? "" : "；未完成"}]\n${child.text}`).join("\n\n") }, active);
         this.check(); active.throwIfAborted();
-        const committed = this.files.control(() => {
-          this.check(); active.throwIfAborted();
-          const current = this.files.list().find(value => value.id === record.id && value.sessionId === record.sessionId);
-          if (!current || !completeHistorySummary(current, node, children, text)) return;
-          this.files.save(current); return current;
-        });
+        const committed = commitHistorySummary(this.files, record, node, children, text, active);
         if (!committed) return;
         this.#records = this.#records.map(value => value.host === this.files.host && value.record.id === committed.id ? { host: value.host, record: committed } : value);
       }

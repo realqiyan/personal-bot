@@ -6,12 +6,12 @@
   "plugins": [
     {
       "name": "personal-bot",
-      "version": "0.2.17",
+      "version": "0.2.18",
       "description": "Workspace materials, skills, and native experts.",
       "source": {
         "source": "npm",
         "package": "personal-bot",
-        "version": "0.2.17"
+        "version": "0.2.18"
       }
     }
   ]

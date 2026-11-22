@@ -66,10 +66,7 @@ export class PiHistory implements HistorySource {
       signal?.throwIfAborted();
       try {
         const session = projectHistory(await readFile(file, { encoding: "utf8", signal }));
-        if (session.branches.length) {
-          session.name ||= session.branches[0]![0]!.text.replace(/\s+/g, " ").slice(0, 80);
-          sessions.push(session);
-        }
+        if (session.branches.length) sessions.push(session);
       } catch (error) {
         signal?.throwIfAborted();
         // Pi reserves a filename before the first message; copied archives may also outlive their native files.

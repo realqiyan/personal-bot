@@ -42,8 +42,7 @@ export function projectDshHistory(header: SessionHeader, events: readonly Sessio
     else if (event.type === "turn/end") finish(event.data.reason.kind === "completed");
   }
   finish();
-  return { sessionId: header.id, name: name || exchanges[0]?.text.replace(/\s+/g, " ").slice(0, 80) || "",
-    branches: exchanges.length ? [exchanges] : [], supersededEntryIds };
+  return { sessionId: header.id, name, branches: exchanges.length ? [exchanges] : [], supersededEntryIds };
 }
 
 export class DshHistory implements HistorySource {

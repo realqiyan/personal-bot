@@ -1,86 +1,135 @@
-import { existsSync, mkdirSync, readdirSync, rmdirSync, unlinkSync } from "node:fs";
-import { dirname, join } from "node:path";
-import type { HistoryHost, HistoryRecord } from "../model/history.js";
-import { canonical, object } from "../common/json.js";
+import { linkSync, lstatSync, mkdirSync, readdirSync, realpathSync, rmdirSync, unlinkSync } from "node:fs";
+import { basename, dirname, join, resolve } from "node:path";
+import { isDeepStrictEqual } from "node:util";
+import { object } from "../common/json.js";
 import { requireThat } from "../common/validation.js";
+import type { HistoryArchive, HistoryHost, HistoryIdentity, HistoryRecord, HistorySummary, RawHistory } from "../model/history.js";
 import { internalPath, readJsonFile, syncDirectory, writeJsonFile } from "./atomic-json.js";
-import { fileId } from "./file-access.js";
+import { fileId, privateDirectory } from "./file-access.js";
+import { hierarchicalHistory, isHistoryHost, legacyHistory, matchIdentity, rawHistory, splitLegacy, summaryData } from "./history-format.js";
 
-const strings = (value: unknown): value is string[] => Array.isArray(value) && value.every(item => typeof item === "string");
-function record(value: unknown): HistoryRecord {
-  requireThat(object(value) && (value.host === "pi" || value.host === "dsh" || value.host === "claude") &&
-    typeof value.id === "string" && typeof value.sessionId === "string" &&
-    typeof value.name === "string" && Array.isArray(value.nodes), "历史索引无效。");
-  for (const node of value.nodes) requireThat(object(node) && typeof node.id === "string" &&
-    ["session", "exchange", "summary"].includes(String(node.kind)) && Number.isInteger(node.level) &&
-    strings(node.entryIds) && strings(node.parents) && strings(node.children) && typeof node.text === "string" &&
-    typeof node.from === "string" && typeof node.to === "string" && typeof node.ready === "boolean" && typeof node.completed === "boolean", "历史节点无效。");
-  const result = value as unknown as HistoryRecord, ids = new Set(result.nodes.map(node => node.id));
-  requireThat(ids.size === result.nodes.length && result.nodes.some(node => node.id === result.id && node.kind === "session") &&
-    result.nodes.every(node => [...node.parents, ...node.children].every(id => ids.has(id))), "历史节点关系无效。");
-  return result;
+function ordinaryDirectory(path: string) {
+  const stat = lstatSync(path, { throwIfNoEntry: false });
+  if (!stat) return false;
+  requireThat(stat.isDirectory(), "历史目录必须使用普通目录：" + path);
+  return true;
 }
+function sharedDirectory(path: string) {
+  const parent = dirname(path);
+  return (basename(parent) !== ".pbot" || ordinaryDirectory(parent)) && ordinaryDirectory(path);
+}
+function ensureDirectory(path: string) {
+  if (sharedDirectory(path)) return;
+  const first = mkdirSync(path, { recursive: true, mode: 0o700 });
+  requireThat(sharedDirectory(path), "无法创建历史目录：" + path);
+  if (first) {
+    const existing = dirname(resolve(first));
+    for (let child = resolve(path); child !== existing && child !== dirname(child); child = dirname(child)) {
+      syncDirectory(realpathSync(dirname(child)));
+    }
+  }
+}
+function legacyDirectory(root: string, host: HistoryHost) {
+  const source = join(root, "." + host), parent = join(source, "pbot"), directory = join(parent, "history");
+  return ordinaryDirectory(source) && ordinaryDirectory(parent) && ordinaryDirectory(directory) ? directory : undefined;
+}
+function removeEmptyDirectory(directory: string) {
+  try { rmdirSync(directory); syncDirectory(dirname(directory)); }
+  catch (error) { if (!["ENOENT", "ENOTEMPTY", "EEXIST"].includes((error as NodeJS.ErrnoException).code ?? "")) throw error; }
+}
+const names = (directory: string) => readdirSync(directory).filter(name => name.endsWith(".json"));
+const filename = (id: string) => fileId(id) + ".json";
+const diagnostic = (path: string, error: unknown) => path + ": " + String(error);
+function optional<T>(read: () => T): T | undefined {
+  try { return read(); }
+  catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+}
+function namedRaw(value: unknown, name: string): RawHistory {
+  const raw = rawHistory(value);
+  requireThat(name === filename(raw.id), "历史文件名与根 ID 不匹配。");
+  return raw;
+}
+const readRaw = (directory: string, name: string) => readJsonFile(directory, "raw/" + name, value => namedRaw(value, name));
+const readSummaries = (directory: string, layer: "summary" | "hierarchical", raw: RawHistory) =>
+  optional(() => readJsonFile(directory, layer + "/" + filename(raw.id), value => hierarchicalHistory(value, raw)));
+
+type OldFile = { raw: RawHistory; mixed?: HistoryRecord; summaries?: HistorySummary[] };
+function oldFile(value: unknown, name: string, privateHost?: HistoryHost): OldFile {
+  if (privateHost === undefined && object(value) && !("nodes" in value)) return { raw: namedRaw(value, name) };
+  const mixed = legacyHistory(value, privateHost);
+  requireThat(name === filename(mixed.id), "历史文件名与根 ID 不匹配。");
+  return { ...splitLegacy(mixed), mixed };
+}
+/** Relocate an already validated file without reserializing it. A separate mount needs an atomic JSON copy instead. */
+function linkArchive(directory: string, from: string, to: string) {
+  const target = internalPath(directory, to);
+  try { linkSync(internalPath(directory, from), target); }
+  catch (error) { if ((error as NodeJS.ErrnoException).code === "EXDEV") return false; throw error; }
+  syncDirectory(dirname(target)); return true;
+}
+function retire(directory: string, relative: string) {
+  const path = internalPath(directory, relative);
+  unlinkSync(path); syncDirectory(dirname(path));
+}
+
 export class HistoryFiles {
   #warnings: string[] = [];
-  constructor(readonly directory: string, readonly host: HistoryHost = "pi") {}
+  #rawWarnings: string[] = [];
+  constructor(readonly directory: string, readonly host: HistoryHost = "pi") { requireThat(isHistoryHost(host), "历史来源无效。"); }
   get warnings(): readonly string[] { return this.#warnings; }
-  /** A peer can include its legacy directory without migrating or modifying either source. */
-  list(legacyRoot?: string) {
-    this.#warnings = [];
-    const records = new Map<string, HistoryRecord>();
-    const directories = [this.directory, ...(legacyRoot && this.host !== "claude" ? [join(legacyRoot, "." + this.host, "pbot/history")] : [])];
-    for (const directory of directories) {
-      if (!existsSync(directory)) continue;
-      for (const name of readdirSync(directory).filter(name => name.endsWith(".json"))) {
+  get rawWarnings(): readonly string[] { return this.#rawWarnings; }
+
+  list(legacyRoot?: string): HistoryArchive[] {
+    this.#warnings = []; this.#rawWarnings = [];
+    const archives = new Map<string, HistoryArchive>();
+    const rawWarning = (path: string, error: unknown) => {
+      const message = diagnostic(path, error); this.#warnings.push(message); this.#rawWarnings.push(message);
+    };
+    const scan = (directory: string, layout: "private" | "shared" | "raw") => {
+      for (const name of names(directory)) {
+        const path = join(directory, name);
         try {
-          const value = readJsonFile(directory, name, value => {
-            if (directory === this.directory) return record(value);
-            requireThat(object(value) && (value.host === undefined || value.host === this.host), "旧历史归档与来源目录不匹配。");
-            return record({ ...value, host: this.host });
-          });
-          requireThat(name === fileId(value.id) + ".json", "历史文件名与根 ID 不匹配。");
-          if (value.host === this.host && !records.has(value.id)) records.set(value.id, value);
-        } catch (error) { this.#warnings.push(join(directory, name) + ": " + String(error)); }
-      }
-    }
-    return [...records.values()];
-  }
-  /** Publish each legacy archive with its directory's host before removing the old copy. */
-  migrate(root: string) {
-    if (this.host !== "pi" && this.host !== "dsh") return;
-    const directory = join(root, "." + this.host, "pbot/history");
-    if (!existsSync(directory)) return;
-    this.control(() => {
-      if (!existsSync(directory)) return;
-      const legacyLock = join(directory, ".write");
-      mkdirSync(legacyLock, { mode: 0o700 });
-      try {
-        for (const name of readdirSync(directory).filter(name => name.endsWith(".json"))) {
-          const source = internalPath(directory, name), target = internalPath(this.directory, name);
-          requireThat(source !== target, "新旧历史目录指向同一位置。");
-          const value = readJsonFile(directory, name, value => {
-            requireThat(object(value) && (value.host === undefined || value.host === this.host), "旧历史归档与来源目录不匹配。");
-            return record({ ...value, host: this.host });
-          });
-          requireThat(name === fileId(value.id) + ".json", "历史文件名与根 ID 不匹配。");
-          if (!writeJsonFile(this.directory, name, value, record, true)) {
-            requireThat(canonical(readJsonFile(this.directory, name, record)) === canonical(value),
-              "历史归档迁移冲突，请核对新旧文件：" + name);
+          for (;;) {
+            const before = lstatSync(path, { bigint: true });
+            const file = readJsonFile(directory, name, (value): OldFile | undefined => {
+              if (layout !== "private" && object(value) && isHistoryHost(value.host) && value.host !== this.host) return undefined;
+              return layout === "raw" ? { raw: namedRaw(value, name) } : oldFile(value, name, layout === "private" ? this.host : undefined);
+            });
+            if (!file) break;
+            const { raw } = file;
+            if (file.summaries) { archives.set(raw.id, { raw, summaries: file.summaries }); break; }
+            const layer = layout === "raw" ? "summary" : "hierarchical";
+            let summaries: HistorySummary[] | null, warning: string | undefined;
+            try { summaries = readSummaries(this.directory, layer, raw)?.summaries ?? []; }
+            catch (error) { warning = diagnostic(join(this.directory, layer, name), error); summaries = null; }
+            // Peers take no lock. Retry if a native update replaced the raw file between reads.
+            const after = lstatSync(path, { bigint: true });
+            if (before.ino !== after.ino || before.ctimeNs !== after.ctimeNs) continue;
+            if (warning) this.#warnings.push(warning);
+            archives.set(raw.id, { raw, summaries }); break;
           }
-          syncDirectory(this.directory);
-          unlinkSync(source); syncDirectory(directory);
-        }
-      } finally { rmdirSync(legacyLock); }
-      rmdirSync(directory);
-      const parent = dirname(directory);
-      syncDirectory(parent);
-      try { rmdirSync(parent); syncDirectory(dirname(parent)); }
-      catch (error) { if (!["ENOTEMPTY", "EEXIST"].includes((error as NodeJS.ErrnoException).code ?? "")) throw error; }
-    });
+        } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") rawWarning(path, error); }
+      }
+    };
+    // Read the destinations last: a concurrent migration publishes both files before retiring its source.
+    if (legacyRoot && this.host !== "claude") {
+      try { const directory = legacyDirectory(legacyRoot, this.host); if (directory) scan(directory, "private"); }
+      catch (error) { rawWarning(join(legacyRoot, "." + this.host, "pbot/history"), error); }
+    }
+    try {
+      if (sharedDirectory(this.directory)) {
+        scan(this.directory, "shared");
+        const directory = join(this.directory, "raw");
+        if (ordinaryDirectory(directory)) scan(directory, "raw");
+      }
+    } catch (error) { rawWarning(this.directory, error); }
+    return [...archives.values()];
   }
+
   /** The callback is synchronous: no SDK reads or model work can hold this source's write lock. */
   control<T>(operation: () => T): T {
-    mkdirSync(this.directory, { recursive: true, mode: 0o700 });
+    requireThat(this.host !== "claude", "Claude 历史归档只读。");
+    ensureDirectory(this.directory);
     const lock = join(this.directory, ".write-" + this.host);
     try { mkdirSync(lock, { mode: 0o700 }); }
     catch (error) {
@@ -89,9 +138,119 @@ export class HistoryFiles {
     }
     try { return operation(); } finally { rmdirSync(lock); }
   }
-  save(value: HistoryRecord) {
-    requireThat(value.host === this.host, "历史归档与来源不匹配。");
-    mkdirSync(this.directory, { recursive: true, mode: 0o700 });
-    writeJsonFile(this.directory, fileId(value.id) + ".json", value, record);
+
+  private writable(identity: HistoryIdentity) {
+    requireThat(this.host !== "claude" && identity.host === this.host, "历史归档只允许所属 Pi/dsh 来源写入。");
+    const name = filename(identity.id);
+    requireThat(!lstatSync(join(this.directory, name), { throwIfNoEntry: false }), "根 ID 已有旧历史归档：" + name);
+    return name;
+  }
+
+  saveRaw(raw: RawHistory) {
+    const name = this.writable(raw);
+    rawHistory(raw); ensureDirectory(this.directory);
+    const current = optional(() => readRaw(this.directory, name));
+    if (current) {
+      matchIdentity(current, raw);
+      if (isDeepStrictEqual(current, raw)) return;
+    } else {
+      for (const layer of ["summary", "hierarchical"]) {
+        const directory = join(this.directory, layer);
+        if (lstatSync(directory, { throwIfNoEntry: false })?.isDirectory()) {
+          requireThat(!lstatSync(join(directory, name), { throwIfNoEntry: false }), "历史根 ID 已有关联的摘要文件：" + name);
+        }
+      }
+      privateDirectory(this.directory, "raw");
+    }
+    requireThat(writeJsonFile(this.directory, "raw/" + name, raw, rawHistory, !current), "历史根 ID 已被占用：" + name);
+  }
+
+  saveSummaries(identity: HistoryIdentity, summaries: readonly HistorySummary[]) {
+    const name = this.writable(identity);
+    requireThat(sharedDirectory(this.directory), "历史原文目录不存在：" + this.directory);
+    const raw = readRaw(this.directory, name);
+    matchIdentity(raw, identity);
+    this.publishSummaries(raw, summaries);
+  }
+
+  private publishSummaries(raw: RawHistory, summaries: readonly HistorySummary[], source?: "mixed" | "hierarchical") {
+    const { host, id, sessionId } = raw, path = "summary/" + filename(id);
+    const validate = (data: unknown) => hierarchicalHistory(data, raw);
+    const value = validate({ host, id, sessionId, summaries: summaries.map(summaryData) });
+    const previous = readSummaries(this.directory, "summary", raw);
+    if (previous) {
+      if (isDeepStrictEqual(previous, value)) {
+        if (source) syncDirectory(join(this.directory, "summary"));
+        return;
+      }
+      requireThat(!source, "历史摘要迁移冲突，请核对已有文件：" + path);
+    } else {
+      privateDirectory(this.directory, "summary");
+      if (source === "hierarchical" && linkArchive(this.directory, "hierarchical/" + filename(id), path)) return;
+    }
+    requireThat(writeJsonFile(this.directory, path, value, validate, !previous), "历史摘要文件已被占用：" + path);
+  }
+
+  private migrateFile(name: string, privateDir?: string) {
+    const readOld = (directory: string, host?: HistoryHost) => readJsonFile(directory, name, value => oldFile(value, name, host));
+    const shared = optional(() => readOld(this.directory)), local = privateDir ? readOld(privateDir, this.host) : undefined;
+    const source = shared ?? local;
+    if (!source) return;
+    const { raw } = source;
+    if (!local && raw.host !== this.host) return;
+    if (shared && local) requireThat(isDeepStrictEqual(shared.raw, local.raw) && (!shared.mixed || isDeepStrictEqual(shared.mixed, local.mixed)),
+      "历史归档迁移冲突，请核对新旧文件：" + name);
+    const target = optional(() => readRaw(this.directory, name));
+    requireThat(!target || isDeepStrictEqual(target, raw), "历史原文迁移冲突，请核对已有文件：" + name);
+    const oldLayer = readSummaries(this.directory, "hierarchical", raw), embedded = source.summaries ?? local?.summaries;
+    requireThat(!oldLayer || !embedded || isDeepStrictEqual(oldLayer.summaries, embedded), "旧历史摘要不一致：" + name);
+    const summaries = embedded ?? oldLayer?.summaries;
+    // The raw file makes this pair discoverable. Publish summaries first; never overwrite a migration conflict.
+    if (summaries) this.publishSummaries(raw, summaries, oldLayer ? "hierarchical" : "mixed");
+    else requireThat(!readSummaries(this.directory, "summary", raw) || target, "历史摘要迁移冲突：" + name);
+    if (!target) {
+      privateDirectory(this.directory, "raw");
+      const path = "raw/" + name;
+      if (!shared || shared.mixed || !linkArchive(this.directory, name, path)) {
+        requireThat(writeJsonFile(this.directory, path, raw, rawHistory, true), "历史原文迁移冲突：" + name);
+      }
+    } else syncDirectory(join(this.directory, "raw"));
+    syncDirectory(this.directory);
+    if (oldLayer) {
+      retire(this.directory, "hierarchical/" + name);
+      removeEmptyDirectory(join(this.directory, "hierarchical"));
+    }
+    if (shared) retire(this.directory, name);
+    if (privateDir) retire(privateDir, name);
+  }
+
+  migrate(root: string) {
+    if (this.host === "claude") return;
+    const legacy = legacyDirectory(root, this.host);
+    const shared = sharedDirectory(this.directory) ? names(this.directory).filter(name => {
+      try { return readJsonFile(this.directory, name, value => object(value) && value.host === this.host); }
+      catch { return false; } // list reports unreadable roots.
+    }) : [];
+    if (!legacy && !shared.length) return;
+    this.control(() => {
+      const directory = legacy && legacyDirectory(root, this.host), errors: string[] = [];
+      const migrateFiles = (local: string[]) => {
+        const privateNames = new Set(local);
+        for (const name of new Set([...local, ...shared])) {
+          try { this.migrateFile(name, privateNames.has(name) ? directory : undefined); }
+          catch (error) {
+            if ((error as NodeJS.ErrnoException).code) throw error;
+            errors.push(diagnostic(name, error));
+          }
+        }
+      };
+      if (directory) {
+        requireThat(realpathSync(directory) !== realpathSync(this.directory), "新旧历史目录指向同一位置。");
+        const lock = join(directory, ".write"); mkdirSync(lock, { mode: 0o700 });
+        try { migrateFiles(names(directory)); } finally { rmdirSync(lock); }
+        removeEmptyDirectory(directory); removeEmptyDirectory(dirname(directory));
+      } else migrateFiles([]);
+      if (errors.length) throw new Error(errors.join("\n"));
+    });
   }
 }

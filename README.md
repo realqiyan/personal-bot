@@ -155,7 +155,7 @@ Use `pi --resume` to select the main session explicitly; `pi --continue` can sel
 | `AGENTS.md` | Navigation and working agreements |
 | `areas/`, `projects/` | Long-term goals, tasks, conclusions, and deliverables |
 | `knowledge/` | Reusable concepts, methods, and analysis definitions |
-| `.pbot/history/` | Pi/dsh exchanges, summaries, and node links; preserved Claude archives |
+| `.pbot/history/` | Pi/dsh original exchanges in `raw/` and derived summaries in `summary/`; preserved Claude archives |
 | `providers/` | External tool guidance, data definitions, and sources |
 | `scratch/` | Temporary scripts, calculation data, downloads, and environments |
 | `agents/` | Role additions |
@@ -165,7 +165,7 @@ Existing layouts and agreements take precedence. Fetch queryable data when neede
 
 ## Updates and operating scope
 
-Current release: **0.2.17**. Update through the host's native package manager. For a local Pi source, update the checkout, run `npm ci --ignore-scripts` when dependencies change, then reload or restart. Stop active specialists before changing versions. Recreate specialists across compatibility lines; existing materials, history, and backups are preserved.
+Current release: **0.2.18**. Update through the host's native package manager. For a local Pi source, update the checkout, run `npm ci --ignore-scripts` when dependencies change, then reload or restart. Stop active specialists before changing versions. Recreate specialists across compatibility lines; existing materials, history, and backups are preserved.
 
 Operations follow the user's request, existing agreements, and required confirmations. Bash, Python, MCP, and extensions use the actual account and credential permissions. Enforce hard limits through read-only credentials, service controls, or restricted environments. Trades, transfers, and ledger changes require authorization for those operations. After cancellation, timeout, or disconnection, query native status before retrying to avoid duplicate execution.
 

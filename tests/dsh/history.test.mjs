@@ -10,7 +10,9 @@ import { dshHost } from "../helpers/dsh-host.mjs";
 import { flushDshAgent } from "../../dist/integrations/dsh/session.js";
 import { DshHistory, projectDshHistory } from "../../dist/integrations/dsh/history.js";
 import { dshHistorySummarizer } from "../../dist/integrations/dsh/history-summary.js";
-import { HistoryService, indexHistory } from "../../dist/services/history/history-service.js";
+import { HistoryService } from "../../dist/services/history/history-service.js";
+import { historySummaries, historyView, indexHistory } from "../../dist/services/history/history-index.js";
+import { assertArchiveReadable, legacyArchive } from "../helpers/history-archive.mjs";
 import { HistoryFiles } from "../../dist/storage/history-files.js";
 import { PiHistory, projectHistory } from "../../dist/integrations/pi/history.js";
 
@@ -83,7 +85,7 @@ test("dsh cold history keeps steering, partial answers and forks within their wo
   const files = new HistoryFiles(join(root, ".pbot/history"), "dsh"), service = new HistoryService(root, files, source);
   t.after(() => service.close()); await service.refresh({ host: "dsh" });
   assert.equal(service.search().total, 3); assert.equal(service.search({ query: hidden }).total, 0);
-  assert.ok(files.list().every(value => value.host === "dsh"));
+  assert.ok(files.list().every(({ raw }) => raw.host === "dsh"));
   const hit = service.search({ query: "补充要求", sessionId: main.agent.id }).matches[0], read = service.read(hit.id);
   assert.equal(read.source.host, "dsh"); assert.equal(read.source.sessionId, main.agent.id);
   assert.deepEqual(read.source.entryIds, projected.branches[0][0].entryIds);
@@ -95,14 +97,15 @@ test("dsh cold history keeps steering, partial answers and forks within their wo
 });
 
 for (const starter of ["pi", "dsh"]) test(`${starter} refresh migrates its own native archive and only reads peer archives`, async t => {
-  const { root, host } = await fixture(t), manager = SessionManager.create(root, join(root, "pi-native"));
+  const { temp, root, host } = await fixture(t), manager = SessionManager.create(root, join(root, "pi-native"));
+  const copy = join(temp, "copied-workspace"); await mkdir(copy);
   const usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } };
   const handle = await host.ctx.agents.create({ sessionId: manager.getSessionId(), meta: { cwd: root } });
-  for (let i = 1; i <= 4; i++) {
+  for (let i = 1; i <= 16; i++) {
     manager.appendMessage({ role: "user", content: "Pi 问题 " + i, timestamp: Date.now() });
     manager.appendMessage({ role: "assistant", api: "openai-responses", provider: "openai", model: "gpt-4.1", timestamp: Date.now(), usage,
-      content: [{ type: "text", text: "Pi 答复 " + i }], stopReason: "stop" });
-    exchange(handle.agent.session, i, "dsh 问题 " + i, "dsh 答复 " + i);
+      content: [{ type: "text", text: "Pi 答复 " + i }], stopReason: i === 16 ? "length" : "stop" });
+    exchange(handle.agent.session, i, "dsh 问题 " + i, "dsh 答复 " + i, { finish: i === 16 ? "max-tokens" : "stop" });
   }
   await flushDshAgent(handle.agent);
   const dshOriginal = handle.agent.session.snapshotEvents(); await handle.dispose();
@@ -112,32 +115,44 @@ for (const starter of ["pi", "dsh"]) test(`${starter} refresh migrates its own n
   const expected = new Map();
   for (const source of ["pi", "dsh"]) {
     const scanned = await sources[source].scan(locations[source]); assert.deepEqual(scanned.warnings, []);
-    const record = indexHistory(scanned.sessions[0], undefined, source);
-    const summary = record.nodes.find(node => node.kind === "summary"); summary.text = "已有摘要 " + source; summary.ready = true;
-    expected.set(source, record);
-    const { host: _host, ...legacy } = record, directory = join(root, "." + source, "pbot/history");
-    await mkdir(directory, { recursive: true }); await writeFile(join(directory, record.id + ".json"), JSON.stringify(legacy));
+    const record = historyView(indexHistory(scanned.sessions[0], undefined, source));
+    for (const summary of record.nodes.filter(node => node.kind === "summary")) {
+      summary.text = summary.level === 2 ? "已有摘要 " + source : "下级摘要 " + summary.id;
+      summary.ready = true;
+    }
+    assert.equal(record.nodes.find(node => node.level === 2).completed, false);
+    const { path } = await legacyArchive(copy, record);
+    expected.set(source, { record, path, bytes: await readFile(path) });
   }
-  const files = new HistoryFiles(join(root, ".pbot/history"), starter);
+  const files = new HistoryFiles(join(copy, ".pbot/history"), starter);
   const other = new HistoryFiles(files.directory, starter === "pi" ? "dsh" : "pi");
-  const service = new HistoryService(root, files, sources[starter], [other]); t.after(() => service.close());
-  await service.refresh(locations[starter]);
+  const source = starter === "pi" ? new PiHistory(copy) : new DshHistory(host.ctx, copy);
+  const service = new HistoryService(copy, files, source, [other]); t.after(() => service.close());
+  const offline = starter === "pi" ? { host: "pi", directory: join(copy, "missing-native") } : { host: "dsh" };
+  const online = starter === "pi" ? locations.pi : { host: "dsh", sessionId: handle.agent.id };
+  await service.refresh(offline);
   assert.deepEqual(service.warnings, []); assert.equal(service.search().total, 2);
-  const written = new Map();
-  for (const [source, record] of expected) {
-    const path = source === starter ? join(files.directory, record.id + ".json") : join(root, "." + source, "pbot/history", record.id + ".json");
-    const content = await readFile(path, "utf8"); written.set(path, content);
-    const { host: _host, ...legacy } = record;
-    assert.deepEqual(JSON.parse(content), source === starter ? record : legacy);
-    assert.equal(service.read(record.id).source.host, source);
-    if (source === starter) {
-      await assert.rejects(stat(join(root, "." + source, "pbot/history")), { code: "ENOENT" });
-      await assert.rejects(stat(join(root, "." + source, "pbot")), { code: "ENOENT" });
-    } else await assert.rejects(stat(join(files.directory, record.id + ".json")), { code: "ENOENT" });
+  for (const { record } of expected.values()) {
+    assertArchiveReadable(service, record);
+    const hit = service.search({ host: record.host, query: "已有摘要" });
+    assert.equal(hit.total, 1); assert.equal(hit.matches[0].id, record.nodes.find(node => node.level === 2).id);
   }
-  await service.refresh(locations[starter]);
+  const own = expected.get(starter), peer = expected.get(other.host);
+  const rawPath = join(files.directory, "raw", own.record.id + ".json"), derivedPath = join(files.directory, "summary", own.record.id + ".json");
+  assert.deepEqual(JSON.parse(await readFile(rawPath, "utf8")), files.list()[0].raw);
+  assert.ok((await readFile(derivedPath, "utf8")).includes("已有摘要 " + starter));
+  await assert.rejects(stat(join(copy, "." + starter, "pbot")), { code: "ENOENT" });
+  await assert.rejects(stat(join(files.directory, "raw", peer.record.id + ".json")), { code: "ENOENT" });
+  await assert.rejects(stat(join(files.directory, "summary", peer.record.id + ".json")), { code: "ENOENT" });
+  assert.deepEqual(await readFile(peer.path), peer.bytes);
+
+  await service.refresh(online);
+  const [restored, derived] = await Promise.all([readFile(rawPath), readFile(derivedPath)]);
+  await service.refresh(online);
   assert.deepEqual(service.warnings, []); assert.equal(service.search().total, 2);
-  for (const [path, content] of written) assert.equal(await readFile(path, "utf8"), content);
+  for (const { record } of expected.values()) assertArchiveReadable(service, record);
+  assert.deepEqual(await readFile(rawPath), restored); assert.deepEqual(await readFile(derivedPath), derived);
+  assert.deepEqual(await readFile(peer.path), peer.bytes);
   assert.equal(await readFile(manager.getSessionFile(), "utf8"), piOriginal);
   assert.deepEqual((await host.ctx.sessionQuery.readSession(handle.agent.id)).events, dshOriginal);
 });
@@ -151,9 +166,11 @@ test("both hosts query equal native ids independently, preserve peer archives an
       content: [{ type: "text", text: "归档答复🙂".repeat(100) }], stopReason: "stop" });
   }
   const original = await readFile(manager.getSessionFile(), "utf8"), piFiles = new HistoryFiles(join(root, ".pbot/history"));
-  const saved = { ...indexHistory(projectHistory(original)), file: join(root, "missing-original.jsonl") };
-  const summary = saved.nodes.find(value => value.kind === "summary"); summary.text = "已有摘要"; summary.ready = true; piFiles.save(saved);
-  const piPath = join(piFiles.directory, saved.id + ".json"), piBytes = await readFile(piPath, "utf8");
+  const saved = indexHistory(projectHistory(original)), piView = historyView(saved);
+  const summary = piView.nodes.find(value => value.kind === "summary"); summary.text = "已有摘要"; summary.ready = true;
+  piFiles.saveRaw(saved); piFiles.saveSummaries(saved, historySummaries(piView));
+  const piPath = join(piFiles.directory, "raw", saved.id + ".json"), piBytes = await readFile(piPath, "utf8");
+  const piDerived = join(piFiles.directory, "summary", saved.id + ".json"), piSummaryBytes = await readFile(piDerived);
   const handle = await host.ctx.agents.create({ sessionId: manager.getSessionId(), meta: { cwd: root } });
   for (let turn = 1; turn <= 4; turn++) exchange(handle.agent.session, turn, "dsh 问题 " + turn, "原生答复");
   await flushDshAgent(handle.agent); await handle.dispose();
@@ -170,9 +187,10 @@ test("both hosts query equal native ids independently, preserve peer archives an
   let text = first.text, next = first.nextOffset;
   while (next !== null) { const page = service.read(child.id, next, 33); text += page.text; next = page.nextOffset; }
   assert.equal(text, service.read(child.id).text); assert.equal(first.source.host, "pi");
-  assert.equal(await readFile(piPath, "utf8"), piBytes);
-  const dshRecord = dshFiles.list()[0], dshPath = join(dshFiles.directory, dshRecord.id + ".json"), dshBytes = await readFile(dshPath, "utf8");
-  assert.throws(() => piFiles.save(dshRecord)); assert.throws(() => dshFiles.save(saved));
+  assert.equal(await readFile(piPath, "utf8"), piBytes); assert.deepEqual(await readFile(piDerived), piSummaryBytes);
+  const [{ raw: dshRecord }] = dshFiles.list(), dshPath = join(dshFiles.directory, "raw", dshRecord.id + ".json"), dshBytes = await readFile(dshPath, "utf8");
+  assert.throws(() => piFiles.saveRaw(dshRecord)); assert.throws(() => dshFiles.saveRaw(saved));
+  assert.throws(() => piFiles.saveSummaries(dshRecord, [])); assert.throws(() => dshFiles.saveSummaries(saved, []));
   assert.equal(piFiles.list().length, 1); assert.equal(dshFiles.list().length, 1);
   await writeFile(piPath, "invalid JSON"); await service.refresh({ host: "dsh" });
   assert.equal(service.warnings.length, 1); assert.equal(service.search({ host: "dsh" }).total, 1);
@@ -193,18 +211,19 @@ test("dsh replaces a tool-phase observation while retaining a later interrupted 
   for (let turn = 1; turn <= 3; turn++) exchange(session, turn, "完成问题 " + turn, "完成答复 " + turn);
   session.append("turn/start", { turn: 4 }); session.append("step/start", { turn: 4, step: 1 });
   const user = question(session, "等待工具的问题"), partial = answer(session, 4, 1, "工具阶段的部分文本", "tool-calls");
-  const files = new HistoryFiles(join(root, ".pbot/history"), "dsh");
-  const archived = indexHistory(projectDshHistory(session.header, session.snapshotEvents()), undefined, "dsh");
-  const old = archived.nodes.find(node => node.kind === "summary"); old.text = "部分阶段摘要"; old.ready = true; files.save(archived);
+  const files = new HistoryFiles(join(root, ".pbot/history"), "dsh"), service = new HistoryService(root, files, new DshHistory(host.ctx, root));
+  t.after(() => service.close());
+  await flushDshAgent(handle.agent); await service.refresh({ host: "dsh" });
+  const [{ raw }] = files.list(), archived = historyView(raw), old = archived.nodes.find(node => node.kind === "summary");
+  old.text = "部分阶段摘要"; old.ready = true; files.saveSummaries(raw, historySummaries(archived));
   session.append("step/end", { turn: 4, step: 1 }); session.append("step/start", { turn: 4, step: 2 });
   const final = answer(session, 4, 2, "完整最终答复");
   session.append("step/end", { turn: 4, step: 2 }); session.append("turn/end", { turn: 4, reason: { kind: "completed" } });
   exchange(session, 5, "独立中断的问题", "中断前正文", { interrupted: true, reason: { kind: "aborted", cause: { kind: "user" } } });
   exchange(session, 6, "后续问题", "后续最终答复");
   await flushDshAgent(handle.agent);
-  const native = session.snapshotEvents(), service = new HistoryService(root, files, new DshHistory(host.ctx, root));
-  t.after(() => service.close()); await service.refresh({ host: "dsh" });
-  const updated = files.list()[0], exchanges = updated.nodes.filter(node => node.kind === "exchange");
+  const native = session.snapshotEvents(); await service.refresh({ host: "dsh" });
+  const [{ raw: updated }] = files.list(), exchanges = updated.exchanges;
   assert.equal(exchanges.length, 6);
   assert.equal(exchanges.some(node => node.entryIds.at(-1) === "dsh:" + partial.seq), false);
   assert.deepEqual(exchanges.find(node => node.entryIds[0] === "dsh:" + user.seq).entryIds, ["dsh:" + user.seq, "dsh:" + final.seq]);
@@ -219,11 +238,10 @@ test("a real missing dsh provider leaves summaries pending and exposes the failu
   const { root, host } = await fixture(t), handle = await host.ctx.agents.create({ sessionId: randomUUID(), meta: { cwd: root } });
   for (let turn = 1; turn <= 4; turn++) exchange(handle.agent.session, turn, "待整理问题 " + turn, "已有答复");
   await flushDshAgent(handle.agent);
-  const source = projectDshHistory(handle.agent.session.header, handle.agent.session.snapshotEvents());
-  const files = new HistoryFiles(join(root, ".pbot/history"), "dsh"), record = indexHistory(source, undefined, "dsh"); files.save(record);
-  const path = join(files.directory, record.id + ".json"), original = await readFile(path, "utf8");
+  const files = new HistoryFiles(join(root, ".pbot/history"), "dsh");
   const service = new HistoryService(root, files, new DshHistory(host.ctx, root)); t.after(() => service.close());
   await service.refresh({ host: "dsh" }); assert.equal(service.status.pending, 1);
+  const [{ raw }] = files.list(), path = join(files.directory, "raw", raw.id + ".json"), original = await readFile(path, "utf8");
   const summarize = dshHistorySummarizer(host.ctx, { provider: "not-configured", model: "none" }, handle.agent.id);
   const cancelled = new AbortController(); cancelled.abort();
   await assert.rejects(service.organize(summarize, cancelled.signal), { name: "AbortError" });
