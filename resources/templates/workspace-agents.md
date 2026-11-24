@@ -11,3 +11,7 @@
 ├── scratch/        # 临时脚本、查询与计算数据、下载及运行环境
 └── agents/         # coordinator.md 与 general-purpose.md 的职责补充
 ```
+
+## 项目速查
+
+项目默认入口为 `projects/<目录名>/README.md`。

@@ -1,6 +1,6 @@
 {
   "name": "personal-bot",
-  "version": "0.2.19",
+  "version": "0.2.20",
   "description": "Workspace materials, skills, and native experts.",
   "skills": [
     "./resources/skills",
