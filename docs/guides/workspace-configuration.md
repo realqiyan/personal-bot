@@ -31,7 +31,7 @@
 
 ## ACP Harness 配置（`acp`）
 
-`acp` 字段可覆盖已注册预设目标的命令，或直接接入**任意**符合 ACP v1 的自定义 Harness（键名匹配 `^[a-z0-9][a-z0-9-]{0,63}$`），无需改动运行时代码：
+`acp` 字段可覆盖已注册预设目标的命令/权限策略，或直接接入**任意**符合 ACP v1 的自定义 Harness（键名匹配 `^[a-z0-9][a-z0-9-]{0,63}$`），无需改动运行时代码：
 
 ```json
 {
@@ -39,21 +39,23 @@
   "acp": {
     "pi": { "command": "/absolute/path/to/pi-acp", "args": [] },
     "dsh": { "command": "/absolute/path/to/dsh", "args": ["--profile", "acp"] },
-    "claude": { "command": "/absolute/path/to/claude-agent-acp", "args": [] },
+    "claude": { "permission": "ask" },
     "antigravity": { "command": "/absolute/path/to/agy", "args": ["acp"] },
-    "codex": { "command": "/absolute/path/to/codex-acp", "args": [] },
+    "codex": { "permission": "allow" },
     "my-harness": {
       "command": "/absolute/path/to/my-acp",
       "args": ["--stdio"],
-      "env": { "MY_HARNESS_MODE": "headless" }
+      "env": { "MY_HARNESS_MODE": "headless" },
+      "permission": "ask"
     }
   }
 }
 ```
 
-- 每项需提供非空 `command` 与字符串数组 `args`，可选提供 `env`（字符串键值映射，启动 worker 时叠加到环境变量）。
+- 自定义目标需提供非空 `command`（以及可选字符串数组 `args`，省略时为 `[]`）；已注册内置目标若只需调整 `env` 或 `permission`，可省略 `command` 和 `args` 以沿用默认启动命令。
+- `permission` 可选值为 `"ask"`（默认）、`"allow"`、`"deny"`：未配置或为 `"ask"` 时保持目标 Harness 自身默认权限策略，遇到 `session/request_permission` 时转发给主会话确认；`"allow"` 自动放行；`"deny"` 自动拒绝。
 - 命令不经过 shell 展开；参数中的相对路径按 worker 的 `cwd` 解析。凭据与模型认证由目标宿主自行管理，不写入此文件。
-- 新建 worker 时固定解析后的可执行路径与参数；修改 `.pbot/config.json` 后，MCP `pbot_worker` 的下次 `backends` / `start` 调用自动读取最新 `acp` 配置。
+- 新建 worker 时固定解析后的可执行路径、参数与权限策略；修改 `.pbot/config.json` 后，MCP `pbot_worker` 的下次 `backends` / `models` / `start` 调用自动读取最新 `acp` 配置。
 
 ## 手工修改生效方式
 

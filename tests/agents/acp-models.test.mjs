@@ -4,7 +4,7 @@ import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
-import { acpModelSelection, acpModelValue, acpThinkingValue } from "../../dist/integrations/acp/model-selection.js";
+import { acpChoices, acpModelSelection, acpModelValue, acpThinkingValue } from "../../dist/integrations/acp/model-selection.js";
 import { openAcp } from "../../dist/integrations/acp/connection.js";
 
 const select = (id, currentValue, entries, category = id) => ({ id, category, type: "select", name: id, currentValue,
@@ -16,6 +16,7 @@ test("Pi ACP accepts provider-qualified and native model IDs containing slashes"
     select("thought_level", "max", ["low", "high", "max"])];
   assert.deepEqual(acpModelValue("pi", options, "codex/gpt-6.1-sol"), { configId: "model", value: "magpie/codex/gpt-6.1-sol" });
   assert.equal(acpModelValue("pi", options, "codex/gpt-6.1-sol", "magpie").value, "magpie/codex/gpt-6.1-sol");
+  assert.equal(acpModelValue("pi", options, "magpie/gpt-6.1-sol").value, "magpie/codex/gpt-6.1-sol");
   assert.equal(acpModelValue("pi", options, "deepseek/deepseek-flash").value, "deepseek/deepseek-flash");
   assert.deepEqual(acpModelSelection("pi", options), { provider: "magpie", model: "codex/gpt-6.1-sol", thinking: "max" });
   const { category: _category, ...uncategorized } = options[1];
@@ -23,6 +24,7 @@ test("Pi ACP accepts provider-qualified and native model IDs containing slashes"
   assert.throws(() => acpModelValue("pi", options, "codex/gpt-6.1-sol", "deepseek"));
   const routed = [select("model", "custom/route/deepseek-flash", ["custom/route/deepseek-flash"])];
   assert.equal(acpModelValue("pi", routed, "deepseek-flash", "custom/route").value, "custom/route/deepseek-flash");
+  assert.equal(acpModelValue("pi", routed, "custom/route/deepseek-flash").value, "custom/route/deepseek-flash");
 });
 
 test("dsh ACP resolves grouped native IDs and uses the default provider to distinguish identical model IDs", () => {
@@ -35,6 +37,8 @@ test("dsh ACP resolves grouped native IDs and uses the default provider to disti
   assert.equal(acpModelValue("dsh", [model], "deepseek-flash").value, official);
   assert.equal(acpModelValue("dsh", [model], "deepseek-v4-pro").value, pro);
   assert.equal(acpModelValue("dsh", [model], "deepseek-flash", "deepseek-account").value, account);
+  assert.equal(acpModelValue("dsh", [model], "deepseek-account/deepseek-flash").value, account);
+  assert.equal(acpModelValue("dsh", [model], "DeepSeek-Account/Flash").value, account);
   assert.equal(acpModelValue("dsh", [model], account).value, account);
   assert.deepEqual(acpModelSelection("dsh", [model]), { provider: "deepseek-official", model: "deepseek-flash" });
   assert.throws(() => acpModelValue("dsh", [{ ...model, currentValue: dshValue("another-route", "deepseek-v4-pro") }], "deepseek-flash"));
@@ -54,6 +58,60 @@ test("Claude ACP preserves aliases and default effort values while rejecting uns
   assert.deepEqual(acpModelSelection("claude", [options[0]], "max"), { model: "sonnet" });
   assert.deepEqual(acpModelSelection("claude", [options[0]], "unset"), { model: "sonnet", thinking: "unset" });
   assert.equal(acpModelSelection("claude", [options[0], select("effort", "high", ["low", "high"], "thought_level")], "max").thinking, "high");
+});
+
+test("model and thinking resolution supports display names, case-insensitive and unique partial matches", () => {
+  const options = [
+    {
+      id: "model",
+      category: "model",
+      type: "select",
+      name: "Model",
+      currentValue: "claude-sonnet-4-5",
+      options: [
+        { value: "claude-opus-4-5", name: "Opus 4.5" },
+        { value: "claude-sonnet-4-5", name: "Sonnet 4.5" },
+      ],
+    },
+    {
+      id: "thought_level",
+      category: "thought_level",
+      type: "select",
+      name: "Thinking",
+      currentValue: "medium",
+      options: [
+        { value: "low", name: "Low" },
+        { value: "medium", name: "Medium" },
+        { value: "high", name: "High" },
+        { value: "xhigh", name: "Extra High" },
+      ],
+    },
+  ];
+  assert.equal(acpModelValue("claude", options, "Opus 4.5").value, "claude-opus-4-5");
+  assert.equal(acpModelValue("claude", options, "OPUS").value, "claude-opus-4-5");
+  assert.equal(acpModelValue("claude", options, "sonnet").value, "claude-sonnet-4-5");
+  assert.throws(() => acpModelValue("claude", options, "claude"));
+  assert.throws(() => acpModelValue("claude", options, "---"));
+  assert.equal(acpThinkingValue(options, "HIGH").value, "high");
+  assert.equal(acpThinkingValue(options, "Extra High").value, "xhigh");
+  assert.equal(acpThinkingValue(options, "x-high").value, "xhigh");
+  assert.throws(() => acpThinkingValue([{ ...options[1], options: [{ value: "xhigh", name: "Extra High" }] }], "high"));
+  assert.throws(() => acpThinkingValue(options, "---"));
+
+  // Default provider tie-breaker applies after lenient display-name matching too.
+  const official = dshValue("deepseek-official", "deepseek-flash"), account = dshValue("deepseek-account", "deepseek-flash");
+  const grouped = [{ ...select("model", official, []), options: [
+    { group: "deepseek-official", name: "Official", options: [{ value: official, name: "Flash" }] },
+    { group: "deepseek-account", name: "Account", options: [{ value: account, name: "Flash" }] },
+  ] }];
+  assert.equal(acpModelValue("dsh", grouped, "flash").value, official);
+  assert.equal(acpModelValue("dsh", grouped, "flash", "DeepSeek-Account").value, account);
+
+  const choices = acpChoices(options);
+  assert.equal(choices.currentModel, "claude-sonnet-4-5");
+  assert.equal(choices.currentThinking, "medium");
+  assert.deepEqual(choices.models.map(item => item.value), ["claude-opus-4-5", "claude-sonnet-4-5"]);
+  assert.deepEqual(choices.thinking.map(item => item.value), ["low", "medium", "high", "xhigh"]);
 });
 
 test("the real dsh ACP configuration keeps defaults when omitted and applies model and reasoning independently", { timeout: 30000 }, async t => {

@@ -6,7 +6,7 @@ import { requireThat } from "../../common/validation.js";
 import { AgentFiles, descriptor, launch, status, cycle } from "../../storage/agent-files.js";
 import type { AgentOwner, AgentOptions, AgentStartOptions, AgentDescriptor, AgentCycle, AgentSessionReference, AgentView } from "../../model/agent.js";
 import type { AcpBackend, AcpSessionReference } from "../../model/acp.js";
-import { acpModelState, acpReference } from "../../storage/acp-files.js";
+import { acpModelState, acpPermissionReply, acpReference } from "../../storage/acp-files.js";
 
 export interface AgentHost {
   available(backend: AcpBackend): void;
@@ -65,6 +65,8 @@ export class AgentService {
       ...(model.resolvedModel ? { resolvedModel: model.resolvedModel } : {}),
       ...(model.thinking ? { thinking: model.thinking } : {}),
     } : undefined;
+    const pendingPermissions = alive ? this.files.pendingPermissions(d.agentId, run.generation)
+      .map(item => ({ permissionId: item.requestId, description: item.description, options: item.options })) : [];
     return {
       ...d,
       name: run.name,
@@ -83,7 +85,43 @@ export class AgentService {
       activity: starting ? "启动" : alive ? current?.activity ?? "启动" : current?.error ?? "已停止",
       ...(current?.cycle ? { cycle: current.cycle } : {}),
       ...(current?.error ? { error: current.error } : {}),
+      ...(pendingPermissions.length ? { pendingPermissions } : {}),
     };
+  }
+
+  /** Answer a permission request forwarded by the worker; omitting optionId cancels/rejects it. */
+  answerPermission(id: string, permissionId: string | undefined, optionId: string | undefined, owner: AgentOwner) {
+    const d = this.get(id, owner), run = this.files.read(id, "launch.json", launch);
+    const pending = this.alive(id) ? this.files.pendingPermissions(id, run.generation) : [];
+    if (!permissionId && pending.length > 1) {
+      throw new Error("存在多条待处理权限请求，请指定 permissionId：" + pending.map(item => item.requestId).join(", "));
+    }
+    const request = permissionId ? pending.find(item => item.requestId === permissionId) : pending[0];
+    requireThat(request, permissionId
+      ? "没有待处理的权限请求：" + permissionId + "；用 status 查看 pendingPermissions。"
+      : "当前没有待处理的权限请求。");
+    let resolved: string | null = null;
+    if (optionId !== undefined) {
+      const exact = request.options.find(option => option.optionId === optionId);
+      const byKind = request.options.filter(option => option.kind === optionId);
+      const pick = (...kinds: string[]) => kinds.map(kind => request.options.find(option => option.kind === kind)).find(Boolean)?.optionId;
+      if (exact) resolved = exact.optionId;
+      else if (byKind.length === 1) resolved = byKind[0]!.optionId;
+      else if (optionId === "allow") {
+        const chosen = pick("allow_once", "allow_always");
+        requireThat(chosen, "该权限请求没有可允许的选项；可选：" + request.options.map(option => option.optionId).join(", "));
+        resolved = chosen;
+      } else if (optionId === "deny" || optionId === "reject") {
+        resolved = pick("reject_once", "reject_always") ?? null;
+      } else if (optionId === "cancel") {
+        resolved = null;
+      } else {
+        throw new Error("权限决策无效：" + optionId + "；可用 allow / deny 或：" + request.options.map(option => `${option.optionId}（${option.name}/${option.kind}）`).join(", "));
+      }
+    }
+    this.files.write(id, "permissions/" + request.requestId + "-reply.json",
+      { generation: run.generation, requestId: request.requestId, optionId: resolved }, acpPermissionReply, true);
+    return this.view(d, owner);
   }
 
   async start(input: AgentStartOptions, owner: AgentOwner) {

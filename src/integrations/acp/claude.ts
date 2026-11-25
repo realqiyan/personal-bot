@@ -13,7 +13,9 @@ export interface ClaudeConfiguration {
 }
 
 /** Read the target installation's native settings without creating a model session. */
-export async function claudeOptions(command: AcpCommand, cwd: string, requested?: string): Promise<ClaudeConfiguration> {
+export async function claudeOptions(command: AcpCommand, cwd: string, supplied?: string): Promise<ClaudeConfiguration> {
+  const normalized = supplied?.trim().toLowerCase().replace(/[^a-z0-9]+/g, "");
+  const requested = normalized === "extrahigh" ? "xhigh" : normalized;
   const script = command.args[0];
   const anchor = ["node", "node.exe"].includes(basename(command.command)) && script && !script.startsWith("-") ? resolve(cwd, script) : command.command;
   const require = createRequire(pathToFileURL(anchor));
@@ -24,7 +26,7 @@ export async function claudeOptions(command: AcpCommand, cwd: string, requested?
   const environment = object(resolved.effective.env) ? resolved.effective.env : {};
   const configured = environment.CLAUDE_CODE_EFFORT_LEVEL ?? process.env.CLAUDE_CODE_EFFORT_LEVEL;
   const explicit = requested !== undefined && requested !== "default";
-  requireThat(!explicit || levels.includes(requested), "Claude 思考等级不可用：" + requested);
+  requireThat(!explicit || levels.includes(requested), "Claude 思考等级不可用：" + requested + "；可用值：default, " + levels.join(", "));
   const effort = explicit ? requested : typeof configured === "string" && levels.includes(configured) ? configured : undefined;
   const thinking = effort ?? (configured === "unset" ? "unset" : undefined);
   return {

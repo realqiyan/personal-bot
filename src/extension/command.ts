@@ -9,8 +9,10 @@ import type { Lifecycle } from "./lifecycle.js";
 
 function parseWorkerArgs(raw: string): Record<string, unknown> {
   const trimmed = raw.trim();
-  if (!trimmed || trimmed === "list") return { action: "list" };
+  if (!trimmed || trimmed === "status" || trimmed === "list") return { action: "status" };
   if (trimmed === "backends") return { action: "backends" };
+  if (trimmed === "models") return { action: "models" };
+  if (trimmed.startsWith("models ")) return { action: "models", backend: trimmed.slice(7).trim() };
   const parsed: unknown = JSON.parse(trimmed);
   requireThat(object(parsed), 'worker 参数必须是 JSON 对象，例如：/pbot worker {"action":"backends"}');
   return parsed;
@@ -80,7 +82,7 @@ export function registerCommand(pi: ExtensionAPI, lifecycle: Lifecycle, confirma
         }
         return;
       }
-      ctx.ui.notify('/pbot init | status | worker {"action":"backends|list|start|..."}', "info");
+      ctx.ui.notify('/pbot init | status | worker {"action":"start|status|backends|models|..."}', "info");
     },
   });
 }

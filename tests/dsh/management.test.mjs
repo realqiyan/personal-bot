@@ -38,7 +38,7 @@ test("dsh management exposes snapshot, history, and /pbot worker while rejecting
 
     const backends = await run("worker", { action: "backends" });
     assert.ok(Array.isArray(backends.backends) && backends.backends.length > 0);
-    assert.deepEqual(await run("worker", { action: "list" }), { workers: [] });
+    assert.deepEqual(await run("worker", { action: "status" }), { workers: [] });
 
     const historyResult = await management.history({ ...request, input: { action: "search", host: "dsh" } }, signal);
     assert.equal(historyResult.total, 0);

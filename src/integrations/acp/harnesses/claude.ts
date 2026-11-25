@@ -6,6 +6,8 @@ import { defaultPrepareLaunch, filterStandardAcpOptions, validateStandardAcpOpti
 
 export const claudeAcpHarness: AcpHarnessAdapter = {
   id: "claude",
+  label: "Claude Code",
+  aliases: ["claude-code", "claudecode"],
   defaultCommand: { command: "claude-agent-acp", args: [] },
   installHint: "npm install -g @agentclientprotocol/claude-agent-acp",
   configureHint: "在 Claude Code 中完成登录或 API 配置，并设置默认模型。",

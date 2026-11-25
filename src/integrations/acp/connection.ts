@@ -6,7 +6,7 @@ import type { AcpHarnessAdapter, AcpModelSelection, AcpSessionReference } from "
 import type { AgentOptions } from "../../model/agent.js";
 import { requireThat } from "../../common/validation.js";
 import { packageVersion } from "../../common/version.js";
-import { acpModelSelection, acpModelValue, acpThinkingValue } from "./model-selection.js";
+import { acpChoices, acpModelSelection, acpModelValue, acpThinkingValue } from "./model-selection.js";
 import { resolveAcpHarness } from "./registry.js";
 
 export function acpFailure(error: unknown): unknown {
@@ -133,7 +133,7 @@ export async function openAcp(
       const created = await connection.agent.request<acp.NewSessionResponse>(acp.methods.agent.session.new, setup, { cancellationSignal: AbortSignal.any([cancel, AbortSignal.timeout(30_000)]), stopWaitingOnCancel: true });
       sessionId = created.sessionId; options = created.configOptions ?? [];
     } else {
-      requireThat(capabilities.resume || capabilities.load, "目标 ACP 后端不支持恢复已有会话。");
+      requireThat(capabilities.resume || capabilities.load, "目标 ACP 后端不支持恢复已有会话，请新建 worker。");
       const restored = capabilities.resume
         ? await connection.agent.request<acp.ResumeSessionResponse>(acp.methods.agent.session.resume, { ...setup, sessionId: reference.sessionId }, { cancellationSignal: AbortSignal.any([cancel, AbortSignal.timeout(30_000)]), stopWaitingOnCancel: true })
         : await connection.agent.request<acp.LoadSessionResponse>(acp.methods.agent.session.load, { ...setup, sessionId: reference.sessionId }, { cancellationSignal: AbortSignal.any([cancel, AbortSignal.timeout(30_000)]), stopWaitingOnCancel: true });
@@ -145,6 +145,7 @@ export async function openAcp(
       sessionId: activeId, capabilities, signal: connected, close, images: advertised?.promptCapabilities?.image === true,
       systemPrompt: Boolean(advertised?.sessionCapabilities?.systemPrompt),
       selection,
+      choices: () => acpChoices(options),
       async configure(requested: AgentOptions) {
         requireThat(!requested.provider || requested.model, "provider 需要同时指定目标 model。");
         for (const kind of ["model", "thinking"] as const) {

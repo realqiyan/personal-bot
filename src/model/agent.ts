@@ -26,5 +26,7 @@ export interface AgentView extends AgentDescriptor {
   backend: AcpBackend; transport: "acp"; selection?: AcpModelSelection;
   capabilities: { steer: boolean; resume: boolean; transcript: boolean };
   cycle?: AgentCycle; error?: string; owned: boolean;
+  pendingPermissions?: AgentPermissionRequest[];
 }
+export interface AgentPermissionRequest { permissionId: string; description: string; options: { optionId: string; name: string; kind: string }[] }
 export interface AgentCompletion { agentId: string; name: string; cycle: AgentCycle; report: string }

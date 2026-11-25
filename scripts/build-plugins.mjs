@@ -90,6 +90,9 @@ async function buildAntigravityPlugin({ version, repoUrl }) {
       pbot: {
         command: "node",
         args: ["./lib/extension/mcp.js"],
+        env: {
+          PBOT_HOST: "antigravity",
+        },
       },
     },
   }, null, 2) + "\n");

@@ -7,7 +7,7 @@ import { readJsonFile, writeJsonFile } from "./atomic-json.js";
 import { fileId, privateDirectory } from "./file-access.js";
 import type { AgentDescriptor, AgentLaunch, AgentMessage, AgentStatus, AgentCycle, AgentSessionReference } from "../model/agent.js";
 import type { AcpSessionReference } from "../model/acp.js";
-import { acpReference } from "./acp-files.js";
+import { acpPermission, acpReference } from "./acp-files.js";
 
 const text = (v: unknown): v is string => typeof v === "string" && v.length > 0;
 const number = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
@@ -77,6 +77,12 @@ export class AgentFiles {
   completions(id: string) {
     return readdirSync(join(this.directory(id), "completions")).filter(n => n.endsWith(".json"))
       .map(n => this.read(id, "completions/" + n, cycle)).sort((a, b) => (a.finishedAt ?? 0) - (b.finishedAt ?? 0));
+  }
+  /** Permission requests of a generation that have no reply yet. */
+  pendingPermissions(id: string, generation: string) {
+    const names = readdirSync(join(this.directory(id), "permissions"));
+    return names.filter(n => n.endsWith(".json") && !n.endsWith("-reply.json") && !names.includes(n.slice(0, -5) + "-reply.json"))
+      .map(n => this.read(id, "permissions/" + n, acpPermission)).filter(item => item.generation === generation);
   }
   reference(id: string): AgentSessionReference {
     return this.read(id, "acp-session.json", acpReference);

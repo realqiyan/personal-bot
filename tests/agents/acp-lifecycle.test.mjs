@@ -26,6 +26,9 @@ test("Claude native settings supply the default effort and explicit effort stays
   const explicit = await claudeOptions(command, root, "low");
   assert.equal(explicit.thinking, "low"); assert.equal(explicit.options.effort, "low");
   assert.deepEqual(explicit.options.settings, { env: { CLAUDE_CODE_EFFORT_LEVEL: "low" } });
+  assert.equal((await claudeOptions(command, root, "HIGH")).thinking, "high");
+  assert.equal((await claudeOptions(command, root, "x-high")).thinking, "xhigh");
+  assert.equal((await claudeOptions(command, root, "Extra High")).thinking, "xhigh");
   await assert.rejects(claudeOptions(command, root, "off"));
   assert.equal(await readFile(join(config, "settings.json"), "utf8"), stored);
 });

@@ -36,7 +36,7 @@ export class DshWorkspace {
     private readonly releaseHistory: () => Promise<void>,
   ) {
     this.history = historyWork.service;
-    this.workers = new McpWorkerRuntime(defaultWorkerDirectory(), agent.id);
+    this.workers = new McpWorkerRuntime(defaultWorkerDirectory(), agent.id, "dsh");
   }
 
   check = () => { this.component.throwIfAborted(); this.lifetime.signal.throwIfAborted(); };
@@ -64,6 +64,7 @@ export class DshWorkspace {
               ...(process.env.PATH ? { PATH: process.env.PATH } : {}),
               ...(process.env.HOME ? { HOME: process.env.HOME } : {}),
               ...(process.env.DSH_HOME ? { DSH_HOME: process.env.DSH_HOME } : {}),
+              PBOT_HOST: "dsh",
               PBOT_WORKSPACE_ROOT: this.root,
               PBOT_MCP_AGENT_DIR: workerDir,
               PBOT_MCP_SESSION_ID: this.agent.id,

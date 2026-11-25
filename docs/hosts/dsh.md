@@ -56,7 +56,7 @@ dsh plugin --profile pbot add /absolute/path/to/personal-bot-<version>.tgz
 | `/pbot` | 打开 Web 工作台（服务端无参数调用返回 status） |
 | `/pbot status` | 查看工作区、启用状态、模型与历史整理状态 |
 | `/pbot init` | 初始化工作区资料并启用 |
-| `/pbot worker {"action":"..."}` | 直接调用统一 `pbot_worker`（如 `backends`、`list`、`start`、`status`、`read`、`stop`） |
+| `/pbot worker {"action":"..."}` | 直接调用统一 `pbot_worker`（如 `start`、`status`、`backends`、`models`、`read`、`stop`） |
 | `/pbot history {"action":"search"}` | 查询或读取工作区历史归档（`search` / `read`） |
 
 已启用主会话中，模型工具包括：

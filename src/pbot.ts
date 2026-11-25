@@ -27,7 +27,7 @@ export default function pbot(pi: ExtensionAPI) {
   const lifecycle = new Lifecycle(
     (root, sessionId) => {
       const workerDir = defaultWorkerDirectory();
-      const workers = new McpWorkerRuntime(workerDir, sessionId);
+      const workers = new McpWorkerRuntime(workerDir, sessionId, "pi");
       const history = new HistoryService(
         root,
         new HistoryFiles(join(root, ".pbot/history"), "pi"),
@@ -45,11 +45,13 @@ export default function pbot(pi: ExtensionAPI) {
           command: process.execPath,
           args: [mcpEntry],
           env: {
+            PBOT_HOST: "pi",
             PBOT_WORKSPACE_ROOT: instance.root,
             PBOT_MCP_AGENT_DIR: defaultWorkerDirectory(),
             PBOT_MCP_SESSION_ID: instance.sessionId,
           },
           exposure: "direct",
+          timeout: 600,
           description: "跨 Harness ACP 专家调度（pbot_worker）",
         });
         mcpRegistered = true;

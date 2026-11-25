@@ -14,11 +14,16 @@ function config(value: unknown): Record<string, unknown> {
       throw new Error("acp 键名必须为小写字母、数字和连字符（1–64 字符）。");
     }
     for (const command of Object.values(value.acp)) {
-      if (!object(command) || typeof command.command !== "string" || !command.command.trim() || command.command.includes("\0") ||
-        !Array.isArray(command.args) || command.args.some(arg => typeof arg !== "string" || arg.includes("\0")) ||
+      // Without command, an entry keeps the registered default command and only sets env or permission.
+      const launch = !object(command) ? false : command.command === undefined
+        ? command.args === undefined
+        : typeof command.command === "string" && command.command.trim() && !command.command.includes("\0") &&
+          (command.args === undefined || (Array.isArray(command.args) && command.args.every(arg => typeof arg === "string" && !arg.includes("\0"))));
+      if (!object(command) || !launch ||
         (command.env !== undefined && (!object(command.env) || Object.entries(command.env).some(([k, v]) => !k || k.includes("\0") || typeof v !== "string" || v.includes("\0")))) ||
-        Object.keys(command).some(key => !["command", "args", "env"].includes(key))) {
-        throw new Error("ACP 启动配置需要 command、args 字符串数组（以及可选 env 字符串映射）。");
+        (command.permission !== undefined && !["ask", "allow", "deny"].includes(String(command.permission))) ||
+        Object.keys(command).some(key => !["command", "args", "env", "permission"].includes(key))) {
+        throw new Error("ACP 配置需要 command（内置目标可省略）及可选 args 字符串数组、env 字符串映射、permission（ask、allow 或 deny）。");
       }
     }
   }

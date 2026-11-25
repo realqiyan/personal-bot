@@ -33,7 +33,7 @@ pi
 | --- | --- |
 | `/pbot init` | 初始化工作区资料目录与根 `AGENTS.md` 并启用 Personal Bot |
 | `/pbot status` | 查看工作区路径、启用状态、版本与历史整理状态 |
-| `/pbot worker <JSON>` | 直接调用统一 `pbot_worker`（支持简写 `/pbot worker backends`、`/pbot worker list` 或完整 JSON 如 `/pbot worker {"action":"status","workerId":"..."}`） |
+| `/pbot worker <JSON>` | 直接调用统一 `pbot_worker`（支持简写 `/pbot worker status`、`/pbot worker backends`、`/pbot worker models` 或完整 JSON 如 `/pbot worker {"action":"status","workerId":"..."}`） |
 | `/reload` | Pi 原生命令，重载扩展、资源与 `.pbot/config.json` |
 
 已启用工作区向模型暴露：

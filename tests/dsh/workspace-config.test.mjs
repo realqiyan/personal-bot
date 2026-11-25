@@ -48,7 +48,7 @@ test("one dsh profile applies workspace opt-in independently, mounts unified MCP
       assert.equal(agent.session.snapshotEvents().some(event => event.type === "turn/start"), false);
     }
     assert.equal(typeof (await status(handles[3].agent)).configuration.error, "string");
-    await assert.rejects(host.ctx.commands.execute(handles[1].agent, '/pbot worker {"action":"list"}', [], signal));
+    await assert.rejects(host.ctx.commands.execute(handles[1].agent, '/pbot worker {"action":"status"}', [], signal));
     assert.deepEqual(await readdir(other), []);
     assert.deepEqual(await readdir(nested), []);
     const sibling = await create(other); handles.push(sibling);

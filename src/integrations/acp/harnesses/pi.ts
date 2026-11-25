@@ -5,6 +5,7 @@ import { defaultPrepareLaunch } from "./generic.js";
 
 export const piAcpHarness: AcpHarnessAdapter = {
   id: "pi",
+  label: "Pi",
   defaultCommand: { command: "pi-acp", args: [] },
   installHint: "npm install -g pi-acp",
   configureHint: "Pi 也需已安装；运行 pi 完成登录和默认模型配置。",

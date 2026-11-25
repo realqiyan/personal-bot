@@ -1,1 +1,1 @@
-同宿主子任务与协作直接使用当前宿主的原生能力。需要跨 Harness 委派其他程序时，使用 MCP 工具 `pbot_worker`（用 `backends` 查看本机可用与 `.pbot/config.json` 自定义的 ACP 目标，支持 `start`、`wait`、`send`、`status`、`list`、`read`、`stop`、`resume`、`rename`），并遵循工作区 `AGENTS.md` 或 `agents/coordinator.md` 中的分工偏好。回溯旧讨论用 `pbot_history`。
+未指定其他程序时，默认由当前宿主直接处理或使用当前宿主原生子代理。需要委派其他程序（或按工作区 `AGENTS.md`、`agents/coordinator.md` 分工约定）时，使用 `pbot_worker`。回溯旧讨论用 `pbot_history`。

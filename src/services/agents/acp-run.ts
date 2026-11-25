@@ -54,9 +54,14 @@ export class AcpAgentRun {
     this.execution.save({ state: "busy", activity: "等待确认" });
     while (!signal.aborted && !this.#stopping && this.current() && !this.files.read(this.id, "launch.json", launch).stop) {
       const reply = this.files.optional(this.id, "permissions/" + requestId + "-reply.json", acpPermissionReply);
-      if (reply?.generation === this.generation) return reply.optionId;
+      if (reply?.generation === this.generation) {
+        this.execution.save({ state: this.#stopping ? "stopping" : "busy", activity: reply.optionId ? "已获确认" : "确认被拒绝" });
+        return reply.optionId;
+      }
       await delay(100);
     }
+    // Close the request so it no longer shows as pending once the turn or worker has ended.
+    if (this.current()) this.files.write(this.id, "permissions/" + requestId + "-reply.json", { generation: this.generation, requestId, optionId: null }, acpPermissionReply, true);
     return null;
   }
   async run() {

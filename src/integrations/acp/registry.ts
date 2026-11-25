@@ -36,6 +36,15 @@ export class AcpHarnessRegistry {
   list(): AcpBackend[] {
     return [...this.#adapters.keys()];
   }
+
+  /** Map a caller-supplied name ("Claude Code", "agy") to a backend ID; configured names win over aliases. */
+  canonical(name: string, configured: readonly string[] = []): AcpBackend {
+    const normalized = name.trim().toLowerCase().replace(/[\s_]+/g, "-");
+    if (configured.includes(normalized) || this.#adapters.has(normalized)) return normalized;
+    const compact = normalized.replace(/-/g, "");
+    return [...this.#adapters.values()].find(adapter =>
+      adapter.id.replace(/-/g, "") === compact || adapter.aliases?.some(alias => alias === normalized || alias.replace(/-/g, "") === compact))?.id ?? normalized;
+  }
 }
 
 export const acpHarnesses = new AcpHarnessRegistry([

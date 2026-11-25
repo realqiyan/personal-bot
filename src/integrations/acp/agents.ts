@@ -4,7 +4,7 @@ import { join, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import type { AgentHost } from "../../services/agents/agent-service.js";
 import type { AgentDescriptor, AgentOptions, AgentSessionReference } from "../../model/agent.js";
-import type { AcpBackend, AcpCommands } from "../../model/acp.js";
+import type { AcpBackend, AcpCommands, AcpModelsResult } from "../../model/acp.js";
 import { AgentFiles, launch } from "../../storage/agent-files.js";
 import { acpInput, acpProcess, acpReport } from "../../storage/acp-files.js";
 import { fileId } from "../../storage/file-access.js";
@@ -33,6 +33,44 @@ export class AcpWorkerHost implements AgentHost {
 
   prepare(backend: AcpBackend, options: AgentOptions) {
     return acpLaunch(backend, this.commands, options);
+  }
+
+  /** Probe a backend's advertised model and thinking choices in an isolated ACP process without prompting. */
+  async inspectModels(backend: AcpBackend, cwd: string, options: Pick<AgentOptions, "provider" | "model"> = {}): Promise<AcpModelsResult> {
+    this.available(backend);
+    const filtered = this.filterOptions(backend, options);
+    const reference = this.prepare(backend, filtered);
+    return await new Promise<AcpModelsResult>((resolveResult, reject) => {
+      const child = fork(this.worker, ["--probe"], {
+        cwd, env: { ...process.env }, detached: true, stdio: ["ignore", "ignore", "ignore", "ipc"], execArgv: [],
+      });
+      let result: AcpModelsResult | undefined, failure: Error | undefined;
+      const timer = setTimeout(() => {
+        failure = new Error("ACP 模型探测超时。");
+        if (child.pid) {
+          try { process.kill(-child.pid, "SIGKILL"); }
+          catch (error) { if ((error as NodeJS.ErrnoException).code !== "ESRCH") reject(error); }
+        }
+      }, 30_000);
+      child.on("message", (message: { type?: string; result?: AcpModelsResult; error?: string }) => {
+        if (message.type === "models" && message.result) result = message.result;
+        if (message.type === "error") failure = new Error(message.error ?? "ACP 模型探测失败。");
+      });
+      child.once("error", error => { failure = error; });
+      child.once("spawn", () => {
+        child.send({
+          reference,
+          cwd,
+          ...(filtered.provider ? { provider: filtered.provider } : {}),
+          ...(filtered.model ? { model: filtered.model } : {}),
+        });
+      });
+      child.once("close", code => {
+        clearTimeout(timer);
+        if (result && code === 0 && !failure) resolveResult(result);
+        else reject(failure ?? new Error("ACP 模型探测失败。"));
+      });
+    });
   }
 
   private process(id: string) {

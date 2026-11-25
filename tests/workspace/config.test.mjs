@@ -57,3 +57,30 @@ test("explicit init enables the workspace, preserves other fields and refuses ma
   const result = await readWorkspaceConfig(root);
   assert.equal(result.enabled, false); assert.equal(typeof result.error, "string");
 });
+
+test("workspace acp configuration supports permission policies and built-in overrides without repeating command", async t => {
+  const root = await directory(t), path = workspaceConfigPath(root);
+  await mkdir(join(root, ".pbot"));
+  await writeFile(path, JSON.stringify({
+    enabled: true,
+    acp: {
+      codex: { permission: "allow" },
+      claude: { permission: "ask", env: { EXTRA: "1" } },
+      custom: { command: process.execPath, permission: "deny" },
+    },
+  }));
+  const valid = await readWorkspaceConfig(root);
+  assert.equal(valid.enabled, true);
+  assert.equal(valid.acp.codex.permission, "allow");
+  assert.equal(valid.acp.claude.permission, "ask");
+  assert.equal(valid.acp.custom.permission, "deny");
+  for (const bad of [
+    { enabled: true, acp: { codex: { permission: "invalid" } } },
+    { enabled: true, acp: { codex: { args: ["--flag"] } } },
+  ]) {
+    await writeFile(path, JSON.stringify(bad));
+    const parsed = await readWorkspaceConfig(root);
+    assert.equal(parsed.enabled, false);
+    assert.equal(typeof parsed.error, "string");
+  }
+});

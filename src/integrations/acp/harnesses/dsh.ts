@@ -5,6 +5,7 @@ import { defaultPrepareLaunch, filterStandardAcpOptions, validateStandardAcpOpti
 
 export const dshAcpHarness: AcpHarnessAdapter = {
   id: "dsh",
+  label: "DeepSeek dsh",
   defaultCommand: { command: "dsh", args: ["--profile", "acp"] },
   installHint: "npm install -g @deepseek-ai/dsh@latest",
   configureHint: "按 dsh 原生方式配置目标 profile 的模型与认证。",

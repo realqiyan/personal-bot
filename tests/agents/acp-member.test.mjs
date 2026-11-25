@@ -69,7 +69,7 @@ for (const noSkills of [false, true]) test(`Pi ACP member loads and refreshes na
     assert.equal(session.systemPrompt.split(updated).length - 1, 1);
     assert.equal(session.systemPrompt.includes(role), false);
     assert.deepEqual(session.getActiveToolNames().filter(name => name.startsWith("pbot_")), []);
-    const denied = await session.extensionRunner.emitToolCall({ type: "tool_call", toolCallId: "recursive", toolName: "pbot_worker", input: { action: "list" } });
+    const denied = await session.extensionRunner.emitToolCall({ type: "tool_call", toolCallId: "recursive", toolName: "pbot_worker", input: { action: "status" } });
     assert.equal(denied.block, true);
     await session.extensionRunner.emit({ type: "agent_settled", aborted: false });
     const answer = files.read(id, "acp-answer.json", acpAnswer);

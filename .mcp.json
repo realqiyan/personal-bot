@@ -2,7 +2,10 @@
   "mcpServers": {
     "pbot": {
       "command": "node",
-      "args": ["${CLAUDE_PLUGIN_ROOT}/lib/extension/mcp.js"]
+      "args": ["${CLAUDE_PLUGIN_ROOT}/lib/extension/mcp.js"],
+      "env": {
+        "PBOT_HOST": "claude"
+      }
     }
   }
 }

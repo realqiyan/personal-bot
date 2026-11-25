@@ -12,6 +12,7 @@ export function acpReference(value: unknown): AcpSessionReference {
   if (value.env !== undefined) {
     requireThat(object(value.env) && Object.entries(value.env).every(([k, v]) => text(k) && typeof v === "string" && !v.includes("\0")), "ACP 环境变量配置无效。");
   }
+  requireThat(value.permission === undefined || ["ask", "allow", "deny"].includes(String(value.permission)), "ACP 权限策略无效。");
   const capabilities = value.capabilities;
   if (capabilities !== undefined) requireThat(object(capabilities) &&
     ["resume", "load", "close"].every(key => typeof capabilities[key] === "boolean"), "ACP 会话能力无效。");

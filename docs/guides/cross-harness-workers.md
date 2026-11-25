@@ -20,46 +20,50 @@ Personal Bot 将跨 Harness 专家调度统一为单一的 stdio MCP 服务（`l
 
 ## `pbot_worker` 工具契约
 
+MCP 服务在 `initialize` 返回服务级说明 `instructions`，`tools/list` 根据已注册预设与当前工作区 `.pbot/config.json` 的 `acp` 配置动态探测本机可用 `backend` 并生成工具说明。
+
 | action | 必填字段 | 常用可选字段 | 行为 |
 | --- | --- | --- | --- |
-| `backends` | 无 | `workspace` | 探测已注册及 `.pbot/config.json` 自定义的 ACP 可执行文件可用性 |
-| `start` | `backend` | `workspace`, `name`, `message`, `files`, `provider`, `model`, `thinking`, `cwd`, `waitMs` | 启动目标 Harness 的独立 ACP worker；`waitMs > 0` 时同步等待首轮完成并返回报告 |
-| `wait` | `workerId` | `workspace`, `requestId`, `timeoutMs` | 阻塞等待指定或最新请求周期结束并返回报告（默认超时 120000 ms） |
-| `send` | `workerId`, `message` | `workspace`, `delivery` | 向存活 worker 追加指令；运行中请使用 `delivery: "followUp"` |
-| `status` | `workerId` | `workspace` | 查询执行状态、模型选择与最近周期状态（不读报告正文） |
-| `list` | 无 | `workspace` | 列出当前会话创建的 worker |
-| `read` | `workerId` | `workspace`, `cycleId`, `offset`, `limit` | 按字符偏移分页读取周期最终报告（单页上限 16000 字符） |
+| `start` | `message`（未设默认宿主时含 `backend`） | `backend`, `model`, `thinking`, `cwd`, `waitMs`, `workspace` | 启动独立 ACP worker，等待初始化与模型配置完成（参数非法立即报错），默认同步等待 50s 返回首轮报告（`waitMs: 0` 立即返回异步执行）；遇到待确认权限立即返回 `needsPermission: true` |
+| `send` | `workerId`, `message` | `waitMs`, `workspace` | 向已有 worker 发送后续指令（若 worker 已停止则自动恢复会话），默认同步等待 50s 返回结果（`waitMs: 0` 异步） |
+| `wait` | `workerId` | `waitMs`, `workspace` | 续等运行中 worker 结束（返回报告）或触发权限确认（返回 `needsPermission: true`），默认等待 50s |
+| `permission` | `workerId`, `decision` | `permissionId`, `waitMs`, `workspace` | 回复 worker 转发的待处理权限请求（`decision` 为 `allow` / `deny` 或 `pendingPermissions[].options[].optionId`），默认继续等待 50s |
+| `read` | `workerId` | `offset`, `workspace` | 按字符偏移读取或翻页续读最新周期报告（单页 16000 字符；被截断时返回 `nextOffset`） |
+| `status` | 无 | `workerId`, `workspace` | 传 `workerId` 查询单个 worker 状态、生效模型、待处理权限与最近周期；省略 `workerId` 列出当前会话所有 worker |
 | `stop` | `workerId` | `workspace` | 请求停止 worker，保留历史与周期报告 |
-| `resume` | `workerId`, `message` | `workspace` | 校验并恢复已停止 worker，携新要求继续工作（不重放旧请求） |
-| `rename` | `workerId`, `name` | `workspace` | 更新 worker 显示名称 |
+| `backends` | 无 | `workspace` | 探测已注册及 `.pbot/config.json` 自定义的 ACP 可执行文件可用性、别名与权限策略 |
+| `models` | 无（未设默认宿主时含 `backend`） | `backend`, `model`, `workspace` | 临时建立 ACP 会话探测目标可选的模型与思考力度列表（不发 prompt）；省略 `backend` 时回退当前宿主（`PBOT_HOST`） |
 
 示例：
 
 ```json
-{ "action": "backends", "workspace": "/path/to/workspace" }
-{ "action": "start", "backend": "claude", "name": "实现专家", "message": "完成模块 A 并运行测试", "waitMs": 120000 }
-{ "action": "send", "workerId": "<workerId>", "message": "补充边界测试", "delivery": "followUp" }
-{ "action": "wait", "workerId": "<workerId>", "timeoutMs": 120000 }
+{ "action": "start", "backend": "codex", "message": "完成模块 A 并运行测试" }
+{ "action": "start", "backend": "claude", "model": "opus", "thinking": "high", "message": "审查核心变更" }
+{ "action": "send", "workerId": "<workerId>", "message": "补充边界测试" }
+{ "action": "wait", "workerId": "<workerId>" }
+{ "action": "permission", "workerId": "<workerId>", "decision": "allow" }
+{ "action": "models", "backend": "claude" }
+{ "action": "backends" }
 ```
 
-在 Pi 与 dsh 聊天框中，也可直接以 `/pbot worker {"action":"list"}` 等命令操作当前会话的 worker（与该会话自动挂载的 MCP 服务共享同一会话归属）。
+在 Pi 与 dsh 聊天框中，也可直接以 `/pbot worker status`、`/pbot worker models claude` 或 `/pbot worker {"action":"backends"}` 等命令操作当前会话的 worker（与该会话自动挂载的 MCP 服务共享同一会话归属）。
 
 ## 内置预设与任意自定义 ACP Harness
 
-内置预设开箱即用，也可通过 `.pbot/config.json` 的 `acp` 字段覆盖或新增任意 ACP v1 程序（详见[工作区配置](workspace-configuration.md#acp-harness-配置acp)）：
+内置预设开箱即用，支持忽略大小写与常见别名（如 `Claude Code`→`claude`、`OpenAI Codex`→`codex`、`agy`→`antigravity`；工作区自定义同名项优先于内置别名），也可通过 `.pbot/config.json` 的 `acp` 字段覆盖命令或调整权限策略（详见[工作区配置](workspace-configuration.md#acp-harness-配置acp)）：
 
-| 预设 `backend` | 默认入口 | 安装与认证 |
-| --- | --- | --- |
-| `pi` | `pi-acp` | `npm install -g pi-acp`（另需 Pi）；运行 `pi` 完成登录与默认模型配置 |
-| `dsh` | `dsh --profile acp` | `npm install -g @deepseek-ai/dsh@latest`；按 dsh 原生方式配置 profile |
-| `claude` | `claude-agent-acp` | `npm install -g @agentclientprotocol/claude-agent-acp`；在 Claude Code 完成登录或 API 配置 |
-| `antigravity` | `agy acp` | 安装 Google Antigravity CLI（`agy`）并完成登录 |
-| `codex` | `codex-acp` | `npm install -g @zed-industries/codex-acp`；在 Codex 完成登录或 API 配置 |
-| 自定义名 | `.pbot/config.json` `acp.<name>` | 任意符合 ACP v1 的 stdio 程序，无需修改 Personal Bot 代码 |
+| 预设 `backend` | 常用名称 / 别名 | 默认入口 | 安装与认证 |
+| --- | --- | --- | --- |
+| `pi` | Pi | `pi-acp` | `npm install -g pi-acp`（另需 Pi）；运行 `pi` 完成登录与默认模型配置 |
+| `dsh` | DeepSeek dsh | `dsh --profile acp` | `npm install -g @deepseek-ai/dsh@latest`；按 dsh 原生方式配置 profile |
+| `claude` | Claude Code (`claude-code`) | `claude-agent-acp` | `npm install -g @agentclientprotocol/claude-agent-acp`；在 Claude Code 完成登录或 API 配置 |
+| `antigravity` | Google Antigravity (`agy`) | `agy acp` | 安装 Google Antigravity CLI（`agy`）并完成登录 |
+| `codex` | OpenAI Codex (`openai-codex`, `codex-cli`) | `codex-acp` | `npm install -g @zed-industries/codex-acp`；在 Codex 完成登录或 API 配置 |
+| 自定义名 | `.pbot/config.json` `acp.<name>` | 自定义命令 | 任意符合 ACP v1 的 stdio 程序，无需修改 Personal Bot 代码 |
 
 ## 执行与安全边界
 
-- **模型与配置独立**：ACP worker 使用目标 Harness 自己的认证、模型、工具与技能，不继承父宿主默认模型；省略 `model`/`thinking` 时沿用目标默认配置。
+- **模型与配置独立**：ACP worker 使用目标 Harness 自己的认证、模型、工具与技能，不继承父宿主默认模型；省略 `model`/`thinking` 时沿用目标默认配置；显式指定时支持精确值、忽略大小写的显示名、唯一简名或多提供方格式 `provider/model`，非法值在 `start` 阶段即时报错并列出可用值。
 - **上下文注入**：对于标准 ACP v1 目标，若对端声明 `sessionCapabilities.systemPrompt` 则在建会话时 append 公共约定与 `general-purpose` 职责；否则在首轮消息前自动前置一次，后续轮次不重复。
-- **无交互权限**：MCP 模式下遇到未自动批准的 `session/request_permission` 默认快速返回 `cancelled` 以避免阻塞；若希望由运行环境自动放行，可设置 `PBOT_ACP_NONINTERACTIVE_PERMISSION=allow` 或由目标 Harness 自身权限模式处理。
+- **权限策略与主会话授权**：未配置 `acp.<name>.permission` 时默认沿用目标 Harness 原生权限策略，并在目标发起 `session/request_permission` 时以 `ask` 转发给主会话（`start`/`wait` 立即返回 `needsPermission: true` 与 `pendingPermissions`，由主会话确认后通过 `permission` action 回复）。可在 `.pbot/config.json` 按目标配置 `"permission": "ask" | "allow" | "deny"`。
 - **进程生命周期**：每个 worker 运行在独立进程组中；MCP 服务或宿主会话关闭时自动停止并回收所属 worker 进程组。
