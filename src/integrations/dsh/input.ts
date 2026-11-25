@@ -41,7 +41,7 @@ async function contentFor(ctx: Context, cwd: string, message: string, files: rea
       content.push({ type: "file", attachment: await ctx.attachments.saveFileStream({ data: bytes(target), name, signal }) });
     }
     requireThat((await ctx.fs.stat(target, signal))?.version === before.version, "读取期间附件已变化：" + path);
-    content.push({ type: "text", text: "附件原始路径：" + JSON.stringify(path) + "。原生附件保留本次文件内容；需要查看时使用宿主提供的附件路径。" });
+    content.push({ type: "text", text: "附件原始路径：" + JSON.stringify(path) + "（已随消息附上）。" });
   }
   content.push({ type: "text", text: message || "请处理所附文件。" });
   const admitted = await ctx.attachments.admitPromptContent(content);

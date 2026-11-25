@@ -101,7 +101,7 @@ export function registerAgentEvents(pi: ExtensionAPI, lifecycle: Lifecycle, conf
         if (sent !== undefined && now - sent < 5000) return;
         submitting.set(key, now);
         return { type: "custom_message", customType: "pbot.agent-recovered", display: true,
-          content: "# 子会话自动跟进已恢复\n\n后台扫描已恢复。成员状态和报告可通过 pbot_agent status/read 查看。",
+          content: "# 专家自动跟进已恢复\n\n后台状态扫描已恢复，可用 `pbot_agent status/read` 查看成员状态和报告。",
           details: { keys: [key], failureKey: recoveredFailure } };
       }
       catch (error) { if (revision !== epoch || instance !== lifecycle.active) return; recordFailure(error); }
@@ -111,14 +111,14 @@ export function registerAgentEvents(pi: ExtensionAPI, lifecycle: Lifecycle, conf
     if (sent !== undefined && now - sent < 5000) return;
     submitting.set(failure.key, now);
     const recovery = failure.recovery === "reload"
-      ? "团队服务或协作存储已停用，修复文件后当前实例仍不可用。先按错误信息排障，再请用户在当前 Pi 会话执行 /reload；重载前不要反复调用 pbot_team。重载后用 pbot_team status 与 pbot_team_message read 核对团队状态与公共原文。"
+      ? "团队服务已停用。请向用户说明以下错误；修复后请用户在当前 Pi 会话执行 `/reload`，重载前不要反复调用 `pbot_team`。重载后用 `pbot_team status` 与 `pbot_team_message read` 核对状态。"
       : failure.recovery === "retry"
-        ? "团队控制锁持续被占用，后台会继续重试；锁释放后自动恢复扫描，不自动删除锁或重新提交任务。"
-        : "报告或控制记录读取失败。先按错误信息排障；修复后后台扫描会重试。";
+        ? "协作状态暂时被占用，后台会自动重试；请勿重复提交任务。"
+        : "专家或团队状态读取失败，后台会继续重试。";
     return { type: "custom_message", customType: "pbot.agent-error", display: true,
-      content: ["# 子会话自动跟进故障", "", recovery,
-        ...(pausePending ? ["", "团队暂停尚未确认，不能据此开始成员私人任务。"] : []), "",
-        "用 pbot_agent list/status 查询成员状态，pbot_agent read 读取可用报告。重试前先查看原请求结果，避免重复执行。", "",
+      content: ["# 专家自动跟进故障", "", recovery,
+        ...(pausePending ? ["", "团队暂停尚未确认，暂勿向成员发送私人任务。"] : []), "",
+        "先用 `pbot_agent list/status/read` 核对已有结果，再决定是否重试，避免重复执行。", "",
         markdownFields({ error: failure.error })].join("\n"), details: { keys: [failure.key] } };
   };
   const refreshWork = async () => {

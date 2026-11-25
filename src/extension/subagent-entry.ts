@@ -201,7 +201,7 @@ export default async function subagent(pi: ExtensionAPI) {
         message = teamContext(link, context, link.request.throughSeq);
       }
       Object.assign(event.systemPromptOptions.sections, {
-        pbot_environment: JSON.stringify({ workspaceRoot: d.workspace, resourceRoot }),
+        pbot_environment: JSON.stringify({ host: "pi", workspaceRoot: d.workspace, resourceRoot }),
         pbot_workspace: workspace, pbot_child: role,
       });
       if (brief) event.systemPromptOptions.sections.pbot_team = brief;

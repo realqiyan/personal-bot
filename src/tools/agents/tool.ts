@@ -6,7 +6,7 @@ import { executeAgent } from "./actions.js";
 import { agentDescription, agentInput, agentParametersSchema, agentResultSchema } from "./contract.js";
 
 export function agentTool(service: AgentService, access: CallAccess) {
-  return defineTool({ name: "pbot_agent", label: "子会话",
+  return defineTool({ name: "pbot_agent", label: "专家",
     description: agentDescription,
     parameters: agentParametersSchema, outputSchema: agentResultSchema,
     async execute(_id, args, signal, _update, ctx) {

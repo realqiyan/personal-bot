@@ -15,11 +15,10 @@ export function markdownFields(value: Json, level = 2): string {
     "#".repeat(level) + " " + (index + 1) + "\n\n" + markdownFields(item, level + 1)).join("\n\n") : "（空）";
   const fields: string[] = [], sections: string[] = [];
   for (const [key, item] of Object.entries(value)) {
-    if ((item !== null && typeof item === "object") || (typeof item === "string" && (item.includes("\n") || key === "report" || key === "text"))) {
+    if ((item !== null && typeof item === "object") || (typeof item === "string" && (item.includes("\n") || item.includes("\r") || key === "report" || key === "text"))) {
       sections.push("#".repeat(level) + " " + key + "\n\n" + markdownFields(item, level + 1));
     } else {
-      const text = String(item).replace(/[\\`*_{}\[\]<>#!|]/g, "\\$&");
-      fields.push("- " + key + ": " + text);
+      fields.push("- " + key + ": " + String(item));
     }
   }
   return [fields.join("\n"), ...sections].filter(Boolean).join("\n\n");

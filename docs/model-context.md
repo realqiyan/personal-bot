@@ -49,7 +49,7 @@ Claude 自己加载原生系统提示、`CLAUDE.md`、用户规则、工具、�
 
 | 入口 | 加载行为 |
 | --- | --- |
-| UserPromptSubmit | 已启用时读取公共约定、共有协调者职责、Claude 操作导航、工作区 `agents/coordinator.md`、根 `AGENTS.md` 及工作区与资源路径 |
+| UserPromptSubmit | 已启用时读取公共约定、共有协调者职责、Claude 操作导航、工作区 `agents/coordinator.md`、根 `AGENTS.md` 及宿主与路径环境；未启用或配置无效时不注入模型上下文 |
 | SubagentStart | 仅对 `personal-bot:general-purpose` 加载公共约定、专家职责、工作区 `agents/general-purpose.md`、根资料及工作区与资源路径 |
 | PreToolUse / Skill、UserPromptExpansion | 检查模型调用和用户直接展开的 pbot 工作方法；未启用或配置无效时拦截并给出初始化入口，保留 `personal-bot:pbot` 初始化技能可用 |
 
@@ -59,7 +59,7 @@ Claude 自己加载原生系统提示、`CLAUDE.md`、用户规则、工具、�
 
 原生 `/personal-bot:pbot init`、`status` 是技能请求，模型通过 Bash 调用 `node <plugin>/lib/claude.js` 的同名操作。需要确定性执行时可直接调用该 CLI。包内工作方法使用原生静态技能发现，未启用时仍可显示名称和简介。
 
-Claude 环境提供 `workspaceRoot` 与 `resourceRoot`，脚本通过原生 Bash 按项目约定运行。Claude 会话、原生团队通信、完成通知与恢复由宿主管理；pbot 不采集或查询新的 Claude 历史，也不生成自动摘要。
+Claude 环境提供 `host`、`workspaceRoot` 与 `resourceRoot`，脚本通过原生 Bash 按项目约定运行。Claude 会话、原生团队通信、完成通知与恢复由宿主管理；pbot 不采集或查询新的 Claude 历史，也不生成自动摘要。
 
 ## ACP 成员
 
@@ -71,6 +71,6 @@ Pi/dsh 委派的 Claude ACP 子代理通过协商后的 systemPrompt append 加�
 
 ## 环境与历史
 
-各宿主的 pbot 模型环境提供 `workspaceRoot` 与 `resourceRoot`，实际 cwd 由宿主提供。公共提示保留资料目录用途，计算方法按任务读取；解释器与依赖沿用项目约定。
+各宿主的 pbot 模型环境提供 `host`、`workspaceRoot` 与 `resourceRoot`，实际 cwd 由宿主提供。公共提示保留资料目录用途，计算方法按任务读取；解释器与依赖沿用项目约定。
 
 Pi/dsh 历史摘要只接收 `resources/prompts/history-summary.md` 与当前问答或下层摘要，附带时段和未完成标记，不提供工具或普通会话上下文。长文本按预算分段汇总，完整原文保留；查询、面板和资源加载不触发摘要。

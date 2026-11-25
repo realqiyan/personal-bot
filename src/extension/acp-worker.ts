@@ -45,7 +45,7 @@ async function main() {
   let prompt: string | undefined;
   if (reference.backend === "claude") {
     prompt = [await readFile(join(resourceRoot, "prompts/workspace.md"), "utf8"), await agentText("general-purpose", d.workspace),
-      JSON.stringify({ workspaceRoot: d.workspace, resourceRoot })].join("\n\n");
+      "## 环境\n\n" + JSON.stringify({ host: "claude", workspaceRoot: d.workspace, resourceRoot })].join("\n\n");
   }
   const saveSelection = (selection: AcpModelSelection) => {
     if (validating) return;

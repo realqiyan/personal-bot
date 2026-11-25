@@ -40,7 +40,7 @@ export function registerEvents(pi: ExtensionAPI, lifecycle: Lifecycle, confirmat
       instance.check();
       Object.assign(event.systemPromptOptions.sections, {
         pbot_workspace: workspace,
-        pbot_environment: JSON.stringify({ workspaceRoot: instance.root, resourceRoot }),
+        pbot_environment: JSON.stringify({ host: "pi", workspaceRoot: instance.root, resourceRoot }),
         pbot: role,
       });
     } catch (error) {

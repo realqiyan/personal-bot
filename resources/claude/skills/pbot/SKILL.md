@@ -6,7 +6,7 @@ disable-model-invocation: true
 
 # Personal Bot 工作区
 
-从当前 Claude 工作区根目录，通过 Bash 执行对应命令。`${CLAUDE_SKILL_DIR}` 是本技能所在的插件目录。
+从当前 Claude 工作区根目录，通过 Bash 执行对应命令。`${CLAUDE_SKILL_DIR}` 是本技能目录（位于插件内）。
 
 ```sh
 node "${CLAUDE_SKILL_DIR}/../../../../lib/claude.js" init

@@ -25,8 +25,10 @@ export async function acpMember() {
     requireThat(run.generation === generation && (!run.stop || process.env.PBOT_ACP_VALIDATE === "1"), "ACP 成员已停止或启动代次变化。");
   };
   const context = async () => {
+    const reference = files.reference(id);
+    const host = reference.host === "acp" ? reference.backend : "pi";
     const [workspace, role] = await Promise.all([readFile(join(resourceRoot, "prompts/workspace.md"), "utf8"), agentText("general-purpose", d.workspace)]);
-    return { workspace, role, environment: JSON.stringify({ workspaceRoot: d.workspace, resourceRoot }) };
+    return { workspace, role, environment: JSON.stringify({ host, workspaceRoot: d.workspace, resourceRoot }) };
   };
   return { files, d, id, generation, check, context,
     input() {

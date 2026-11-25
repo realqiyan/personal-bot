@@ -32,9 +32,7 @@ test("disabled command hooks use the bound root and leave workspace and user dat
   const status = await run(["status"]);
   assert.equal(status.workspaceRoot, workspace);
   assert.equal(status.configuration.enabled, false);
-  const result = await hook("UserPromptSubmit");
-  assert.equal(result.hookSpecificOutput.hookEventName, "UserPromptSubmit");
-  assert.equal(typeof result.hookSpecificOutput.additionalContext, "string");
+  assert.deepEqual(await hook("UserPromptSubmit"), {});
   assert.deepEqual(await hook("SubagentStart", { agent_type: "personal-bot:general-purpose" }), {});
   const skill = skill => hook("PreToolUse", { tool_name: "Skill", tool_input: { skill } });
   assert.equal((await skill("personal-bot:project-maintenance")).hookSpecificOutput.permissionDecision, "deny");
@@ -67,7 +65,7 @@ test("init preserves user configuration and materials without modifying native C
   const context = (await hook("UserPromptSubmit")).hookSpecificOutput;
   assert.equal(context.hookEventName, "UserPromptSubmit");
   const environment = JSON.parse(context.additionalContext.slice(context.additionalContext.lastIndexOf("\n\n") + 2));
-  assert.deepEqual(environment, { workspaceRoot: workspace, resourceRoot });
+  assert.deepEqual(environment, { host: "claude", workspaceRoot: workspace, resourceRoot });
   assert.deepEqual(await hook("SubagentStart", { agent_type: "Explore" }), {});
   assert.equal((await hook("SubagentStart", { agent_type: "personal-bot:general-purpose" })).hookSpecificOutput.hookEventName, "SubagentStart");
   assert.deepEqual(await hook("PreToolUse", { tool_name: "Skill", tool_input: { skill: "personal-bot:project-maintenance" } }), {});

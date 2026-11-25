@@ -53,7 +53,7 @@ for (const noSkills of [false, true]) test(`Pi ACP member loads and refreshes na
     const prepare = () => session._prepareRun({ messageType: "user", prompt: "Local inspection" });
     const first = await prepare(), sections = session._runSystemPromptOptions.sections;
     const environment = JSON.parse(sections.pbot_environment);
-    assert.deepEqual(environment, { workspaceRoot: root, resourceRoot });
+    assert.deepEqual(environment, { host: "pi", workspaceRoot: root, resourceRoot });
     for (const marker of [native, role]) assert.equal(session.systemPrompt.split(marker).length - 1, 1);
     assert.equal(Object.hasOwn(sections, "pbot_team"), false);
     assert.equal(session.systemPrompt.includes(method), false);
@@ -97,7 +97,7 @@ for (const noSkills of [false, true]) test(`dsh ACP member loads and refreshes n
     const events = child.session.snapshotEvents();
     const environment = events.flatMap(event => event.type === "user/message" && event.data.source.kind === "runtime-context" ? event.data.source.sections : [])
       .find(section => section.name === "pbot:environment");
-    assert.deepEqual(JSON.parse(environment.text), { workspaceRoot: root, resourceRoot });
+    assert.deepEqual(JSON.parse(environment.text), { host: "dsh", workspaceRoot: root, resourceRoot });
     const system = events.filter(event => event.type === "system/message").map(event => messageText(event.data.message)).join("\n");
     assert.equal(system.split(role).length - 1, 1);
     const instructions = events.filter(event => event.type === "user/message" && event.data.source.kind === "agent-instructions");

@@ -51,7 +51,7 @@ for (const legacy of [undefined, '{"format":"legacy/1","status":"pending"}', "in
     const started = await session.extensionRunner.emitBeforeAgentStart({ messageType: "user", prompt: "" }, { cwd: root });
     assert.doesNotThrow(() => buildSystemPrompt(started.systemPromptOptions));
     const environment = JSON.parse(started.systemPromptOptions.sections.pbot_environment);
-    assert.deepEqual(environment, { workspaceRoot: root, resourceRoot });
+    assert.deepEqual(environment, { host: "pi", workspaceRoot: root, resourceRoot });
     assert.deepEqual(errors, []);
     assert.deepEqual(session.getAllTools().map(t => t.name).filter(n => n.startsWith("pbot_")).sort(), ["pbot_agent", "pbot_history", "pbot_team", "pbot_team_message"]);
     assert.ok(loader.getSkills().skills.length > 0);

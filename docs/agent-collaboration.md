@@ -132,7 +132,7 @@ run 要求全部成员空闲、无未消费的私人输入，并已加载可用�
 
 成员任务、团队背景、自动注入的公共消息和批次通知使用 Markdown 文档。普通专家只加载公共约定与专家职责；处理团队任务时才补充共同目标、成员职责、身份、轮次及团队操作说明。本批次要求仅在成员任务输入中给出，避免重复。公共消息按 seq 分节，列出作者、回复关系与来源，正文放入保留原文的代码区块，包含代码围栏的正文也不会破坏区块边界。成员原文中的 JSON 保留原样。
 
-read 的文本结果也使用 Markdown，同时保留工具的结构化结果。nextOffset 非空表示该条正文未读完，用同一 teamId、seq 和 offset 续读；nextAfterSeq 用于后续消息。自动注入按实际 Markdown 长度限制上下文，并用 remainingFromSeq 标明未包含的消息，从 afterSeq: remainingFromSeq - 1 继续读取。Pi 压缩不删除公共记录。
+read 的文本结果也使用 Markdown，同时保留工具的结构化结果。nextOffset 非空表示该条正文未读完，用同一 teamId、seq 和 offset 续读；nextAfterSeq 用于后续消息。自动注入按实际 Markdown 长度限制上下文，并用 nextAfterSeq 标明后续消息的读取起点，从 afterSeq: nextAfterSeq 继续读取。Pi 压缩不删除公共记录。
 
 只自动公开本次团队请求正常结束后的最终答复，不广播完整历史、推理或原始工具输出。人工输入混入周期时标记 mixed 并暂停团队，不自动公开混合答复；此前显式 post 的内容保留。成员信息与人工子会话输入都不扩大原用户授权。
 

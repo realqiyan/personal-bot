@@ -51,12 +51,11 @@ export async function claudeHook(value: unknown): Promise<Record<string, unknown
       hookEventName: event, permissionDecision: "deny", permissionDecisionReason: disabled(configuration),
     } };
   }
-  if (!configuration.enabled) return event === "SubagentStart" ? {} : {
-    hookSpecificOutput: { hookEventName: event, additionalContext: disabled(configuration) },
-  };
+  if (!configuration.enabled) return {};
   if (event === "SubagentStart" && value.agent_type !== "personal-bot:general-purpose") return {};
   const member = event === "SubagentStart" || typeof value.agent_id === "string";
-  const role = event === "SubagentStart" ? readFile(join(root, "agents/general-purpose.md"), "utf8").catch(error => {
+  const role = event === "SubagentStart" ? readFile(join(root, "agents/general-purpose.md"), "utf8").then(local =>
+    local.trim() ? "工作区职责补充：\n" + local : "").catch(error => {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return "";
     throw error;
   }) : agentText(member ? "general-purpose" : "coordinator", root, "claude");
@@ -69,6 +68,6 @@ export async function claudeHook(value: unknown): Promise<Record<string, unknown
     }),
   ]);
   return { hookSpecificOutput: { hookEventName: event, additionalContext: [
-      workspace, duties, agents, JSON.stringify({ workspaceRoot: root, resourceRoot }),
+      workspace, duties, agents, "## 环境\n\n" + JSON.stringify({ host: "claude", workspaceRoot: root, resourceRoot }),
     ].filter(Boolean).join("\n\n") } };
 }

@@ -236,7 +236,7 @@ test("actual child entry uses native tools without provider state or recursive d
   assert.deepEqual(loader.getSkills().skills, []);
   const started = await session.extensionRunner.emitBeforeAgentStart({ messageType: "user", prompt: "" }, { cwd });
   const environment = JSON.parse(started.systemPromptOptions.sections.pbot_environment);
-  assert.deepEqual(environment, { workspaceRoot: root, resourceRoot });
+  assert.deepEqual(environment, { host: "pi", workspaceRoot: root, resourceRoot });
   const bash = session.agent.state.tools.find(t => t.name === "bash");
   const output = await bash.execute("native", { command: "printf 42" });
   assert.notEqual(output.isError, true);

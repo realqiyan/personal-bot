@@ -43,7 +43,7 @@ test("E2E: startup preserves history and leaves native Bash available", { timeou
   assert.deepEqual(await readdir(workspace.root), [".pbot"]);
   const context = await pi.driver("context");
   assert.equal(context.workspace, true);
-  assert.deepEqual(context.environment, { workspaceRoot: workspace.root, resourceRoot });
+  assert.deepEqual(context.environment, { host: "pi", workspaceRoot: workspace.root, resourceRoot });
   const documents = "# User workspace\n\nKeep these research notes across preparation and restart.\n";
   await writeFile(join(workspace.root, "AGENTS.md"), documents);
   await pi.command("/pbot init");

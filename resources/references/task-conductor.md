@@ -1,39 +1,25 @@
-# 原生 Task Conductor
+# Task Conductor
 
-主会话需要周期、重复流程、DAG 或离开当前宿主会话后继续执行时使用本文。普通独立协助使用当前宿主的原生专家；Pi/dsh 的跨宿主委派使用 pbot_agent。
+需要周期执行、重复流程、DAG 或离开当前会话后继续运行时使用本文。普通单次协助直接使用当前宿主专家。
 
-## 准备能力
+## 发现与操作
 
-通过当前宿主的原生工具发现查找 Task Conductor，读取 `using-task-conductor` 技能，再按实际 MCP schema 操作。工具未直接显示时，先按技能检查连接；技能缺失时检查插件安装和资源启用状态。
+在当前宿主原生工具与技能中查找 Task Conductor，先读取 `using-task-conductor` 技能，再按实际 MCP schema 调用（保留工具名中的连字符，如 `mcp__task-conductor__task_list`）。
 
-| 宿主 | 插件与技能入口 |
-| --- | --- |
-| Pi | `pi list` 查看来源与资源；从工作区根目录用 `pi install --local npm:task-conductor-plugin` 安装已发布接入，或用 `pi install --local /absolute/path/to/task-conductor/plugin` 加载未发布源码。当前会话执行 `/reload`，技能入口为 `/skill:using-task-conductor` |
-| dsh | 用 `dsh plugin --profile pbot list task-conductor-plugin --depth 0` 查看所选 profile；本地 tarball 使用 `dsh plugin --profile pbot add /absolute/path/to/task-conductor-plugin-<version>.tgz` 安装。重启对应宿主后，通过原生 skill 工具读取 `using-task-conductor`，或在聊天框调用 `/using-task-conductor`。桌面应用使用自己的原生插件页 |
-| Claude Code | 按上游当前提供的 Claude 接入方式安装；通过 `/mcp` 核对连接与认证，读取原生目录中实际提供的 using-task-conductor。手工增加 MCP 时使用 `claude mcp add --scope project ...`，具体参数见接入技能与上游资料 |
+工具或技能未出现时，向用户说明缺失项及对应宿主检查入口（如 Pi/Claude 的 `/mcp`、dsh 的 `/task-conductor status`），不要通过 Bash 代执行宿主聊天命令；继续不受影响的工作。
 
-将 `pbot` 和示例路径替换为实际 profile 和产物。dsh 接入包含于尚未发布的 Task Conductor `0.1.6` 候选版本；发布前使用该版本的本地插件及配套服务，构建方法见 [dsh 指南](../../docs/dsh.md#task-conductor)或[上游接入说明](https://github.com/realqiyan/task-conductor/blob/master/docs/host-integrations.md)。宿主聊天命令在相应会话中执行，不能通过 Bash 代执行；已发现技能时直接读取其正文继续。
-
-dsh 插件随包提供共享技能，并为根主会话创建原生 MCP 连接，工作目录取该会话 cwd。通过实际名称调用工具，如 `mcp__task-conductor__executor_list`、`mcp__task-conductor__task_list`；保留名称中的连字符。复用插件连接，已有手工连接按上游方法调整来源，避免重复注册。dsh 接入不需要 Pi 交互 CLI；服务的协调模型单独配置。
-
-服务安装、setup、连接与排障按上游技能处理。dsh 中用 `/task-conductor status` 查看连接状态；服务设置完成或故障修复后用 `/task-conductor connect` 重连。能力不可用时说明具体阻碍，继续不受影响的工作。
-
-## 使用 dsh 执行节点
-
-通过 Task Conductor 管理员 CLI 或 Web 注册自定义执行端 `dsh-acp`，使用 dsh 的规范绝对可执行路径和 `["--profile", "acp"]` 参数；`dsh` 不是内置执行端 ID。注册与查询步骤见上游技能的 `references/custom-acp.md`。在任务节点的 `executorId` 中选择已就绪的 `dsh-acp`。
-
-执行端使用 Task Conductor 后台的运行环境及 dsh 的 `acp` profile，单独准备模型认证、工具、技能和 Python；当前主会话的配置不自动传给节点。
+若需要在 dsh 后台执行节点，`executorId` 选择已注册的自定义执行端 `dsh-acp`（不是 `dsh`）。后台节点使用独立的 `acp` profile 运行环境，不继承当前主会话的模型、工具或 Python 配置。
 
 ## 定义任务
 
-提交前写明输入、工作目录、所需工具与模型、输出。周期任务还需明确频率、时区、执行范围及每轮数据来源、期间与时点。
+提交前写明输入、工作目录、所需工具与模型及预期产物；周期任务另须写明频率、时区、执行范围及每轮数据来源、期间与时点。
 
-准备节点所需的工具、技能、Python 环境和认证。需要人工交互的步骤应留在交互会话中完成。节点直接完成分配的任务，不再递归委派。
+确认节点具备所需工具、技能、Python 环境和认证。需要人工交互的步骤留在交互会话中完成，节点直接执行分配任务，不递归委派。
 
-## 状态与结果
+## 状态与取消
 
-任务定义、执行和节点分别用 taskId、runId 和节点 ID 标识。提交响应不明时先按已有 ID 查询；未取得 ID 时，按请求关联、任务列表、提交时间或任务特征查找，避免重复创建。实时状态查询 Task Conductor，项目资料保存任务定义、标识和结果位置。
+任务定义、单次执行和节点分别用 `taskId`、`runId` 和节点 ID 标识。提交结果不明时先按 ID 或任务列表查询，避免重复创建。实时状态查 Task Conductor，项目资料只记录任务定义、标识和产物位置。
 
-通知回到提交任务的原生持久会话；dsh 恢复原 Session 后可以继续接收待处理事件。同项目的新会话不会代收，仍可通过 MCP 查询任务。
+事件通知回到提交任务的原会话；新会话不代收，但可通过 MCP 查询。
 
-取消当前执行与停止未来周期分别操作，并查询确认。Pi/dsh 的 pbot_agent stop 或当前宿主关闭不停止 Task Conductor。报告时区分调度已创建和本轮已完成，并给出对应状态与产物位置。
+取消当前执行与停止未来周期须分别操作并查询确认；停止本地专家或关闭当前会话不会停止 Task Conductor。汇报时区分“调度已创建”和“本轮已完成”，并给出状态与产物路径。

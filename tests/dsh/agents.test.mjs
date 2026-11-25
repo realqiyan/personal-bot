@@ -190,7 +190,8 @@ test("native preset context refreshes before first requests and preserves comple
     const environment = events.flatMap(event => event.type === "user/message" && event.data.source.kind === "runtime-context" ? event.data.source.sections : [])
       .find(section => section.name === "pbot:environment");
     const data = JSON.parse(environment.text);
-    assert.deepEqual(Object.keys(data).sort(), ["resourceRoot", "workspaceRoot"]);
+    assert.deepEqual(Object.keys(data).sort(), ["host", "resourceRoot", "workspaceRoot"]);
+    assert.equal(data.host, "dsh");
     assert.equal(data.workspaceRoot, join(root, "a"));
     assert.ok(agent.session.requestHeader().tools.some(tool => tool.name === "read"));
   }

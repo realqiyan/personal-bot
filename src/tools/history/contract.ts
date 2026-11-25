@@ -6,8 +6,11 @@ import { inputObject, need, nullable, pick } from "../input.js";
 
 const host = Type.Union([Type.Literal("pi"), Type.Literal("dsh"), Type.Literal("claude")]);
 const nullableOffset = Type.Union([Type.Integer(), Type.Null()]);
-const node = Type.Object({ host, id: Type.String(), kind: Type.Union([Type.Literal("session"), Type.Literal("exchange"), Type.Literal("summary")]),
-  sessionId: Type.String(), name: Type.String(), preview: Type.String(), from: Type.String(), to: Type.String(), ready: Type.Boolean(), completed: Type.Boolean() });
+const node = Type.Object({ host, id: Type.String(),
+  kind: Type.Union([Type.Literal("session"), Type.Literal("exchange"), Type.Literal("summary")], { description: "session=会话根；summary=摘要；exchange=单轮问答原文。" }),
+  sessionId: Type.String(), name: Type.String(), preview: Type.String(), from: Type.String(), to: Type.String(),
+  ready: Type.Boolean({ description: "正文或摘要是否已生成。" }),
+  completed: Type.Boolean({ description: "该对话或问答是否正常结束（false 表示中断或未完）。" }) });
 export const historyResultSchema = Type.Object({
   matches: Type.Optional(Type.Array(Type.Object({ ...node.properties, snippet: Type.String(), parents: Type.Array(Type.String()) }))),
   total: Type.Optional(Type.Integer()), nextOffset: Type.Optional(nullableOffset),
@@ -16,15 +19,18 @@ export const historyResultSchema = Type.Object({
     source: Type.Object({ host, sessionId: Type.String({ description: "原始宿主会话 ID。" }), entryIds: Type.Array(Type.String()) }), warnings: Type.Array(Type.String()) })),
   warnings: Type.Array(Type.String()),
 });
-export const historyDescription = "查询当前工作区的 Pi/dsh 问答与已有 Claude 归档，host 可筛选来源。search 按不区分大小写的连续文本匹配原文和摘要；无匹配时换词，省略 query 列会话。read 按 parents/children 的 id 展开，nextOffset 续读正文，nextChildrenOffset 续读子节点。需要对话细节时读取 exchange 原文；需要工具日志时查所属宿主的原始会话。";
-export const historyParameters = Type.Object({ action: Type.Union([Type.Literal("search"), Type.Literal("read")]),
-  host: nullable(host), query: nullable(Type.String()), sessionId: nullable(Type.String()),
-  from: nullable(Type.String({ description: "search：ISO 日期或时间，下界。" })),
-  to: nullable(Type.String({ description: "search：ISO 日期或时间，上界。" })),
-  id: nullable(Type.String({ description: "read 必填：返回的节点 id。" })),
-  offset: nullable(Type.Integer({ minimum: 0, description: "search：匹配结果偏移；read：正文 UTF-16 字符偏移。默认 0。" })),
-  limit: nullable(Type.Integer({ minimum: 1, maximum: 24000, description: "search：最多返回的匹配条数，默认 20，最多 50；read：正文 UTF-16 字符数，默认 12000。" })),
-  childrenOffset: nullable(Type.Integer({ minimum: 0 })),
+export const historyDescription = "查询当前工作区的历史问答与归档，host 可筛选来源（pi/dsh/claude）。search 按不区分大小写的连续关键词匹配原文和摘要，省略 query 列出各会话；无匹配时换词。read 按节点 id 展开正文与上下级，nextOffset 续读正文，nextChildrenOffset 续读子节点；需要细节时读取 exchange 原文。归档不含工具调用日志。";
+export const historyParameters = Type.Object({
+  action: Type.Union([Type.Literal("search"), Type.Literal("read")], { description: "search 搜索或列会话；read 读取指定节点正文与上下级。各动作仅读取自身字段，其余字段忽略。" }),
+  host: nullable(Type.Union([Type.Literal("pi"), Type.Literal("dsh"), Type.Literal("claude")], { description: "可选来源筛选：pi、dsh 或 claude。" })),
+  query: nullable(Type.String({ description: "仅 search：不区分大小写的连续关键词；省略时列出各会话。" })),
+  sessionId: nullable(Type.String({ description: "仅 search：限定在指定会话 ID 内搜索。" })),
+  from: nullable(Type.String({ description: "仅 search：ISO 日期或时间下界。" })),
+  to: nullable(Type.String({ description: "仅 search：ISO 日期或时间上界。" })),
+  id: nullable(Type.String({ description: "仅 read，必填：search 或上下级返回的节点 id。" })),
+  offset: nullable(Type.Integer({ minimum: 0, description: "search：匹配结果偏移；read：正文字符偏移。默认 0。" })),
+  limit: nullable(Type.Integer({ minimum: 1, maximum: 24000, description: "search：最多返回条数（默认 20，上限 50）；read：正文字符数（默认 12000）。" })),
+  childrenOffset: nullable(Type.Integer({ minimum: 0, description: "仅 read：子节点列表偏移，默认 0；续读传上页 nextChildrenOffset。" })),
 }, { additionalProperties: false });
 
 export type HistoryInput =

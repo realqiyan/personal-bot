@@ -18,9 +18,13 @@ export function agentNotice(values: AgentCompletion[], links: ReadonlyMap<string
     !(value.cycle.cycleId === value.cycle.generation && [...links.values()].some(link => link.request.agentId === value.agentId && link.request.generation === value.cycle.generation)) &&
     !known.has(value.agentId + ":" + value.cycle.cycleId)).slice(0, 8);
   if (!batch.length) return;
+  const hasTruncated = batch.some(value => value.report.length > 2000);
   return { kind: "agents" as const, keys: batch.map(value => value.agentId + ":" + value.cycle.cycleId),
-    content: "# 子会话工作结果\n\n子会话工作已结束。完整报告用 pbot_agent read 读取，指定对应 agentId 和 cycle.cycleId；nextOffset 非空时沿用该 cycleId 续读。\n\n" +
-      (batch.some(value => value.cycle.source !== "parent") ? "部分结果包含人工子会话输入，来源见 cycle.source。\n\n" : "") +
+    content: "# 专家工作结果\n\n" +
+      (hasTruncated
+        ? "专家工作已结束。`truncated` 为 `true` 的报告用 `pbot_agent read`（指定 `agentId` 和 `cycle.cycleId`）读全文，`nextOffset` 非空时沿用同一 `cycleId` 续读。\n\n"
+        : "专家工作已结束，以下为完整报告，无需再调用 `pbot_agent read`。\n\n") +
+      (batch.some(value => value.cycle.source !== "parent") ? "部分结果包含人工直接输入，来源见 `cycle.source`。\n\n" : "") +
       batch.map(value => "## " + value.name + "\n\n" + markdownFields(json({ agentId: value.agentId,
         cycle: { cycleId: value.cycle.cycleId, state: value.cycle.state, source: value.cycle.source, requestIds: value.cycle.requestIds,
           ...(value.cycle.error === undefined ? {} : { error: value.cycle.error }) },

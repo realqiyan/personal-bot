@@ -41,7 +41,7 @@ export async function executeAgent(service: AgentService, input: AgentInput, own
       const { action: _action, ...supplied } = input;
       value = await service.start({ ...inherited(input, defaults), ...supplied }, owner); break;
     }
-    case "list": return markdownResult({ agents: service.list(owner).map(agentOutput) }, "子会话列表");
+    case "list": return markdownResult({ agents: service.list(owner).map(agentOutput) }, "专家列表");
     case "send": value = service.send(input.agentId, input.message, input.delivery ?? "steer", owner); break;
     case "rename": value = service.rename(input.agentId, input.name, owner); break;
     case "resume": value = await service.resume(input.agentId, input.message, owner); break;
@@ -49,9 +49,9 @@ export async function executeAgent(service: AgentService, input: AgentInput, own
     case "status": value = service.status(input.agentId, owner); break;
     case "read": {
       const page = await service.read(input.agentId, owner, input.cycleId, input.offset, input.limit);
-      const data = agentOutput(page), output = markdownResult(data, "子会话报告");
+      const data = agentOutput(page), output = markdownResult(data, "专家报告");
       return { ...output, details: { ...data, ...(page.cycle && page.cycle.state !== "running" ? { agentReadKeys: [page.agentId + ":" + page.cycle.cycleId] } : {}) } };
     }
   }
-  return markdownResult(agentOutput(value), "子会话状态");
+  return markdownResult(agentOutput(value), "专家状态");
 }

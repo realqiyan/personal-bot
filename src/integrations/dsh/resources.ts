@@ -18,7 +18,7 @@ export async function dshResources(ctx: Context, _agent: Agent, root: string,
   ctx.systemPrompt.section({ name: "pbot:role", order: 1, text, interpolate: false });
   ctx.systemPrompt.section({ name: "pbot:workspace", order: 2, text: workspace, interpolate: false });
   ctx.systemPrompt.context({ name: "pbot:environment", order: 300, required: true, interpolate: false,
-    text: JSON.stringify({ workspaceRoot: root, resourceRoot }) });
+    text: JSON.stringify({ host: "dsh", workspaceRoot: root, resourceRoot }) });
   ctx.on("system-prompt/assemble", async (_assembly, _context, next) => {
     check();
     const [roleText, workspaceText] = await read();

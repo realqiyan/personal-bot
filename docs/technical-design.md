@@ -61,7 +61,7 @@ Pi 的 session_start 读取启动目录配置，仅在 enabled 为 true 时创�
 
 Pi 的 `/pbot` 打开原生菜单，状态与长记录使用只读阅读页；dsh 使用独立工作台。见[界面设计](interaction-design.md)。
 
-`/pbot init` 先准备资料，再将共用配置中的 enabled 设为 true，保留其他字段；无效配置在写入前报错。Pi 从未启用状态初始化后调用原生 ctx.reload，让实例、工具、技能和新建根 AGENTS 一起生效；已启动会话仅补建资料，新建 AGENTS 经 `/reload` 加载。`/pbot status` 展示运行状态、路径和版本；模型环境提供 `workspaceRoot` 与 `resourceRoot`，实际 cwd 由宿主提供。
+`/pbot init` 先准备资料，再将共用配置中的 enabled 设为 true，保留其他字段；无效配置在写入前报错。Pi 从未启用状态初始化后调用原生 ctx.reload，让实例、工具、技能和新建根 AGENTS 一起生效；已启动会话仅补建资料，新建 AGENTS 经 `/reload` 加载。`/pbot status` 展示运行状态、路径和版本；模型环境提供 `host`、`workspaceRoot` 与 `resourceRoot`，实际 cwd 由宿主提供。
 
 Pi 主 reload 在配置仍启用时保留子进程并重新关联，但暂停团队，不继续安排旧批次；配置关闭或损坏时停止所属专家；退出或切换会话时清理子进程。关闭操作幂等。子会话的分支归属、通知和恢复规则见[专家协作](agent-collaboration.md)。
 

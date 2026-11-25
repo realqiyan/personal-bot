@@ -34,7 +34,7 @@ test("Pi first run includes native workspace files and local role, then emits on
   assert.ok(session.systemPrompt.includes(local));
   const sections = first.find(message => message.role === "system").sections;
   const environment = JSON.parse(session._runSystemPromptOptions.sections.pbot_environment);
-  assert.deepEqual(environment, { workspaceRoot: root, resourceRoot });
+  assert.deepEqual(environment, { host: "pi", workspaceRoot: root, resourceRoot });
   assert.equal(Object.hasOwn(sections, "pbot_team"), false);
   for (const message of first) session.sessionManager.appendMessage(message);
   session.agent.state.messages = session.sessionManager.buildSessionContext().messages;

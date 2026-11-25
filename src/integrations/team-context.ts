@@ -9,6 +9,7 @@ type MessagePage = Pick<TeamMessage, "seq" | "author" | "text" | "replyTo" | "ru
 };
 
 function messageMarkdown(message: MessagePage): string {
+  const partial = message.offset > 0 || message.nextOffset !== null;
   return [
     "## 消息 " + message.seq, "",
     "- 作者：" + message.author.name + "（" + message.author.kind + "）",
@@ -16,16 +17,17 @@ function messageMarkdown(message: MessagePage): string {
     ...(message.replyTo === undefined ? [] : ["- `replyTo`: `" + message.replyTo + "`"]),
     ...(message.runId ? ["- `runId`: `" + message.runId + "`"] : []),
     ...(message.source ? ["- `requestId`: `" + message.source.requestId + "`", "- `cycleId`: `" + message.source.cycleId + "`"] : []),
-    "- `offset`: `" + message.offset + "`；`totalLength`: `" + message.totalLength + "`；`nextOffset`: `" + message.nextOffset + "`",
+    ...(partial ? ["- `offset`: `" + message.offset + "`；`totalLength`: `" + message.totalLength + "`；`nextOffset`: `" + message.nextOffset + "`"] : []),
     "", markdownBlock(message.text),
-    ...(message.nextOffset === null ? [] : ["", "正文未完。用 pbot_team_message read 续读：`seq: " + message.seq + ", offset: " + message.nextOffset + "`。"]),
+    ...(message.nextOffset === null ? [] : ["", "正文未完，用 `pbot_team_message read` 续读：`seq: " + message.seq + ", offset: " + message.nextOffset + "`。"]),
   ].join("\n");
 }
 
 export function teamMessagesMarkdown(page: { teamId: string; messages: MessagePage[]; lastSeq: number; nextAfterSeq: number | null }): string {
+  const hasPartial = page.messages.some(message => message.nextOffset !== null);
   return ["# 团队公共消息", "", "- `teamId`: `" + page.teamId + "`", "- `lastSeq`: `" + page.lastSeq + "`",
-    "- `nextAfterSeq`: `" + page.nextAfterSeq + "`", "",
-    "nextOffset 非空时先续读该条正文，再读取后续消息。", "",
+    "- `nextAfterSeq`: `" + page.nextAfterSeq + "`",
+    ...(hasPartial ? ["", "有消息的 `nextOffset` 非空，先按 `seq`/`offset` 续读完正文，再读取后续消息。"] : []), "",
     page.messages.map(messageMarkdown).join("\n\n")].join("\n");
 }
 
@@ -56,9 +58,11 @@ export function createTeamContext(link: TeamLink, seen: ReadonlySet<number>, thr
     messages.push(value); budget -= size;
   }
   const seqs = messages.map(m => m.seq);
+  const nextAfterSeq = pending[messages.length] ? pending[messages.length]!.seq - 1 : null;
+  const hasMore = nextAfterSeq !== null || messages.some(m => m.nextOffset !== null);
   return { content: ["# 团队公共上下文", "", "- `teamId`: `" + link.team.teamId + "`", "- `throughSeq`: `" + throughSeq + "`",
-      "- `remainingFromSeq`: `" + (pending[messages.length]?.seq ?? null) + "`", "",
-      "未包含或被截断的正文用 pbot_team_message read 读取。remainingFromSeq 非空时，用 afterSeq: remainingFromSeq - 1 读取未包含的消息。", "",
+      "- `nextAfterSeq`: `" + nextAfterSeq + "`",
+      ...(hasMore ? ["", "正文未完用 `pbot_team_message read` 按 `seq`/`offset` 续读；`nextAfterSeq` 非空时用 `afterSeq` 读取后续消息。"] : []), "",
       messages.map(messageMarkdown).join("\n\n")].join("\n"),
     seqs };
 }
