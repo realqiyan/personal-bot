@@ -4,19 +4,19 @@ English | [简体中文](README.zh-CN.md)
 
 **A personal assistant connecting knowledge, research, and action.**
 
-Personal Bot provides a workspace-scoped [Pi](https://pi.dev) extension, a native dsh Web integration, and a standard Claude Code plugin. It supports organizing materials, project work, research, specialist collaboration, and authorized operations. Pi/dsh add managed specialists, teams, and history search. Claude uses native skills, Agent/teams, and Node command hooks. All three share workspace materials and professional methods.
+Personal Bot is a harness-agnostic workspace and cross-harness specialist layer supporting [Pi](https://pi.dev), dsh, Claude Code, and Antigravity. All hosts share workspace materials, professional methods, and open ACP cross-harness delegation (coding, analysis, and exploration routed to the best-fit harness). Pi/dsh also provide pbot team rounds and history search.
 
-Claude's model-driven context, skills, and specialist behavior still need validation in an approved native model environment. See the [Claude Code guide](docs/claude-code.md) (Chinese) for operations.
+Host guides (Chinese): [Antigravity](docs/antigravity.md) · [Claude Code](docs/claude-code.md) · [dsh](docs/dsh.md).
 
 ## Enable a workspace
 
-After installation, open the host in the target workspace. Pi/dsh use `/pbot init`; Claude uses the native skill `/personal-bot:pbot init`. These initialize materials and enable the shared `.pbot/config.json`:
+After installation, open the host in the target workspace and initialize (`Pi`/`dsh`/`Antigravity`: `/pbot init`; `Claude`: `/personal-bot:pbot init`). This prepares missing directories and root `AGENTS.md` and enables the shared `.pbot/config.json`:
 
 ```json
 { "enabled": true }
 ```
 
-A missing, disabled, or invalid config leaves Personal Bot inactive; only the current workspace root is checked, with no automatic configuration migration. Pi/dsh withhold packaged skills and pbot prompts. Claude can display static skill names and descriptions; its hooks block work methods invoked through Skill or direct slash commands while leaving the pbot initialization skill available. Inspect state with Pi/dsh `/pbot status` or Claude `/personal-bot:pbot status`. After manual edits, use `/reload` in Pi or restart dsh; Claude reads current configuration at its hooks and CLI operations, with the root fixed by `CLAUDE_PROJECT_DIR`. See [workspace configuration](docs/workspace-configuration.md) (Chinese).
+A missing, disabled, or invalid config leaves Personal Bot inactive; only the bound workspace root is checked, with no automatic migration. Inspect state with `/pbot status` (Claude: `/personal-bot:pbot status`). See [workspace configuration](docs/workspace-configuration.md) (Chinese).
 
 ## Install
 
@@ -90,19 +90,30 @@ For native teams, the user enables Claude's experimental feature with `CLAUDE_CO
 
 The standard plugin provides materials, skills, and native specialists. Existing Claude history archives and old control records remain preserved. See the [Claude guide](docs/claude-code.md) (Chinese) for operations.
 
-### Optional: ACP specialist programs
+### Antigravity
 
-Pi/dsh use ACP to delegate independent work to Pi, dsh, or Claude. Install each target you need on the machine running the main host:
+Requires Linux or macOS, Node.js 22.19+, and the Antigravity CLI (`agy` 1.5+). Install or update via npm:
+
+```bash
+npx personal-bot@latest install-antigravity
+```
+
+Start Antigravity in the target workspace and run `/pbot init` or `/pbot status`. The plugin wires `SessionStart`/`PreToolUse` hooks, shared skills, `general-purpose` subagent, and the `personal-bot-agents` stdio MCP server for cross-harness ACP delegation. See the [Antigravity guide](docs/antigravity.md) (Chinese).
+
+### Optional: Cross-harness ACP specialists and standalone MCP
+
+Any host can delegate independent tasks across harnesses via `pbot_agent` (native tool in Pi/dsh, bundled MCP in Claude/Antigravity, or `pbot mcp` in any other MCP client). Install the target ACP programs you need:
 
 | Target | Installation | Authentication and model |
 | --- | --- | --- |
-| Pi | With Pi installed, run `npm install -g pi-acp`. Install Pi itself with `npm install -g @earendil-works/pi-coding-agent` if needed. | Run `pi` to sign in and select a default model. |
-| dsh | An existing command-line dsh installation is sufficient; otherwise run `npm install -g @deepseek-ai/dsh@latest`. | Configure the target profile's model and authentication through dsh. The default entry is `dsh --profile acp`. |
-| Claude Code | `npm install -g @agentclientprotocol/claude-agent-acp` | Follow the [Claude Code guide](https://code.claude.com/docs/en/quickstart) to sign in or configure API access, then set a default model. |
+| Pi | `npm install -g pi-acp` (plus `@earendil-works/pi-coding-agent`) | Run `pi` to sign in and select a default model. |
+| dsh | `npm install -g @deepseek-ai/dsh@latest` | Configure the target profile in dsh (default `dsh --profile acp`). |
+| Claude Code | `npm install -g @agentclientprotocol/claude-agent-acp` | Sign in or configure API access via Claude Code. |
+| Antigravity | Install Google Antigravity CLI (`agy`) | Sign in via `agy` (default `agy acp`). |
+| Codex | `npm install -g @zed-industries/codex-acp` | Sign in or configure API access in Codex. |
+| Custom ACP | Any ACP v1 stdio server | Declare `{ "command", "args" }` under `.pbot/config.json`'s `acp` map. |
 
-Check the target from the same terminal that starts your main host, for example with `command -v claude-agent-acp`. Retry the original start request after installation. If the program is installed but absent from the host's PATH, put its absolute path in the workspace [acp configuration](docs/workspace-configuration.md#acp-启动配置) (Chinese). Restart the main host after PATH changes. For workspace ACP configuration changes, run `/reload` in Pi or restart dsh.
-
-When a program is missing, the tool returns its installation command, authentication guidance, and a path configuration example. See [ACP members](docs/agent-collaboration.md#acp-成员) (Chinese) for calls and continued conversations.
+To expose cross-harness delegation to Codex, Cursor, or another MCP host, configure a stdio MCP server running `npx personal-bot@latest mcp` (or `pbot mcp`). See [ACP configuration](docs/workspace-configuration.md#acp-启动配置) and [ACP members](docs/agent-collaboration.md#acp-成员) (Chinese).
 
 ### Use from source
 
@@ -130,12 +141,9 @@ Describe the task directly: organize materials, compare findings, delegate a rev
 
 | Command | Purpose |
 | --- | --- |
-| `/pbot` | Open the workspace menu |
 | `/pbot init` | Enable the workspace and create missing material directories and root `AGENTS.md` |
 | `/pbot status` | Inspect activation, workspace, and version |
-| `/pbot history [text]` | Search exchanges and summaries, then read originals |
-| `/pbot agents` | Inspect, enter, rename, stop, or send instructions to specialists |
-| `/pbot teams` | Inspect teams and public messages; start rounds, pause, or close |
+| `/pbot enter [agent]` | Attach to an owned Pi native specialist's tmux session to view its transcript |
 | `/reload` | Pi's native command to reload extensions and resources |
 
 - **Initialization and materials:** `/pbot init` creates missing materials and enables the workspace, preserving existing materials and other configuration fields. Pi reloads on first activation; an already running workspace loads a newly created root AGENTS after `/reload`.
@@ -145,21 +153,21 @@ Describe the task directly: organize materials, compare findings, delegate a rev
 - **Calculations:** Use native Bash with the project's interpreter, dependencies, and working directory. The [Python calculation reference](resources/references/compute.md) covers common methods; [indicators and backtesting](resources/references/compute-finance.md) covers financial calculations. Install the tools and libraries required by the project in its chosen environment.
 - **Material maintenance:** Ask the assistant to organize a project, repeat an analysis with its existing definitions, or check a delivery. The [maintenance skill](resources/skills/project-maintenance/SKILL.md) updates current guidance and extracts reusable methods while preserving formal materials, history, and backups.
 
-Use `pi --resume` to select the main session explicitly; `pi --continue` can select the most recently active child. Enter managed specialists through `/pbot agents`. Opening a stopped specialist's saved session leaves it idle; use resume with a new instruction to continue work. Keep one writer per running session.
+Use `pi --resume` to select the main session explicitly; `pi --continue` can select the most recently active child. Enter owned Pi native specialists through `/pbot enter [agent]`; use `pbot_agent resume` with a new instruction to continue a stopped specialist. Keep one writer per running session.
 
 ## Workspace materials
 
 | Location | Purpose |
 | --- | --- |
-| `.pbot/config.json` | Shared Pi/dsh/Claude workspace activation and configuration |
-| `AGENTS.md` | Project index by directory name and familiar terms, links to other materials, and working agreements |
+| `.pbot/config.json` | Shared workspace activation and open ACP target configuration |
+| `AGENTS.md` | Project index, links to materials, working agreements, and optional harness routing preferences |
 | `areas/`, `projects/` | Long-term goals, tasks, conclusions, and deliverables |
 | `knowledge/` | Reusable concepts, methods, and analysis definitions |
 | `.pbot/history/` | Pi/dsh original exchanges in `raw/` and derived summaries in `summary/`; preserved Claude archives |
 | `providers/` | External tool guidance, data definitions, and sources |
 | `scratch/` | Temporary scripts, calculation data, downloads, and environments |
 | `agents/` | Role additions |
-| `.agents/skills/` (Pi/dsh), `.claude/skills/` (Claude) | Workspace skills discovered by the current host |
+| `.agents/skills/` (Pi/dsh/Antigravity), `.claude/skills/` (Claude) | Workspace skills discovered by the current host |
 
 Existing layouts and agreements take precedence. Fetch queryable data when needed using the recorded definitions. Stop writes in the old instance before copying a workspace; concurrent writes from multiple machines to a synchronized directory are unsupported. See [file storage](docs/file-storage.md).
 

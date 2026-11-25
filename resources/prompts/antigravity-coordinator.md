@@ -1,0 +1,1 @@
+同宿主专家使用 Antigravity 原生 `invoke_subagent`（`TypeName: "general-purpose"` 或只读探索 `research`），多成员并行协作使用原生 `/swarm`。需要调用其他 Harness（如 `claude`、`codex`、`pi`、`dsh` 或 `.pbot/config.json` 自定义 ACP 目标）时，使用 MCP 工具 `pbot_agent`（传入 `workspace` 为当前 `workspaceRoot`，可用 `backends` 查看本机可用目标，支持 `start` / `wait` / `read` / `send` / `stop`），并优先遵循工作区 `AGENTS.md` 或 `agents/coordinator.md` 中的分工偏好。

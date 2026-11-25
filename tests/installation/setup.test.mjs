@@ -30,8 +30,10 @@ const plugin = (id, source = `npm:${id}`) => ({ id, source, label: id, descripti
 
 test("setup arguments preserve paths and reject ambiguous or unsupported invocations", () => {
   assert.deepEqual(parseSetupArgs(["setup", "--workspace", "a b/研究"]), { action: "setup", workspace: "a b/研究" });
+  assert.deepEqual(parseSetupArgs(["install-antigravity"]), { action: "install-antigravity" });
+  assert.deepEqual(parseSetupArgs(["mcp"]), { action: "mcp" });
   assert.deepEqual(parseSetupArgs([]), { action: "help" });
-  for (const args of [["unknown"], ["setup", "--workspace"], ["setup", "--workspace", "--yes"],
+  for (const args of [["unknown"], ["install-antigravity", "--yes"], ["mcp", "--yes"], ["setup", "--workspace"], ["setup", "--workspace", "--yes"],
     ["setup", "--workspace", "a", "--workspace", "b"], ["setup", "--yes"]]) assert.throws(() => parseSetupArgs(args));
 });
 
@@ -249,4 +251,18 @@ test("CLI is usable without Pi and rejects non-interactive setup before filesyst
   assert.equal(stdout.trim(), JSON.parse(await readFile("package.json", "utf8")).version);
   await assert.rejects(exec(process.execPath, [cli, "setup", "--workspace", join(f.workspace, "new")], { cwd: f.workspace, env: f.env }), error => error.code === 2);
   assert.deepEqual(await readdir(f.workspace), []);
+});
+
+test("install-antigravity delegates the built plugin bundle to agy plugin install", async t => {
+  const f = await fixture(t);
+  const cli = resolve("bin/pbot.mjs");
+  const record = join(f.temp, "agy-args.json");
+  const stub = join(f.temp, "agy");
+  await writeFile(stub, `#!/usr/bin/env node\nimport { writeFileSync } from "node:fs";\nwriteFileSync(${JSON.stringify(record)}, JSON.stringify(process.argv.slice(2)));\n`, { mode: 0o755 });
+  await exec(process.execPath, [cli, "install-antigravity"], {
+    cwd: f.workspace,
+    env: { HOME: f.home, PATH: process.env.PATH, PBOT_AGY_COMMAND: stub },
+  });
+  const passed = JSON.parse(await readFile(record, "utf8"));
+  assert.deepEqual(passed, ["plugin", "install", resolve("lib/antigravity-plugin")]);
 });

@@ -1,6 +1,6 @@
 # 模型上下文
 
-Personal Bot 分别接入 Pi、dsh 和 Claude Code 原生主会话。Pi/dsh 也可将三者作为 ACP 目标。本文说明指令来源、加载时机与更新方式；编写要求见[模型指令编写原则](model-instruction-guidelines.md)。Claude 的模型上下文、技能调用与原生专家行为还需在批准的原生模型环境验证，范围见[Claude 接入设计](claude-code-design.md)。
+Personal Bot 分别接入 Pi、dsh、Claude Code 与 Antigravity 主会话，并通过开放 ACP 后端在各 Harness 间委派专家。本文说明指令来源、加载时机与更新方式；编写要求见[模型指令编写原则](model-instruction-guidelines.md)，轻插件与跨宿主调度边界见[轻插件宿主与跨 Harness 接入设计](plugin-hosts-design.md)。
 
 ## 内容与来源
 
@@ -8,7 +8,7 @@ Personal Bot 分别接入 Pi、dsh 和 Claude Code 原生主会话。Pi/dsh 也�
 | --- | --- |
 | 公共约定、资料目录用途 | `resources/prompts/workspace.md`，启用的主会话与专家加载 |
 | 协调者与专家职责 | `resources/agents/`，叠加原工作区 `agents/` 中的同名补充 |
-| 协调者操作导航 | Pi/dsh 加载 `resources/prompts/native-coordinator.md`，Claude 加载 `resources/prompts/claude-coordinator.md` |
+| 协调者操作导航 | Pi/dsh 加载 `resources/prompts/native-coordinator.md`，Claude 加载 `resources/prompts/claude-coordinator.md`，Antigravity 加载 `resources/prompts/antigravity-coordinator.md` |
 | pbot 团队目标、职责与公开范围 | Pi/dsh 专家处理团队任务时加载 `team-member.md` 和本次团队资料 |
 | 参数、分页、能力与结果语义 | Pi/dsh 工具契约，按所选程序和 capabilities 说明操作 |
 | 工作区初始化与状态 | Claude 原生 `resources/claude/skills/pbot/SKILL.md` 调用 Node CLI |
@@ -61,13 +61,23 @@ Claude 自己加载原生系统提示、`CLAUDE.md`、用户规则、工具、�
 
 Claude 环境提供 `host`、`workspaceRoot` 与 `resourceRoot`，脚本通过原生 Bash 按项目约定运行。Claude 会话、原生团队通信、完成通知与恢复由宿主管理；pbot 不采集或查询新的 Claude 历史，也不生成自动摘要。
 
+## Antigravity
+
+Antigravity 自己加载原生系统提示、工作区 `AGENTS.md` / `GEMINI.md`、原生工具、其他插件、技能和子代理。pbot 通过构建产物 `lib/antigravity-plugin/` 提供 `plugin.json`、`hooks.json`、技能与静态专家 `agents/general-purpose.md`，由共享 `plugin-runtime` 与 `antigravityAdapter` 读取 `workspacePaths[0]`（回退 `cwd`）下的 `.pbot/config.json`。
+
+| 入口 | 加载行为 |
+| --- | --- |
+| SessionStart | 已启用时一次性通过 `injectSteps` 注入公共约定、共有协调者职责、Antigravity 操作导航、工作区 `agents/coordinator.md` 及 `{ host: "antigravity", workspaceRoot, resourceRoot }`；不重复注入根 `AGENTS.md` |
+| PreToolUse / `read_file` | 仅当读取插件内工作方法技能（排除 `pbot` 初始化技能）且工作区未启用时返回 `deny`，其余返回 `allow` |
+| PreToolUse / `invoke_subagent` | 仅当工作区已启用且目标为 `general-purpose` 时，通过 `overwrite` 将公共约定、工作区 `agents/general-purpose.md` 与环境路径前置到 `Prompt` |
+
 ## ACP 成员
 
 Pi 和 dsh 的 ACP 成员使用专用入口加载公共约定、general-purpose 职责、工作区补充及工作区与资源路径，并使用各自原生资源发现。入口不消费 pbot inbox，输入由 ACP worker 投递。Pi 的 before_agent_start 刷新 section；dsh 的 system-prompt/assemble 刷新原生 section。
 
 Pi/dsh 委派的 Claude ACP 子代理通过协商后的 systemPrompt append 加入同一公共约定、职责及工作区与资源路径。包内 `resources/skills/` 作为该子会话的原生本地插件注册，技能元数据进入 Claude 目录，正文按需读取；该插件清单只声明技能。原生 CLAUDE、用户与项目技能、工具由 Claude 自己加载。恢复时重新提供 pbot 内容和插件路径。ACP 成员只处理独立工作，不加入 pbot 团队上下文。
 
-协议流中的 thought 和工具进度用于活动状态，Pi/dsh 的最终答复按原生完成边界提取，Claude 按消息 ID 和 prompt 完成边界定稿。
+对 `antigravity`、`codex` 及自定义 ACP 目标，`acp-worker` 同样加载公共约定、`general-purpose` 职责与 `{ host, workspaceRoot, resourceRoot }`；目标声明标准 `sessionCapabilities.systemPrompt` 时随会话建立传入，否则在首轮消息前自动前置一次（后续轮次不重复）。协议流中的 thought 和工具进度用于活动状态，Pi/dsh 按原生完成边界提取最终答复，其余目标按流式 `agent_message_chunk` 与 prompt 结束边界定稿。
 
 ## 环境与历史
 

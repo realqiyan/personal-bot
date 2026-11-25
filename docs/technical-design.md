@@ -1,12 +1,12 @@
 # 技术设计
 
-Personal Bot 提供按工作区加载的 Pi 扩展、原生 dsh Host/Web 接入及 Claude Code 标准插件。模型负责分析、协调和工具使用；Pi/dsh 提供专家协作与历史归档，Claude 通过标准 hooks、技能和原生专家复用资料与专业方法。安装与命令见[项目 README](../README.md)及 [Claude 使用指南](claude-code.md)。
+Personal Bot 提供按工作区启用的多宿主接入（Pi 扩展、dsh Host/Web、Claude Code 与 Antigravity 原生插件）与不绑定宿主的跨 Harness 专家调度能力。模型负责分析、协调与工具使用；各宿主共享工作区资料、专业方法与 ACP 跨宿主调度，Pi/dsh 另提供 pbot 团队与历史归档。安装与命令见[项目 README](../README.zh-CN.md)、[Antigravity 指南](antigravity.md)及[Claude 指南](claude-code.md)；轻插件宿主与跨 Harness MCP/ACP 边界详见[轻插件宿主与跨 Harness 接入设计](plugin-hosts-design.md)。
 
 ## 模块与依赖
 
 ```text
 Pi / dsh 命令、工具、事件与原生 Remote
-Claude command hooks / Node 命令
+Claude / Antigravity command hooks、插件 CLI 与薄 stdio MCP
          ↓
  tools / extension / ui
          ↓
@@ -17,9 +17,9 @@ Claude command hooks / Node 命令
           integrations
 ```
 
-src/pbot.ts 装配 Pi，src/dsh.ts 装配 dsh Host，src/ui/dsh/index.ts 装配 Web 客户端。src/claude.ts 是 Claude 标准 command hook 与 Node 命令入口，src/extension/claude-hooks.ts 调用共用工作区服务。Claude 静态发现 Markdown 技能与专家，不装配 pbot 历史、ACP 或面板。各宿主共享资料与适用的业务服务。
+src/pbot.ts 装配 Pi，src/dsh.ts 装配 dsh Host，src/ui/dsh/index.ts 装配 Web 客户端。src/plugin.ts 与兼容入口 src/claude.ts 通过共享的 src/extension/plugin-runtime.ts 与窄协议适配层（src/integrations/hosts/claude.ts、antigravity.ts）服务标准 command hook 与工作区 CLI，统一复用 src/integrations/agent-resources.ts 的上下文拼装与共用工作区服务；src/mcp.ts 与 src/extension/mcp-agents.ts 提供零外部依赖的 stdio MCP 服务，将共享 AgentService 与开放 ACP 后端暴露给 Claude、Antigravity、Codex 等任意 MCP 宿主。
 
-src/extension/setup-cli.ts 装配独立 Pi 安装命令；`pbot setup` 通过原生 npm/Pi 准备工作区，再启动 Pi 执行 `/pbot init`。Claude 使用原生插件 marketplace。安装器顺序、来源保留与失败恢复由 services/installation 管理，详见[安装与升级](installation-design.md)。
+src/extension/setup-cli.ts 装配独立 CLI（`pbot setup`、`pbot install-antigravity`、`pbot mcp`）；`pbot setup` 通过原生 npm/Pi 准备工作区并启动 Pi 执行 `/pbot init`，`pbot install-antigravity` 调用原生 `agy plugin install` 安装 `lib/antigravity-plugin/`，Claude 使用原生插件 marketplace。安装器顺序、来源保留与失败恢复由 services/installation 管理，详见[安装与升级](installation-design.md)。
 
 | 目录 | 责任 |
 | --- | --- |
@@ -45,21 +45,17 @@ Claude command hook 是独立 Node 进程，只使用 Node 内置模块和共用
 | HistoryService | Pi/dsh 的原生问答索引、分层摘要与提交核验，跨来源查询 |
 | WorkspaceInstance / DshWorkspaces | Pi/dsh 工作区生命周期；dsh 按父会话装配，按工作区共享历史整理 |
 
-## Claude 标准插件入口
+## 轻插件宿主入口
 
-`hooks/hooks.json` 声明 UserPromptSubmit、SubagentStart、PreToolUse/Skill 和 UserPromptExpansion 的 command handlers，使用独立 `command` 与 `args`，不经 shell 拼接路径。stdin 只消费公开事件字段，stdout 返回标准 hook JSON。固定根目录取 `CLAUDE_PROJECT_DIR`，普通 Node 命令无该变量时使用 cwd。
-
-UserPromptSubmit 重读共用配置、公共约定、角色、根 AGENTS 与工作区职责补充，连同工作区和资源路径加入上下文；宿主提供子代理身份时使用专家职责。SubagentStart 只为插件的原生专家添加资料。未启用时不加入业务资料，PreToolUse/Skill 与 UserPromptExpansion 分别检查模型调用和用户直接展开的 pbot 方法，拦截时返回初始化入口，管理技能仍可调用。
-
-`node <插件>/lib/claude.js init|status` 调用共用工作区服务；`/personal-bot:pbot` 是执行同一入口的原生技能，会调用模型。原生专家 Markdown 由共用职责生成。Claude 不读取内部 transcript、团队配置、启动参数或消息收据，不注册 pbot 模型工具或管理面板。
+Claude Code 与 Antigravity 共享 `src/extension/plugin-runtime.ts`、`src/integrations/agent-resources.ts` 与 `src/services/workspace/*`，协议差异隔离在 `src/integrations/hosts/claude.ts` 与 `src/integrations/hosts/antigravity.ts`（实现 `PluginHostAdapter`）。两类宿主都不装配 pbot 历史、pbot 团队或管理面板；跨 Harness 专家调度统一通过 `.mcp.json`（Claude）与 `mcp_config.json`（Antigravity）挂载独立打包的 `lib/extension/mcp.js` 完成。协议细节、事件映射与构建产物见[轻插件宿主与跨 Harness 接入设计](plugin-hosts-design.md)。
 
 ## 加载与关闭
 
-宿主原生配置决定插件加载范围，工作区根目录下的 `.pbot/config.json` 决定业务实例是否启动。`services/workspace/workspace-config` 为三种宿主读取同一 JSON；缺失、false 或无效配置保持未启用，错误由状态入口报告，不向父目录继承。规则与修改生效方式见[工作区配置](workspace-configuration.md)。
+宿主原生配置决定插件加载范围，工作区根目录下的 `.pbot/config.json` 决定业务实例是否启动。`services/workspace/workspace-config` 为所有宿主读取同一 JSON；缺失、false 或无效配置保持未启用，错误由状态入口报告，不向父目录继承。规则与修改生效方式见[工作区配置](workspace-configuration.md)。
 
 Pi 的 session_start 读取启动目录配置，仅在 enabled 为 true 时创建实例和注册工具。未启用时保留状态和初始化入口，不注册包内技能，也不注入 pbot 提示词；状态栏显示未启用或已启动。加载本身不开展模型任务。
 
-Pi 的 `/pbot` 打开原生菜单，状态与长记录使用只读阅读页；dsh 使用独立工作台。见[界面设计](interaction-design.md)。
+Pi 的 `/pbot` 保留 `init`、`status` 和 `enter`（附着 Pi 原生专家 tmux 会话），省略定制菜单与阅读页；dsh 使用独立工作台。见[界面设计](interaction-design.md)。
 
 `/pbot init` 先准备资料，再将共用配置中的 enabled 设为 true，保留其他字段；无效配置在写入前报错。Pi 从未启用状态初始化后调用原生 ctx.reload，让实例、工具、技能和新建根 AGENTS 一起生效；已启动会话仅补建资料，新建 AGENTS 经 `/reload` 加载。`/pbot status` 展示运行状态、路径和版本；模型环境提供 `host`、`workspaceRoot` 与 `resourceRoot`，实际 cwd 由宿主提供。
 
@@ -67,7 +63,7 @@ Pi 主 reload 在配置仍启用时保留子进程并重新关联，但暂停团
 
 dsh 为原生 registry 中的每个根 Agent 读取其原始 cwd 下的配置，仅对已启用根目录建立协调者工作区。关闭的工作区保留只读状态和初始化入口，其余业务命令与 Remote 查询拒绝进入；init 写入配置后重新打开同一根目录下尚未启用的主会话，按目录合并并发初始化。专家使用同进程独立 Agent/Session；组件或所属父 Agent 关闭时取消预约、暂停安排并等待自己拥有的执行资源释放。打开页面、轮询、重连不恢复专家或启动模型，已接纳工作不归浏览器生命周期所有。原生存在但由其他实例持有的专家不能替换或假称已释放。
 
-Claude 在每次用户提交和适用 hook 中读取固定根目录的配置。hook 没有常驻实例、租约、心跳或后台摘要；配置停用后不再加入业务资料。宿主关闭与原生会话恢复由 Claude 自己管理。实现边界见[Claude 接入](claude-code-design.md)。
+Claude 与 Antigravity 在各自 hook 与 MCP 调用时读取工作区根目录配置；hook 无常驻实例、心跳或后台摘要，宿主关闭与原生会话恢复由对应宿主管理。实现边界见[轻插件宿主与跨 Harness 接入设计](plugin-hosts-design.md)。
 
 ## 资源加载
 
@@ -112,7 +108,9 @@ dsh 的 `native-session.json` 只保存原生 Session ID，不把它写入 Pi �
 
 ## ACP 执行
 
-Pi/dsh 的 AgentBackends 在原生策略与 pi、dsh、claude 三个 ACP 目标间显式选择，默认保持当前宿主原生策略。工具 start 的 backend 单独进入启动流程，不写入既有 descriptor.options。WorkspaceConfiguration 提供 acp 命令覆盖，创建时固定解析后的路径和参数，恢复使用保存的入口。backend 参数声明目标程序前提；找不到可执行入口时，由共享接入层返回该目标的安装命令、原生认证提示与路径配置示例，各宿主沿用原生错误展示。
+`AgentBackends` 支持在当前宿主原生策略与内置 ACP 目标（`pi`、`dsh`、`claude`、`antigravity`、`codex`）及 `.pbot/config.json` 中自定义的任意 ACP 目标之间选择。Pi/dsh 通过原生 `pbot_agent` 工具直接调用；Claude、Antigravity 及其他支持 MCP 的宿主通过共享的薄 stdio MCP 服务（`lib/extension/mcp.js`，亦可由 `pbot mcp` 启动）复用同一 `AgentService` 与 `AgentBackends`，增加 `backends` 查询与 `wait` 等待动作。MCP 模式下不依赖宿主 UI 审批队列，未显式配置自动允许的权限请求直接快速取消以避免阻塞。
+
+对未声明标准 `sessionCapabilities.systemPrompt` 的通用 ACP 后端（如 `agy acp` 或自定义目标），`acp-worker` 在首轮消息前自动前置工作区约定、专家职责与环境上下文，并按流式 `agent_message_chunk` 收集最终报告；`pi`/`dsh` 继续使用受管成员入口提取精确快照。`lib/extension/mcp.js` 与 `lib/extension/acp-worker.js` 在构建时通过 esbuild 打成独立 ESM 文件，使插件缓存目录在没有 `node_modules` 时也可直接调度跨宿主 ACP。
 
 integrations/acp/connection 使用官方 TypeScript SDK 的稳定 ACP v1，处理初始化、能力协商、配置选择、会话建立/恢复、进度、权限与关闭。主宿主仍持有自己的原生会话和通知收据。ACP 不继承父侧模型默认值；省略 model 或 thinking 时保留目标的原生默认配置。model-selection 将 Pi 的 provider/model、dsh 的编码模型值和 Claude 别名匹配到目标公开的选择；同名模型优先使用当前提供方，无法消歧时要求显式 provider。先选择模型，再按更新后的选项选择思考等级。首次配置全部成功后才固定原生会话引用，配置失败后的恢复继续应用原参数。worker 将配置选择与有效思考等级保存到独立 acp-model.json；服务只公开当前 generation 的 selection。Claude 从适配器入口或 node 启动脚本定位目标安装中的 SDK，通过 resolveSettings 读取原生配置，将环境变量决定的默认等级传入 SDK effort；显式 thinking 同时通过当前调用的 settings.env 覆盖原生环境等级，保留用户配置文件。只订阅 _claude/sdkMessage 的 system/init，将原生模型 ID 保存为 resolvedModel，与 model 配置别名分开。
 
@@ -154,10 +152,10 @@ Web 拥有草稿、上传和查询；接纳后的命令归服务端。命令不�
 
 Pi 将工具纳入 pbot namespace，codemode 按契约组合；dsh 注册原生工具，并在宿主可表达的 schema 之外继续校验完整领域契约。原生 CLI/MCP 与可选 Task Conductor 的接入和授权见[工具与执行](capability-design.md)。
 
-Pi 入口指向 src，由宿主加载 TypeScript 源码；独立 CLI、dsh Host/Web、Claude Node hooks 编译到 lib，dist 供测试使用。Claude 的 hooks/hooks.json 指向 lib/claude.js；根 manifest 声明技能与原生专家，marketplace 指向同版本 npm 包。原生 marketplace 将包解压到插件缓存，不安装 npm 依赖；Claude hook/CLI 在没有 node_modules 的包目录中直接运行，资源路径相对包内模块定位。
+Pi 入口指向 src，由宿主加载 TypeScript 源码；独立 CLI、dsh Host/Web、共享插件运行时、独立打包的 `lib/extension/{mcp,acp-worker}.js` 与自包含的 `lib/antigravity-plugin/` 编译到 `lib`，`dist` 供测试使用。插件缓存目录在没有 `node_modules` 时直接运行 hook、CLI、MCP 与 ACP worker，资源路径相对包内模块定位。
 
-宿主 SDK 使用 optional peer，dsh SDK 范围为 "*"，最低宿主版本由 engines.dsh 声明；开发依赖和仓库锁文件保留精确版本。完整开发 npm-shrinkwrap.json 不进入发布包，消费者按正常运行依赖安装，避免 registry 安装展开开发锁中的宿主 SDK。TypeBox 同样为 optional peer：Pi 通过宿主加载器提供，dsh 构建携带库及许可证。Claude 插件使用 Node 命令与共用服务，不加载宿主 SDK；Claude SDK 可选依赖仅供 Pi/dsh 的 Claude ACP 目标使用。
+宿主 SDK 使用 optional peer，dsh SDK 范围为 `"*"`，最低宿主版本由 `engines.dsh` 声明；开发依赖和仓库锁文件保留精确版本。完整开发 `npm-shrinkwrap.json` 不进入发布包，消费者按正常运行依赖安装。TypeBox 同样为 optional peer：Pi 通过宿主加载器提供，dsh 构建携带库及许可证。轻插件 hooks 与 stdio MCP 服务不加载宿主 SDK 或 `@modelcontextprotocol/sdk`；Claude SDK 可选依赖仅供 Claude ACP 目标使用。
 
-Pi、CLI 与 Claude hooks 支持 Node.js 22.19+，Claude 原生 CLI 最低与当前验证基线为 2.1.325；dsh 与 Linux 完整开发使用 Node.js 24.9+。安装检查发现真实宿主后，在子进程中使用其 SDK。包内组件共用 package.json 发布版本，build:claude 同步插件与 marketplace 版本并生成原生专家文件。构建顺序为 dist → build:cli → build:dsh → build:claude；build:cli 会清理 lib。子会话兼容线在 1.0 前按次版本、之后按主版本判断。
+Pi、CLI、轻插件 hooks 与 MCP/ACP 入口支持 Node.js 22.19+（Claude CLI 基线 2.1.325，Antigravity `agy` 基线 1.5+）；dsh 与完整开发使用 Node.js 24.9+。包内组件共用 `package.json` 发布版本，构建顺序为 `dist → build:cli → build:dsh → build:plugins`（`build:claude` 为别名）；`build:cli` 会清理 `lib`。子会话兼容线在 1.0 前按次版本、之后按主版本判断。
 
 构建与安装包检查见[维护脚本](../scripts/README.md)，分发流程见[npm 发布](release.md)。

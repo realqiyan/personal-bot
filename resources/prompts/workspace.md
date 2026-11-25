@@ -21,7 +21,7 @@
 | `providers/AGENTS.md`、`providers/<id>/GUIDE.md` | 能力导航与使用手册 |
 | `scratch/` | 临时脚本、查询与计算数据、下载及运行环境 |
 | `agents/` | `coordinator.md`、`general-purpose.md` 的职责补充 |
-| 宿主原生技能目录（`pi`/`dsh` 为 `.agents/skills/`，`claude` 为 `.claude/skills/`） | 工作区自有专业方法 |
+| 宿主原生技能目录（`pi`/`dsh`/`antigravity` 为 `.agents/skills/`，`claude` 为 `.claude/skills/`） | 工作区自有专业方法 |
 
 保存有后续用途的结论、方法、决策和产物，普通问答不逐轮存档；更新、归集或整理资料时使用 `project-maintenance` 技能。保留用户资料、历史记录和备份。
 

@@ -4,19 +4,19 @@
 
 **连接知识、研究与行动的个人助手。**
 
-Personal Bot 提供按工作区加载的 [Pi](https://pi.dev) 扩展、原生 dsh Web 接入和标准 Claude Code 插件，支持资料整理、项目推进、研究分析、专家协作和已授权的业务操作。Pi/dsh 提供受管专家、团队和历史查询；Claude 使用原生技能、Agent/teams 与 Node command hooks。三个宿主共用工作区资料和专业方法。
+Personal Bot 提供按工作区启用的多宿主接入（[Pi](https://pi.dev) 扩展、dsh Web 接入、Claude Code 与 Antigravity 原生插件）和跨 Harness 专家调度能力，支持资料整理、项目推进、研究分析与按任务特长调度不同 Harness（如编码、分析、探索分别交由最擅长的程序处理）。各宿主共用工作区资料、专业方法与开放 ACP 调度；Pi/dsh 另提供 pbot 团队与历史查询。
 
-Claude 的模型上下文、技能调用与专家行为还需在批准的原生模型环境验证。操作见 [Claude Code 指南](docs/claude-code.md)。
+各宿主使用指南：[Antigravity](docs/antigravity.md) · [Claude Code](docs/claude-code.md) · [dsh](docs/dsh.md)。
 
 ## 工作区启用
 
-安装后，从目标工作区打开宿主。Pi/dsh 执行 `/pbot init`，Claude 使用原生技能 `/personal-bot:pbot init`，初始化资料并启用共用的 `.pbot/config.json`：
+安装后，从目标工作区打开宿主并初始化（Pi/dsh/Antigravity 执行 `/pbot init`，Claude 执行 `/personal-bot:pbot init`），生成缺失目录与根 `AGENTS.md` 并启用共用的 `.pbot/config.json`：
 
 ```json
 { "enabled": true }
 ```
 
-配置缺失、停用或无效时，Personal Bot 保持未启用；只检查当前工作区根目录，不自动迁移配置。Pi/dsh 不加载包内技能及 pbot 提示词；Claude 仍可显示静态技能名称和简介，hooks 拦截 Skill 调用和直接斜杠命令中的工作方法并保留 pbot 初始化技能可用。状态入口为 Pi/dsh `/pbot status` 或 Claude `/personal-bot:pbot status`。手工修改后，Pi 执行 `/reload`，dsh 重启宿主；Claude 在 hook 与 CLI 操作时读取当前配置，工作区根由 `CLAUDE_PROJECT_DIR` 固定。规则见[工作区配置](docs/workspace-configuration.md)。
+配置缺失、停用或无效时，Personal Bot 保持未启用；只检查当前工作区根目录，不自动迁移配置。Pi/dsh 不加载包内技能及 pbot 提示词；Claude 与 Antigravity hooks 在未启用时不注入业务上下文并拦截包内工作方法，保留 `pbot` 初始化技能可用。状态入口为 `/pbot status`（Claude 为 `/personal-bot:pbot status`）。规则见[工作区配置](docs/workspace-configuration.md)。
 
 ## 安装
 
@@ -90,19 +90,30 @@ dsh plugin --profile pbot update personal-bot --latest
 
 标准插件提供资料、技能与原生专家，既有 Claude 历史归档和旧控制记录原地保留。操作见 [Claude 指南](docs/claude-code.md)。
 
-### 可选安装 ACP 专家程序
+### Antigravity
 
-Pi/dsh 使用 ACP 向 Pi、dsh 或 Claude 委派独立工作。先在运行主宿主的机器上安装所需目标：
+支持 Linux 和 macOS，需要 Node.js 22.19+ 与 Antigravity CLI（`agy` 1.5+）。通过 npm 一键安装或更新：
+
+```bash
+npx personal-bot@latest install-antigravity
+```
+
+在目标工作区启动 Antigravity 后执行 `/pbot init` 与 `/pbot status`。插件原生接入 `SessionStart`/`PreToolUse` hooks、专业技能、`general-purpose` 专家与跨 Harness `pbot_agent` MCP 服务。详见 [Antigravity 指南](docs/antigravity.md)。
+
+### 可选：跨 Harness ACP 专家程序与独立 MCP
+
+任意宿主均可通过 `pbot_agent`（Pi/dsh 原生工具、Claude/Antigravity 插件内置 MCP，或其他 MCP 宿主挂载 `pbot mcp`）委派不同 ACP Harness。先按需安装目标程序：
 
 | 目标 | 安装 | 认证与模型 |
 | --- | --- | --- |
-| Pi | 已有 Pi 时运行 `npm install -g pi-acp`；Pi 本身可通过 `npm install -g @earendil-works/pi-coding-agent` 安装 | 运行 `pi` 完成登录并选择默认模型 |
-| dsh | 已安装命令行 dsh 即可；否则运行 `npm install -g @deepseek-ai/dsh@latest` | 按 dsh 原生方式配置目标 profile 的模型与认证；默认入口为 `dsh --profile acp` |
-| Claude Code | `npm install -g @agentclientprotocol/claude-agent-acp` | 按 [Claude Code 指南](https://code.claude.com/docs/en/quickstart)完成登录或 API 配置，并设置默认模型 |
+| Pi | `npm install -g pi-acp`（另需 `@earendil-works/pi-coding-agent`） | 运行 `pi` 完成登录并选择默认模型 |
+| dsh | `npm install -g @deepseek-ai/dsh@latest` | 按 dsh 原生方式配置目标 profile（默认 `dsh --profile acp`） |
+| Claude Code | `npm install -g @agentclientprotocol/claude-agent-acp` | 按 [Claude Code 指南](https://code.claude.com/docs/en/quickstart)登录或配置 API |
+| Antigravity | 安装 Google Antigravity CLI（`agy`） | 运行 `agy` 完成登录与默认模型配置（默认 `agy acp`） |
+| Codex | `npm install -g @zed-industries/codex-acp` | 在 Codex 中完成登录或 API 配置 |
+| 自定义 ACP | 安装任意符合 ACP v1 的程序 | 在工作区 `.pbot/config.json` 的 `acp` 字段声明 `{ "command", "args" }` |
 
-在启动主宿主的同一终端检查目标程序，例如 `command -v claude-agent-acp`。安装后重试原 start 请求。已安装但 PATH 不可见时，将输出的绝对路径写入工作区 [acp 配置](docs/workspace-configuration.md#acp-启动配置)。PATH 变化后重启主宿主；只修改工作区 ACP 配置时，Pi 执行 `/reload`，dsh 重启宿主。
-
-缺少程序时，工具会返回对应安装命令、认证提示和路径配置示例。调用参数与持续对话见[ACP 成员](docs/agent-collaboration.md#acp-成员)。
+在 Codex、Cursor 等其他 MCP 宿主中使用跨 Harness 调度时，只需将其 stdio MCP 配置指向 `npx personal-bot@latest mcp`（或全局安装后的 `pbot mcp`）。详细配置见 [acp 配置](docs/workspace-configuration.md#acp-启动配置)与[专家协作](docs/agent-collaboration.md#acp-成员)。
 
 ### 从源码使用
 
@@ -130,12 +141,9 @@ Pi 用户从工作区运行 `pi install --local npm:task-conductor-plugin`，重
 
 | 命令 | 用途 |
 | --- | --- |
-| `/pbot` | 打开工作区菜单 |
 | `/pbot init` | 启用工作区，补建资料目录与缺失的根 `AGENTS.md` |
 | `/pbot status` | 查看启用状态、工作区和版本 |
-| `/pbot history [关键词]` | 搜索历史问答与摘要，展开原文 |
-| `/pbot agents` | 查看、进入、重命名、停止专家，或补充要求 |
-| `/pbot teams` | 查看团队与公共消息，开始轮次、暂停或关闭 |
+| `/pbot enter [专家]` | 附着到自有 Pi 原生专家的 tmux 会话查看交互历史 |
 | `/reload` | Pi 原生命令，重载扩展与资源 |
 
 - **初始化与资料准备**：`/pbot init` 补建资料并启用工作区，保留已有资料与其他配置字段。Pi 首次启用时自动重载；已启动时补建的根 AGENTS 经 `/reload` 加载。
@@ -145,21 +153,21 @@ Pi 用户从工作区运行 `pi install --local npm:task-conductor-plugin`，重
 - **计算**：通过原生 Bash，使用项目声明的解释器、依赖与工作目录。通用方法见 [Python 计算](resources/references/compute.md)，金融计算另见[指标与回测](resources/references/compute-finance.md)。项目所需工具与库在选定环境中安装。
 - **资料维护**：可请助手整理项目、按既有口径重做分析或检查交付。按[维护技能](resources/skills/project-maintenance/SKILL.md)更新当前说明、提炼方法，保留正式资料、历史与备份。
 
-Pi 主会话恢复用 `pi --resume` 明确选择；`pi --continue` 可能选中最近活跃的子会话。受管专家从 `/pbot agents` 进入，停止后打开原会话会保持待命，携新要求继续时使用 resume。运行中的会话只保留一个写入进程。
+Pi 主会话恢复用 `pi --resume` 明确选择；`pi --continue` 可能选中最近活跃的子会话。自有 Pi 原生专家通过 `/pbot enter [专家]` 进入查看交互历史，携新要求继续已停止专家时使用 `pbot_agent resume`。运行中的会话只保留一个写入进程。
 
 ## 工作区资料
 
 | 位置 | 用途 |
 | --- | --- |
-| `.pbot/config.json` | Pi/dsh/Claude 共用的工作区启用与配置 |
-| `AGENTS.md` | 项目速查（目录名与常用称呼）、其他资料入口和工作约定 |
+| `.pbot/config.json` | 各宿主共用的工作区启用与 ACP 目标配置 |
+| `AGENTS.md` | 项目速查、其他资料入口、工作约定与可选宿主分工偏好 |
 | `areas/`、`projects/` | 长期目标、任务、结论与交付物 |
 | `knowledge/` | 可复用的概念、方法与口径 |
 | `.pbot/history/` | Pi/dsh 的 `raw/` 保存原始问答，`summary/` 保存派生摘要；既有 Claude 归档保留 |
 | `providers/` | 外部工具的使用说明、数据口径与来源 |
 | `scratch/` | 临时脚本、计算数据、下载与运行环境 |
 | `agents/` | 职责补充 |
-| `.agents/skills/`（Pi/dsh）、`.claude/skills/`（Claude） | 当前宿主原生发现的工作区技能 |
+| `.agents/skills/`（Pi/dsh/Antigravity）、`.claude/skills/`（Claude） | 当前宿主原生发现的工作区技能 |
 
 已有布局与工作约定优先。可再次查询的数据在需要时按记录的口径获取。复制工作区前停止旧实例的写入，不支持多机同时写同步目录。详细位置与保留规则见[文件存储](docs/file-storage.md)。
 

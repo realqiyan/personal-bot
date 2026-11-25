@@ -13,7 +13,7 @@ export interface AgentDescriptor {
 }
 /** null means no conversation input has been handed to Pi yet. */
 export interface AgentSessionRef { file: string | null }
-export type NativeAgentHost = "pi" | "dsh";
+export type NativeAgentHost = "pi" | "dsh" | "mcp";
 /** Native references are interpreted only by their owning host adapter. */
 export type AgentSessionReference = { host: "pi"; file: string | null } | { host: "dsh"; sessionId: string } | AcpSessionReference;
 export interface AgentLaunch { generation: string; name: string; sequence: number; stop: boolean; startedAt: number }

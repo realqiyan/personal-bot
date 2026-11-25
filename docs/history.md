@@ -1,6 +1,6 @@
 # 历史对话
 
-Pi/dsh 的 `pbot_history` 查询当前工作区的问答归档。Pi 人工入口为 `/pbot history [关键词]`；dsh 使用 `/pbot` 历史页，或 `/pbot history {"action":"search",…}`。无需给会话命名。原生会话由所属宿主管理，不跨宿主接管或恢复。
+Pi/dsh 的 `pbot_history` 查询当前工作区的问答归档。dsh 另提供 `/pbot` 历史页或 `/pbot history {"action":"search",…}`；Pi 直接通过模型工具 `pbot_history` 查询。无需给会话命名。原生会话由所属宿主管理，不跨宿主接管或恢复。
 
 Claude 标准插件使用原生会话与恢复功能，不提供 pbot 历史查询、采集或自动摘要。已有 `host: "claude"` 归档保留，Pi/dsh 仍可只读查询。
 

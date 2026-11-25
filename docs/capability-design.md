@@ -26,15 +26,15 @@ dsh 使用当前安装版本的原生 MCP 组件和 profile 配置，模型与�
 
 Claude 新增项目连接使用 `claude mcp add --scope project <server> ...`，写入工作区 `.mcp.json`；删除使用 `claude mcp remove --scope project <server>`。local、project、user 是不同原生范围，按实际用途选择；用户未要求跨项目时使用 project。通过当前会话 `/mcp` 检查连接、认证、配置来源和工具，CLI 状态不替代活动会话状态。原生 Agent、团队、消息和任务工具沿用 Claude 权限与认证，实验团队开关由用户管理。
 
-Claude 插件通过标准 Node command hooks 加载上下文，通过原生 `/personal-bot:pbot init|status` 技能调用同一 CLI。确定性操作可直接运行 `node <plugin>/lib/claude.js init|status`。工作区根固定为 `CLAUDE_PROJECT_DIR`，不随 Bash cwd 改变。Claude 的 Agent、团队、MCP 与会话由宿主管理；pbot 不在该宿主注册业务工具或 MCP 服务。原生技能与专家的上下文加载方式见[模型上下文](model-context.md)。
+Claude 插件通过标准 Node command hooks 加载上下文，通过原生 `/personal-bot:pbot init|status` 技能调用同一 CLI；Antigravity 插件通过 `hooks.json` 与 `/pbot init|status` 接入，项目级 MCP 优先写入 `.agents/mcp_config.json`，全局使用 `agy mcp add|remove|list`。两者的同宿主专家、团队、外部 MCP 与会话均由宿主管理；跨 Harness 专家调度统一通过插件挂载的薄 stdio MCP 服务（`lib/extension/mcp.js`，亦可由 `pbot mcp` 启动）复用共享 `AgentService` 与开放 ACP 后端。原生技能与专家的上下文加载方式见[模型上下文](model-context.md)。
 
 各宿主的 Python 计算通过原生 Bash，使用项目声明的解释器、依赖与工作目录。通用方法见 [Python 计算](../resources/references/compute.md)，指标与回测按需读取[专门参考](../resources/references/compute-finance.md)。
 
 ## ACP 子会话
 
-Pi/dsh 主会话可通过 pbot_agent 的 backend 选择 Pi、dsh 或 Claude Code。目标保留自己的原生配置、认证、工具和资源发现，模型选择不跨宿主继承。Pi 目标使用 pi-acp，dsh 使用原生 acp profile，Claude 使用 claude-agent-acp；启动与持续对话见[专家协作](agent-collaboration.md#acp-成员)。
+Pi/dsh 原生 `pbot_agent` 工具与 Claude/Antigravity/独立 `pbot mcp` 暴露的 MCP `pbot_agent` 工具共享同一套 ACP 后端，支持内置目标（`pi`、`dsh`、`claude`、`antigravity`、`codex`）及 `.pbot/config.json` 中自定义的任意 ACP 目标。目标保留自己的原生配置、认证、工具和资源发现，模型选择不跨宿主继承；默认入口分别为 `pi-acp`、`dsh --profile acp`、`claude-agent-acp`、`agy acp` 与 `codex-acp`。启动与持续对话见[专家协作](agent-collaboration.md#acp-成员)。
 
-ACP 权限请求按目标提供的选项交给人工：Pi 使用现有确认队列，dsh 在工作区页显示待确认操作。目标自己的工具政策继续生效。初始附件保留绝对来源；文本按预算读取，图片经协商后传入，其他二进制文件交给目标的原生工具沿来源读取。
+ACP 权限请求在 Pi 中进入确认队列，在 dsh 中进入工作区页；在 MCP 无交互模式下默认快速取消以避免挂死（必要时由目标自身权限模式或 `PBOT_ACP_NONINTERACTIVE_PERMISSION=allow` 处理）。目标自己的工具政策继续生效。初始附件保留绝对来源；文本按预算读取，图片经协商后传入，其他二进制文件交给目标的原生工具沿来源读取。
 
 ## 执行范围与结果
 

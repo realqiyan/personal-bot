@@ -50,7 +50,7 @@ _Avoid_: 摘要维度、记忆层
 
 **通用专家（general-purpose）**：具有独立上下文和任务归属的子会话，在委派范围内完成研究、实现、计算或复核。工作区可在 `agents/general-purpose.md` 补充职责，协调者对应 `agents/coordinator.md`。
 
-**pbot 子会话（agent）**：Pi/dsh 由 start 创建的受管会话，以 agentId 标识，绑定所属宿主、父会话和分支。存活时可 send，停止后用 resume 携新要求恢复；ACP 目标可为 Pi、dsh 或 Claude。
+**pbot 子会话（agent）**：由 `pbot_agent start` 创建的受管会话，以 agentId 标识，绑定所属宿主与父会话。存活时可 send，停止后用 resume 携新要求恢复；ACP 目标支持内置 `pi`、`dsh`、`claude`、`antigravity`、`codex` 以及 `.pbot/config.json` 中自定义的任意 ACP Harness，在 Pi/dsh 中通过原生工具调用，在 Claude/Antigravity 及其他 MCP 宿主中通过薄 stdio MCP 服务（`lib/extension/mcp.js` / `pbot mcp`）调用。
 
 **宿主原生子代理**：由宿主管理的独立任务会话，任务完成后的继续对话与恢复遵循宿主规则。
 

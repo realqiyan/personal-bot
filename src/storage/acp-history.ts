@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import type { HistoryHost } from "../model/history.js";
 import { readJsonFile } from "./atomic-json.js";
 import { acpReference } from "./acp-files.js";
+import { isHistoryHost } from "./history-format.js";
 
 function memberDirectory(home: string, host: "pi" | "dsh") {
   if (host === "pi" && home.startsWith("file://")) return join(fileURLToPath(home), "pbot/subagents");
@@ -29,7 +30,7 @@ export function acpHistorySessions(directories: { pi?: string; dsh?: string }) {
         const path = join(directory, entry.name);
         try {
           const ref = readJsonFile(path, "acp-session.json", acpReference);
-          if (ref.sessionId !== null) ids[ref.backend].add(ref.sessionId);
+          if (ref.sessionId !== null && isHistoryHost(ref.backend)) ids[ref.backend].add(ref.sessionId);
         } catch (error) { warn(path, error); }
       }
     } catch (error) { warn(directory ?? homes[host], error); }

@@ -30,7 +30,7 @@ test("native autocomplete exposes current command contracts", async t => {
   const suggest = text => autocomplete.getSuggestions([text], 0, text.length, { force: false });
   const all = await suggest("/pbot ");
   assert.equal(all.prefix, "");
-  assert.deepEqual(all.items.map(item => item.value), ["init", "status", "history", "agents", "teams"]);
+  assert.deepEqual(all.items.map(item => item.value), ["init", "status", "enter"]);
   const filtered = await suggest("/pbot st");
   assert.deepEqual(filtered.items.map(item => item.value), ["status"]);
   const completed = autocomplete.applyCompletion(["/pbot st"], 0, 8, filtered.items[0], filtered.prefix);

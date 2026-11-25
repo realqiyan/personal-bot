@@ -10,7 +10,7 @@
     "registry": "https://registry.npmjs.org/",
     "tag": "latest"
   },
-  "description": "A personal assistant connecting knowledge, research, and action for Pi, DeepSeek Harness, and Claude Code.",
+  "description": "A personal assistant connecting knowledge, research, and action for Pi, DeepSeek Harness, Claude Code, and Antigravity.",
   "type": "module",
   "bin": {
     "pbot": "./bin/pbot.mjs"
@@ -61,6 +61,7 @@
     "resources",
     ".claude-plugin/plugin.json",
     ".claude-plugin/marketplace.json",
+    ".mcp.json",
     "hooks/hooks.json",
     "scripts/README.md",
     "README.md",
@@ -75,15 +76,16 @@
   "scripts": {
     "check": "tsc --noEmit && npm run check:dependencies",
     "check:dependencies": "depcruise --config .dependency-cruiser.cjs src",
-    "build": "node scripts/clean-dist.mjs && tsc && npm run build:cli && npm run build:dsh && npm run build:claude",
+    "build": "node scripts/clean-dist.mjs && tsc && npm run build:cli && npm run build:dsh && npm run build:plugins",
     "build:cli": "node scripts/build-cli.mjs",
     "build:dsh": "node scripts/build-dsh.mjs",
-    "build:claude": "node scripts/build-claude.mjs",
+    "build:plugins": "node scripts/build-plugins.mjs",
+    "build:claude": "npm run build:plugins",
     "test": "npm run build && node --test --test-concurrency=1 tests/*/*.test.mjs",
     "test:smoke": "npm run build && node --test --test-concurrency=1 tests/smoke/*.test.mjs",
     "test:e2e": "npm run build && node --test --test-concurrency=1 tests/e2e/*.test.mjs",
     "test:e2e:acp": "npm run build && node --test --test-concurrency=1 tests/e2e/acp-defaults.e2e.mjs",
-    "prepack": "npm run check && npm run build:cli && npm run build:dsh && npm run build:claude"
+    "prepack": "npm run check && npm run build:cli && npm run build:dsh && npm run build:plugins"
   },
   "peerDependencies": {
     "@anthropic-ai/claude-agent-sdk": "*",

@@ -10,7 +10,7 @@ const id = Type.String({ minLength: 1, maxLength: 128 });
 const message = Type.String({ minLength: 1, maxLength: 24000, description: "start 可选、send/resume 必填：任务目标、相关资料、约束和交付要求。" });
 const name = Type.String({ minLength: 1, maxLength: 64, pattern: "^[^\\r\\n\\x00-\\x1f]+$", description: "start 可选显示名；rename 必填新名称。" });
 const startFields = {
-  backend: nullable(Type.Union([Type.Literal("pi"), Type.Literal("dsh"), Type.Literal("claude")], { description: "仅 start：选择 ACP 目标程序（pi、dsh 或 claude）；省略时使用当前宿主原生专家。ACP 专家使用目标程序配置且不可加入团队。" })),
+  backend: nullable(Type.String({ minLength: 1, maxLength: 64, pattern: "^[a-z0-9][a-z0-9-]{0,63}$", description: "仅 start：选择 ACP 目标程序（内置 pi、dsh、claude、antigravity、codex，或 .pbot/config.json 中自定义的 ACP 名称）；省略时使用当前宿主原生专家。ACP 专家使用目标程序配置且不可加入团队。" })),
   name: nullable(name), message: nullable(message),
   files: nullable(Type.Array(Type.String({ minLength: 1 }), { maxItems: 32, description: "仅 start：随初始消息附带的文件，相对路径基于原工作区根目录。" })),
   provider: nullable(Type.String({ ...id, description: "仅 start：模型提供方覆盖项，须同时指定 model（Claude ACP 忽略此项）。省略时原生专家继承主会话，ACP 使用目标默认配置。" })),
@@ -83,7 +83,7 @@ const cycle = Type.Object({ cycleId: Type.String(), startedAt: Type.Number(), fi
   source: Type.Union([Type.Literal("parent"), Type.Literal("interactive"), Type.Literal("mixed")]), error: Type.Optional(Type.String()),
 }, { additionalProperties: false });
 export const agentViewSchema = Type.Object({ agentId: Type.String(), name: Type.String(), cwd: Type.String(), createdAt: Type.Number(),
-  backend: Type.Optional(Type.Union([Type.Literal("pi"), Type.Literal("dsh"), Type.Literal("claude")])),
+  backend: Type.Optional(Type.String()),
   transport: Type.Optional(Type.Union([Type.Literal("native"), Type.Literal("acp")])),
   selection: Type.Optional(Type.Object({ provider: Type.Optional(Type.String()), model: Type.Optional(Type.String()),
     resolvedModel: Type.Optional(Type.String({ description: "目标原生会话报告的模型 ID，可用于识别配置别名。" })), thinking: Type.Optional(Type.String()) },

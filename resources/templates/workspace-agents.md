@@ -15,3 +15,7 @@
 ## 项目速查
 
 项目默认入口为 `projects/<目录名>/README.md`。
+
+## 宿主分工偏好（可选）
+
+可在此或 `agents/coordinator.md` 中约定不同任务优先使用的 Harness（如编码、分析、探索分别优先哪个 ACP `backend`）。

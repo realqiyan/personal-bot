@@ -4,7 +4,7 @@
 
 ## Pi TUI
 
-`/pbot` 打开菜单，原有子命令仍可直接使用。菜单支持键盘选择和长列表滚动；状态、历史及公共消息使用只读阅读页。原生 Pi 专家通过 tmux 进入会话，ACP 专家提供任务与报告阅读、补充要求及携新要求恢复。ACP 权限请求进入已有确认队列。后台提示最多显示四位专家。
+`/pbot` 提供精简命令入口：`/pbot init` 初始化并启用工作区，`/pbot status` 以纯文本或 JSON 通知输出状态，`/pbot enter [专家]` 通过 Pi 原生选择列表附着到自有 Pi 原生专家的 tmux 会话以查看交互历史。ACP 权限请求与工作区外文件修改继续进入已有确认队列，后台提示最多显示四位专家；专家、团队和历史操作交由模型工具完成。
 
 ## dsh GUI
 
@@ -18,4 +18,8 @@ Claude 使用原生技能和 Agent/teams 界面。`/personal-bot:pbot init`、`s
 
 专家由原生 Agent 使用 `personal-bot:general-purpose` 创建，团队的成员、通信、任务和完成通知由 Claude 管理。用户自行设置实验团队开关与 teammate mode；返回会话后明确要求继续，原生 resume/rewind 不恢复进程内 teammate。
 
-Claude 插件不提供 pbot 管理面板、历史页或 ACP 操作。模型上下文、原生技能和专家的实际行为还需原生模型验证，见[Claude 接入设计](claude-code-design.md)。
+Claude 插件不提供 pbot 管理面板或历史页；跨 Harness 专家调度通过内置 `.mcp.json` 的 `pbot_agent` 工具完成，见[轻插件宿主与跨 Harness 接入设计](plugin-hosts-design.md)。
+
+## Antigravity 原生入口
+
+Antigravity 通过原生插件清单、`hooks.json`、技能、静态专家与内置 `mcp_config.json` 接入，不提供定制 TUI 或管理面板。`/pbot init` 与 `/pbot status` 通过原生技能调用 `node <plugin>/lib/plugin.js antigravity init|status`。同宿主专家委派使用原生 `invoke_subagent`（`general-purpose` / `research`）与 `/swarm`，跨 Harness 委派使用内置 MCP 工具 `pbot_agent`。通过 `npx personal-bot@latest install-antigravity` 或 `agy plugin install <plugin-dir>` 安装插件。

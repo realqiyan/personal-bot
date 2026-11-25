@@ -32,10 +32,9 @@ try {
   assert.equal(marketplace.plugins[0].source.version, manifest.version);
   assert.equal(plugin.types, undefined);
   assert.equal(hooks.modules, undefined);
-  for (const path of [...plugin.skills, ...plugin.agents, "lib/claude.js", "resources/skills/.claude-plugin/plugin.json"]) {
+  for (const path of [...plugin.skills, ...plugin.agents, "lib/claude.js", "lib/extension/mcp.js", "lib/extension/acp-worker.js", ".mcp.json", "resources/skills/.claude-plugin/plugin.json"]) {
     await stat(resolve(packed, path));
   }
-  await assert.rejects(stat(join(packed, ".mcp.json")), { code: "ENOENT" });
   const validation = JSON.parse(execFileSync(process.env.PBOT_CLAUDE_COMMAND ?? "claude",
     ["plugin", "validate", "--json", join(packed, ".claude-plugin/plugin.json")],
     { cwd: workspace, env, encoding: "utf8", timeout: 30_000, maxBuffer: 4 * 1024 * 1024 }));
@@ -76,7 +75,7 @@ try {
     { cwd: enabled, env, encoding: "utf8", timeout: 30_000,
       input: JSON.stringify({ hook_event_name: "SubagentStart", cwd: enabled, agent_type: "personal-bot:general-purpose" }) }));
   const environment = JSON.parse(member.hookSpecificOutput.additionalContext.split("\n\n").at(-1));
-  assert.deepEqual(environment, { workspaceRoot: enabled, resourceRoot: join(raw, "resources") + "/" });
+  assert.deepEqual(environment, { host: "claude", workspaceRoot: enabled, resourceRoot: join(raw, "resources") + "/" });
   assert.equal(member.hookSpecificOutput.hookEventName, "SubagentStart");
   await assert.rejects(stat(join(workspace, ".pbot")), { code: "ENOENT" });
   console.log(`Packed Claude command hooks, native plugin validation and standalone CLI passed; extracted Claude hooks and CLI ran without node_modules: personal-bot@${version}, Node ${process.version}.`);

@@ -1,5 +1,5 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": { "outDir": "lib", "sourceMap": false },
-  "include": ["src/claude.ts"]
+  "include": ["src/claude.ts", "src/plugin.ts"]
 }

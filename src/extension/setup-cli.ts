@@ -1,11 +1,14 @@
+import { spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
 import { mkdir, readFile, realpath } from "node:fs/promises";
 import { homedir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { executeSetup, packageChoices, parseCatalog, parseSetupArgs } from "../services/installation/setup-service.js";
 import { npmName, ordinaryNpm } from "../common/package-source.js";
 import type { InstalledPackage, SetupPlan } from "../services/installation/setup-service.js";
 import { PiBootstrapRequired, PiSetup, piPackageName } from "../integrations/installation/pi-setup.js";
-import { inspectSystem, SetupProcesses } from "../integrations/installation/processes.js";
+import { findExecutable, inspectSystem, SetupProcesses } from "../integrations/installation/processes.js";
 import { resolveWorkspace } from "../integrations/installation/workspace.js";
 import { SetupUI } from "../ui/setup.js";
 
@@ -20,8 +23,40 @@ export async function main(args: string[]): Promise<number> {
   if (options.action === "version") { console.log(manifest.version); return 0; }
   if (options.action === "help") {
     console.log("Personal Bot " + manifest.version + "\n\n用法：pbot setup [--workspace <目录>]\n" +
-      "      npx personal-bot@latest setup\n\nsetup 安装或升级 Pi、pbot 和选中的插件，然后启动 Pi 执行 /pbot init。\n" +
+      "      npx personal-bot@latest setup\n" +
+      "      pbot install-antigravity\n" +
+      "      pbot mcp\n\n" +
+      "setup 安装或升级 Pi、pbot 和选中的插件，然后启动 Pi 执行 /pbot init。\n" +
+      "install-antigravity 通过原生 agy plugin install 安装或更新 Antigravity 插件。\n" +
+      "mcp 启动跨 Harness 专家调度 stdio MCP 服务（供 Claude、Antigravity、Codex 等宿主调用）。\n" +
       "支持 Linux/macOS，需要 Node.js 22.19+ 和 npm。\n--help 显示帮助；--version 显示安装器版本。");
+    return 0;
+  }
+  if (options.action === "mcp") {
+    const entry = fileURLToPath(new URL("lib/extension/mcp.js", root));
+    if (!existsSync(entry)) {
+      console.error("缺少 MCP 构建产物：" + entry + "。请先运行 npm run build。");
+      return 1;
+    }
+    const child = spawnSync(process.execPath, [entry], { stdio: "inherit" });
+    if (child.error) { console.error(String(child.error)); return 1; }
+    return child.status ?? 0;
+  }
+  if (options.action === "install-antigravity") {
+    const pluginDir = fileURLToPath(new URL("lib/antigravity-plugin", root));
+    if (!existsSync(join(pluginDir, "plugin.json"))) {
+      console.error("缺少 Antigravity 插件构建产物：" + pluginDir + "。请先运行 npm run build。");
+      return 1;
+    }
+    const agy = process.env.PBOT_AGY_COMMAND || await findExecutable("agy", process.env);
+    if (!agy) {
+      console.error("未找到 Antigravity CLI（agy）。请先安装 agy，然后运行：\n  agy plugin install " + quote(pluginDir));
+      return 1;
+    }
+    const installed = spawnSync(agy, ["plugin", "install", pluginDir], { stdio: "inherit" });
+    if (installed.error) { console.error(String(installed.error)); return 1; }
+    if (installed.status !== 0) return installed.status ?? 1;
+    console.log("Antigravity 插件已安装。在目标工作区运行 /pbot init 启用 Personal Bot。");
     return 0;
   }
   if (!process.stdin.isTTY || !process.stdout.isTTY) {

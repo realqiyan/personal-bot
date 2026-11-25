@@ -1,6 +1,7 @@
-export type AcpBackend = "pi" | "dsh" | "claude";
+export type BuiltinAcpBackend = "pi" | "dsh" | "claude" | "antigravity" | "codex";
+export type AcpBackend = string;
 export interface AcpCommand { command: string; args: string[] }
-export type AcpCommands = Partial<Record<AcpBackend, AcpCommand>>;
+export type AcpCommands = Record<string, AcpCommand>;
 export interface AcpSessionReference extends AcpCommand {
   host: "acp";
   backend: AcpBackend;

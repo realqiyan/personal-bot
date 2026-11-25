@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "personal-bot-agents": {
+      "command": "node",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/lib/extension/mcp.js"]
+    }
+  }
+}

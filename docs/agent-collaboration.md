@@ -1,8 +1,8 @@
 # 专家协作
 
-Personal Bot 保留独立工作和团队工作。Pi 原生专家由 tmux 和独立进程运行，dsh 原生专家使用同进程的独立 Agent/Session；Claude 使用原生 Agent 与原生团队。Pi/dsh 可通过 ACP 委派 Pi、dsh 或 Claude，目标保留自己的上下文与原生配置。Claude 标准插件的入口见[使用指南](claude-code.md)。
+Personal Bot 支持同宿主原生专家/团队与跨 Harness ACP 委派。Pi 原生专家由 tmux 和独立进程运行，dsh 原生专家使用同进程独立 Agent/Session；Claude 使用原生 Agent 与原生团队，Antigravity 使用原生 `invoke_subagent` 与 `/swarm`。任意宿主均可通过 `pbot_agent`（Pi/dsh 原生工具或 Claude/Antigravity/独立 `pbot mcp` 提供的 stdio MCP 工具）委派 `pi`、`dsh`、`claude`、`antigravity`、`codex` 或 `.pbot/config.json` 中自定义的 ACP 目标。
 
-本文的 `pbot_team`、轮次、批次、占用与公共消息规则适用于 Pi/dsh；Claude 原生团队由宿主管理。主模型按任务组织工作，成员原文通过对应宿主或 ACP 报告取得。
+本文的 `pbot_team`、轮次、批次、占用与公共消息规则适用于 Pi/dsh；Claude 与 Antigravity 的同宿主团队由各自宿主管理。主模型可结合工作区 `AGENTS.md` 或 `agents/coordinator.md` 中的分工偏好按任务选用不同 Harness。
 
 ## Pi/dsh 独立工作
 
@@ -40,29 +40,23 @@ Claude 插件通过静态 Markdown agent 提供 `personal-bot:general-purpose`�
 
 完成后明确发送要求可继续原生专家上下文。团队需要用户在启动环境中设置 `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`，并自行选择原生 teammateMode；pbot 安装与 init 不修改开关。成员通过原生消息与任务工具交流，组织和状态由 Claude 管理。
 
-Claude 的 resume/rewind 不恢复进程内 teammate。返回主会话后明确要求继续工作；普通子代理继续与重启后恢复团队分别遵循宿主能力，需要新建成员时保留原记录。Claude 标准插件不提供 pbot ACP、团队调度或管理面板。实际首任务上下文、技能和专家行为还需原生模型验证，见[Claude 接入设计](claude-code-design.md)。
+Claude 的 resume/rewind 不恢复进程内 teammate。返回主会话后明确要求继续工作；普通子代理继续与重启后恢复团队分别遵循宿主能力，需要新建成员时保留原记录。跨 Harness 委派通过插件内置的 `pbot_agent` MCP 工具执行。
+
+## Antigravity 原生专家与协作
+
+Antigravity 插件静态声明 `agents/general-purpose.md`，单任务委派使用原生 `invoke_subagent`（`general-purpose` 或内置只读 `research`）。工作区启用时，`PreToolUse` 自动把工作区 `agents/general-purpose.md` 补充与环境路径前置到 `general-purpose` 的 `Prompt`；多成员并行协作使用原生 `/swarm`。跨 Harness 委派同样通过插件内置的 `pbot_agent` MCP 工具执行。
 
 ## ACP 成员
 
-在 start 中指定 backend，使用目标宿主的 ACP 会话：
+在 `pbot_agent` 的 `start` 中指定 `backend`，即可启动目标 Harness 的 ACP 会话：
 
 ```json
 { "action": "start", "backend": "claude", "name": "实现专家", "message": "检查项目并实现当前要求" }
 ```
 
-backend 可选 pi、dsh、claude；Pi/dsh 中省略时使用当前宿主原生专家。两个主宿主共享 ACP 目标实现。目标使用自己的模型、认证、工具、技能和项目配置，恢复保留原会话的模型选择。Claude 作为 ACP 目标的能力独立于标准 Claude 插件，所需 Claude SDK 保留为可选 peer 与开发依赖。
+内置 `backend` 包括 `pi`、`dsh`、`claude`、`antigravity`、`codex`，也支持 `.pbot/config.json` 的 `acp` 字段中配置的任意自定义 ACP 名称；Pi/dsh 省略 `backend` 时使用当前宿主原生专家，MCP 模式下 `backend` 必填（同宿主委派直接使用宿主原生工具）。在 MCP 模式下另提供 `backends`（查询本机可用目标）和 `wait`（阻塞等待当前代次最新请求完成并返回报告，或在 `start` 中传 `waitMs` 同步等待）。
 
-model 和 thinking 均为可选，可单独提供；两者都省略时使用目标默认模型和默认思考等级。只指定 model 时使用所选模型的原生默认思考配置；只指定 thinking 时将该等级用于默认模型。主会话的模型和思考默认值不传给 ACP 目标。
-
-model 支持目标的原生模型 ID，也支持 ACP 完整模型值。Pi 和 dsh 的同名模型优先使用目标当前默认提供方；仍有重名时指定 provider 或完整模型值。thinking 使用目标公开的等级 ID，支持范围随所选模型变化。例如：
-
-```json
-{ "action": "start", "backend": "dsh", "model": "deepseek-flash", "thinking": "high", "message": "检查项目并实现当前要求" }
-```
-
-首次使用前按[ACP 专家程序安装说明](../README.zh-CN.md#可选安装-acp-专家程序)准备目标程序、认证和默认模型。默认入口分别为 pi-acp、dsh --profile acp 和 claude-agent-acp；Claude 适配器需支持 ACP systemPrompt。缺少程序时，start 返回该目标的安装命令和路径配置示例，修复后重试原请求。
-
-自定义可执行路径与 profile 参数放在工作区的 [acp 配置](workspace-configuration.md#acp-启动配置)。从源码使用 ACP 前先运行完整的 `npm run build`，以生成 worker 和 dsh 成员入口。
+目标使用自己的模型、认证、工具、技能和项目配置，恢复保留原会话的模型选择。默认入口分别为 `pi-acp`、`dsh --profile acp`、`claude-agent-acp`、`agy acp` 与 `codex-acp`。对不声明标准 `sessionCapabilities.systemPrompt` 的通用目标（如 `agy acp` 或自定义目标），`acp-worker` 在首轮消息前自动前置工作区约定、专家职责与环境上下文，后续轮次不再重复。自定义路径与参数放在工作区 [acp 配置](workspace-configuration.md#acp-启动配置)。
 
 ACP 成员支持待命、独立委派、持续对话、状态、固定周期报告、停止和恢复。运行中的追加要求使用 followUp：
 
@@ -74,9 +68,9 @@ ACP 成员支持待命、独立委派、持续对话、状态、固定周期报�
 
 成员加载公共约定、general-purpose 职责、工作区同名补充及 `workspaceRoot`、`resourceRoot`，并按需使用包内技能。Claude 的原生技能目录中可见 personal-bot:provider-connections 和 personal-bot:project-maintenance，用户与项目技能继续沿用 Claude 配置。计算使用目标宿主可用的项目环境。
 
-Pi 的 `/pbot agents` 对 ACP 成员提供任务、报告、补充要求及携新要求恢复；原生 Pi 成员继续通过 tmux 进入。dsh 专家页展示 ACP 任务与报告，也支持人工消息和附件。
+原生 Pi 成员通过 `/pbot enter [专家]` 附着到 tmux 会话查看交互历史；ACP 成员的报告通过 `pbot_agent read`（或 MCP `wait`）获取，dsh 专家页另展示 ACP 任务与报告。
 
-Pi 权限请求进入已有确认队列；dsh 工作区页展示待确认请求，也可用 `/pbot approval` 提交选项。各入口按 generation/requestId 核对请求，取消回写 null，过期选择被拒绝。
+Pi 权限请求进入已有确认队列；dsh 工作区页展示待确认请求；MCP 无交互模式下遇到未自动批准的权限请求默认快速取消（不挂死），如需自动允许由目标自身权限模式或 `PBOT_ACP_NONINTERACTIVE_PERMISSION=allow` 控制。
 
 ACP 工作由独立 worker 持有。Pi reload 保留仍启用工作区的 worker；退出、切换主会话或 dsh 父会话释放时停止所属成员。休眠后先查状态，携新要求显式继续。恢复前校验已绑定的对端会话，旧输入不重放。Pi/Claude 目标从未交付输入的空待命会话可重新建立空上下文；已经交付的会话只恢复原引用。
 
@@ -86,7 +80,7 @@ ACP 工作由独立 worker 持有。Pi reload 保留仍启用工作区的 worker
 
 有对话后，成员会出现在相应项目的 `pi --resume` / `/resume` 列表，并支持 Pi 原生导出。`pi --continue` 可能选中最近活跃的子会话，不保证选中主会话；需要主会话时从列表中明确选择。
 
-`/pbot agents` 的“进入会话”连接运行中的成员；成员已停止时，“打开原会话”加载原会话并启动待命进程，不入队新要求、不调用模型、不重放旧工作。尚无对话文件的空会话仍以原 agentId 待命。运行中不另开进程同时写同一 JSONL。停止后从原生列表打开属于普通 Pi 对话，不恢复 pbot 成员身份或团队资格；模型工具 `pbot_agent resume` 仍用于携新要求继续工作。
+`/pbot enter [专家]` 连接运行中的 Pi 原生专家；专家已停止时先以原 `agentId` 重新启动待命会话再附着，不入队新要求、不调用模型、不重放旧工作。停止后从原生列表打开属于普通 Pi 对话，不恢复 pbot 成员身份或团队资格；模型工具 `pbot_agent resume` 用于携新要求继续工作。
 
 ## Pi/dsh 团队与两种策略
 
@@ -179,9 +173,9 @@ pause 返回时可能仍有在途请求。unresolved 区分排队、已接收、
 
 ## 界面与故障恢复
 
-dsh 的管理界面与命令见[dsh 使用说明](dsh.md)，Claude 的原生专家、技能与恢复规则见[Claude 使用说明](claude-code.md)。下面介绍 Pi 的 TUI。
+dsh 的管理界面与命令见[dsh 使用说明](dsh.md)，Claude 与 Antigravity 见[Claude 指南](claude-code.md)和[Antigravity 指南](antigravity.md)。
 
-`/pbot` 打开工作区菜单。`/pbot agents` 提供专家列表、详情、会话入口、补充要求、重命名和停止；`/pbot teams` 提供团队状态、公共消息、批次及成员入口。长记录使用只读阅读页。完整报告仍通过 `pbot_agent read` 获取；非 TUI 模式保留结构化输出。
+Pi 仅保留精简命令：`/pbot init`、`/pbot status` 与 `/pbot enter [专家]`（附着自有 Pi 原生专家的 tmux 会话查看交互历史）；专家、团队与历史操作统一由模型工具完成，非 TUI 模式保留 JSON 输出。
 
 当前父会话没有团队记录时，团队恢复、暂停和调度直接返回，不申请 `.control` 锁。后台扫描遇到短暂的 `.control` 锁竞争时，在下一次扫描重试；连续至少 5 秒仍无法取得锁，包括主会话中断后暂停团队仍被锁阻塞的情况，会保留 UI 错误并通知模型。暂停未成功时，通知明确说明暂停尚未确认。报告或控制记录读取失败也会通知模型。同一持续故障在当前分支去重；恢复要求升级时补发一次通知。主会话中断期间延后投递，恢复输入后再通知。
 

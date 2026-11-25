@@ -1,57 +1,48 @@
 # Claude Code 使用
 
-Personal Bot 在 Claude Code 中提供工作区资料、专业技能和原生通用专家。会话、模型、工具、MCP、团队与恢复由 Claude 自己管理。
+Personal Bot 在 Claude Code 中提供工作区资料、专业技能、原生通用专家以及跨 Harness ACP 调度能力。主会话、模型、权限、原生工具与原生团队由 Claude 管理。设计边界见[轻插件宿主与跨 Harness 接入设计](plugin-hosts-design.md)。
 
 ## 安装与启用
 
-支持 Linux 和 macOS，需要 Node.js 22.19+。Claude Code 当前最低及开发检查基线为 2.1.325。按[官方指南](https://code.claude.com/docs/en/quickstart)完成原生登录或 API 配置，然后在 Claude 中安装：
+支持 Linux 和 macOS，需要 Node.js 22.19+ 与 Claude Code 2.1.325+。完成原生登录或 API 配置后安装：
 
 ```text
 /plugin install personal-bot --marketplace realqiyan/personal-bot
 ```
 
-在目标工作区启动 Claude，运行：
+在目标工作区启动 Claude，通过原生技能初始化或查看状态：
 
 ```text
 /personal-bot:pbot init
 /personal-bot:pbot status
 ```
 
-这是 Claude 的原生技能入口，会由模型执行插件的 Node 命令。`init` 补建资料目录和根 `AGENTS.md`，将该根目录 `.pbot/config.json` 的 `enabled` 设为 true。已有资料、配置字段和 `CLAUDE.md` 保留。未配置、停用或配置无效时，插件只提供初始化提示；技能与专家的静态目录仍可能可见。
-
-需要直接执行确定性命令时，使用实际插件目录：
+需要确定性执行时，从工作区根目录直接调用插件内 CLI（可设 `CLAUDE_PROJECT_DIR` 固定工作区根）：
 
 ```sh
 node /absolute/path/to/personal-bot/lib/claude.js init
 node /absolute/path/to/personal-bot/lib/claude.js status
 ```
 
-从工作区根目录执行。Claude hook 中的根目录取 `CLAUDE_PROJECT_DIR`，固定为启动项目；在普通 shell 中未提供该变量时使用当前目录。`status` 只读工作区及当前配置状态。`pbot setup` 仍是 Pi 安装器，Claude 的安装、更新、认证、模型和权限使用原生入口。
+`init` 补建资料目录和根 `AGENTS.md`，将 `.pbot/config.json` 的 `enabled` 设为 `true`，保留已有资料、配置字段和 `CLAUDE.md`。未启用或配置无效时，hook 不注入业务资料并拦截工作方法调用，保留 `/personal-bot:pbot` 可用。
 
 ## 资料、技能与专家
 
-每次用户提交任务时，标准 command hook 读取共用启用配置，并加入公共工作约定、协调者职责、根 `AGENTS.md`、工作区角色补充及工作区与资源路径。修改配置或资料后在下一次任务生效。Claude 原生加载 `CLAUDE.md`、用户规则和原生工具；用户在 `CLAUDE.md` 中另行导入 `AGENTS.md` 时，也会保留其原生来源。
+- **上下文**：`UserPromptSubmit` 读取 `.pbot/config.json`，已启用时注入公共工作约定、协调者职责、根 `AGENTS.md`、工作区 `agents/coordinator.md` 及 `workspaceRoot`/`resourceRoot`。Claude 原生加载 `CLAUDE.md` 与用户规则。
+- **技能**：包内提供 `/personal-bot:project-maintenance` 与 `/personal-bot:provider-connections`；项目自有技能放在 `.claude/skills/<name>/SKILL.md`。
+- **同宿主专家与团队**：使用 Claude 原生 Agent（`personal-bot:general-purpose`），`SubagentStart` 自动补充工作区 `agents/general-purpose.md` 与环境路径。原生团队由用户自行配置 `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` 与 teammate 模式；恢复会话后显式继续工作。
+- **跨 Harness 调度**：插件通过 [.mcp.json](../.mcp.json) 自动挂载 `personal-bot-agents` stdio MCP 服务，暴露 `pbot_agent` 工具，可从 Claude 委派 `antigravity`、`codex`、`pi`、`dsh` 或 `.pbot/config.json` 中自定义的 ACP Harness（`backends` / `start` / `wait` / `send` / `read` / `stop` / `resume`）。在工作区 `AGENTS.md` 或 `agents/coordinator.md` 中约定各任务分工偏好即可。
+- **历史与面板**：Claude 不提供 pbot 管理面板或历史采集，旧会话使用原生 `/resume` 等入口；既有历史归档保持只读保留。
 
-专业方法使用 `/personal-bot:project-maintenance` 和 `/personal-bot:provider-connections`。插件提供这些技能的静态目录，正文由 Claude 按需加载；未启用工作区时执行方法会提示先初始化。自己的项目技能放在 Claude 原生 `.claude/skills/<name>/SKILL.md`，已有布局与配置保持原样。
+## 计算与开发检查
 
-普通委派使用 Claude 原生 Agent，选择 `personal-bot:general-purpose`。该专家由 Markdown 文件声明；启动时加载当前工作区资料及专家职责补充。原生团队、成员通信、模型和权限都沿用 Claude 配置。使用实验团队时，由用户设置 `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` 和 teammate 模式。恢复主会话后明确说明要继续的工作；原生 resume/rewind 对进程内 teammate 的限制以当前 Claude 为准。
-
-Claude 接入不提供 pbot 管理面板、历史工具、历史采集、自动摘要或 ACP 委派。查询旧 Claude 会话使用原生 `/resume` 等入口。Pi/dsh 保留自己的 pbot 历史与 ACP 功能，也仍可将 Claude 作为 ACP 目标；该目标适配独立于这里的插件 hooks。
-
-## 计算与项目环境
-
-计算通过 Claude 原生 Bash，使用项目声明的解释器、依赖与工作目录。通用运行方法见 [Python 计算](../resources/references/compute.md)，技术指标与回测另见[计算参考](../resources/references/compute-finance.md)。所需 Python 版本与第三方库按项目要求选择和安装。
-
-停用共用配置后，后续任务停止加入 pbot 资料；禁用或卸载插件按 Claude 原生操作完成。用户已有环境、资料、历史、旧控制记录和备份保留。
-
-## 依赖与开发检查
-
-Claude 集成使用标准 JSON command hooks、Markdown skills/agents 和 Node 内置模块。它不加载 mod API、宿主类型快照、内部 MCP server、原生 transcript 或团队存储。
-
-`npm run build` 生成 Node hook 入口及原生专家文件。开发加载使用：
+- 计算通过原生 Bash 使用项目声明的解释器与依赖，方法见 [Python 计算](../resources/references/compute.md)与[指标与回测](../resources/references/compute-finance.md)。
+- 本地开发加载与安装包验证：
 
 ```sh
+npm run build
 claude --plugin-dir /absolute/path/to/personal-bot
+claude plugin validate --json ./.claude-plugin/plugin.json
 ```
 
-实际安装包检查使用 `npm pack` 和 `node scripts/check-claude-consumer.mjs <tarball>`。它验证独立消费、原生插件校验、Node 命令与 hook 协议，不调用模型。真实任务中的上下文、技能选择、专家和团队行为还需在批准环境核对，要求见[接入设计](claude-code-design.md)。
+打包消费检查使用 `npm pack` 与 `node scripts/check-claude-consumer.mjs <tarball>`。

@@ -1,6 +1,6 @@
 # npm 发布
 
-发布配置以 package.json 为准：包名 personal-bot，registry 为 npmjs，稳定版本使用 latest。包包含 Pi 扩展源码、共享资源、预构建安装 CLI、dsh Host/Web，以及 Claude 标准插件声明、Node command hooks/CLI、原生技能与 Markdown agent。Pi 加载源码，dsh 通过原生包根 Loader 加载，Claude 通过原生 marketplace 加载同版本 npm 包；npx 与全局 pbot 由 Node 直接运行。Claude 的原生模型上下文、技能与专家验证范围见[接入设计](claude-code-design.md)。
+发布配置以 `package.json` 为准：包名 `personal-bot`，registry 为 npmjs，稳定版本使用 `latest`。包包含 Pi 扩展源码、共享资源、预构建独立 CLI（`setup` / `install-antigravity` / `mcp`）、dsh Host/Web、Claude 插件、自包含的 `lib/antigravity-plugin/` 以及独立打包的 `lib/extension/{mcp,acp-worker}.js`。轻插件与跨宿主验证范围见[轻插件宿主与跨 Harness 接入设计](plugin-hosts-design.md)。
 
 ## 首次配置
 
@@ -46,7 +46,7 @@ prepack 依次执行 check、build:cli、build:dsh、build:claude；CLI 构建�
 
 使用隔离用户目录、宿主配置和临时工作区检查实际 tarball。Pi 检查扩展、技能、工具和初始化，dsh 检查 Host、Web 与 Remote。Claude consumer 脚本在独立 npm 目录实际安装 tarball 并执行原生 plugin validate，同时将包直接解压到另一个空目录，在没有 node_modules 的条件下执行 hooks、CLI 和启用工作区的资料读取，以覆盖原生 marketplace 缓存的运行方式。检查无需模型认证或宿主 SDK，不依赖仓库开发目录。
 
-Claude 的实际首任务上下文、原生 pbot 与工作方法技能、`personal-bot:general-purpose` 专家仍需在明确批准的原生模型环境验证。使用专用认证、隔离配置和临时工作区；原生团队开关由运行者管理。默认 Node 测试及 plugin validate 的结果与模型验证分别报告，当前尚未完成原生模型验证。范围见[Claude 接入设计](claude-code-design.md)。
+Claude 与 Antigravity 的实际首任务上下文、技能选择、原生专家及跨宿主 ACP 互调需在明确批准且不含个人凭据的专用环境单独验证；默认 Node 测试、`agy plugin validate --strict` 与 `claude plugin validate` 结果与真实模型验证分别报告。范围见[轻插件宿主与跨 Harness 接入设计](plugin-hosts-design.md)。
 
 具体消费检查与 ACP 真实模型入口见[维护脚本](../scripts/README.md)。实际版本、结果及未执行项放在任务、PR 或 CI；Linux 完整检查与 macOS 局部结果分别说明。
 

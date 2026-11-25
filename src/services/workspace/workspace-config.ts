@@ -1,6 +1,7 @@
 import { mkdir, readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { object } from "../../common/json.js";
+import { isAcpBackend } from "../../common/validation.js";
 import { readJsonFile, writeJsonFile } from "../../storage/atomic-json.js";
 
 function config(value: unknown): Record<string, unknown> {
@@ -8,7 +9,9 @@ function config(value: unknown): Record<string, unknown> {
     throw new Error("配置必须是 JSON 对象，enabled 必须是布尔值。");
   }
   if (value.acp !== undefined) {
-    if (!object(value.acp) || Object.keys(value.acp).some(key => !["pi", "dsh", "claude"].includes(key))) throw new Error("acp 仅接受 pi、dsh 和 claude 启动配置。");
+    if (!object(value.acp) || Object.keys(value.acp).some(key => !isAcpBackend(key))) {
+      throw new Error("acp 键名必须为小写字母、数字和连字符（1–64 字符）。");
+    }
     for (const command of Object.values(value.acp)) {
       if (!object(command) || typeof command.command !== "string" || !command.command.trim() || command.command.includes("\0") ||
         !Array.isArray(command.args) || command.args.some(arg => typeof arg !== "string" || arg.includes("\0")) ||

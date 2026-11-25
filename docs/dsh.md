@@ -190,7 +190,7 @@ task-conductor setup
 | `/pbot post {"teamId":"TEAM_ID","text":"公开信息"}` | 以人工用户身份发布公共消息，不唤醒模型 |
 | `/pbot history {"action":"search"}` | 查询历史归档；也支持 read |
 
-`chat`、`messages`、`post`、`records`、`approval` 不带 `action`。dsh 没有 `/pbot help`、`/pbot agents` 或 `/pbot teams` 子命令；后两个复数入口属于 Pi。
+`chat`、`messages`、`post`、`records`、`approval` 不带 `action`。dsh 没有 `/pbot help` 子命令。
 
 ## 专家命令
 

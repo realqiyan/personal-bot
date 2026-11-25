@@ -49,7 +49,7 @@ export function status(v: unknown): AgentStatus {
 export class AgentFiles {
   #failure: unknown;
   constructor(readonly root: string, readonly host: NativeAgentHost = "pi") {
-    requireThat(host === "pi" || host === "dsh", "子会话所属宿主无效。");
+    requireThat(host === "pi" || host === "dsh" || host === "mcp", "子会话所属宿主无效。");
   }
   check() { if (this.#failure) throw this.#failure; }
   fail(error: unknown) { this.#failure = error; }
@@ -78,7 +78,8 @@ export class AgentFiles {
       this.write(value.agentId, "acp-session.json", acp, acpReference, true);
     }
     else if (this.host === "pi") this.write(value.agentId, "session-ref.json", { file: null }, sessionRef, true);
-    else this.write(value.agentId, "native-session.json", { host: "dsh", sessionId: value.agentId }, dshSessionRef, true);
+    else if (this.host === "dsh") this.write(value.agentId, "native-session.json", { host: "dsh", sessionId: value.agentId }, dshSessionRef, true);
+    else throw new Error("MCP 宿主仅支持 ACP 子会话。");
   }
   list() {
     if (!existsSync(this.root)) return [];
@@ -98,6 +99,7 @@ export class AgentFiles {
     const acp = this.optional(id, "acp-session.json", acpReference);
     if (acp) return acp;
     if (this.host === "pi") return { host: "pi", file: this.session(id) };
+    if (this.host === "mcp") throw new Error("MCP 宿主仅支持 ACP 子会话。");
     const ref = this.read(id, "native-session.json", dshSessionRef);
     requireThat(ref.sessionId === id, "dsh 原生会话身份不匹配。");
     return ref;

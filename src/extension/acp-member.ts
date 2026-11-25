@@ -1,13 +1,11 @@
-import { dirname, join } from "node:path";
+import { dirname } from "node:path";
 import { realpathSync } from "node:fs";
-import { readFile } from "node:fs/promises";
 import { AgentFiles, descriptor, launch } from "../storage/agent-files.js";
 import { acpInput, acpAnswer } from "../storage/acp-files.js";
 import type { AcpInput, AcpAnswer } from "../model/acp.js";
 import { requireThat } from "../common/validation.js";
-import { resourceRoot } from "../common/paths.js";
 import { packageVersion, releaseLine } from "../common/version.js";
-import { agentText } from "../integrations/agent-resources.js";
+import { loadWorkspaceContext } from "../integrations/agent-resources.js";
 import { readWorkspaceConfig, workspaceDisabledMessage } from "../services/workspace/workspace-config.js";
 
 export async function acpMember() {
@@ -27,8 +25,8 @@ export async function acpMember() {
   const context = async () => {
     const reference = files.reference(id);
     const host = reference.host === "acp" ? reference.backend : "pi";
-    const [workspace, role] = await Promise.all([readFile(join(resourceRoot, "prompts/workspace.md"), "utf8"), agentText("general-purpose", d.workspace)]);
-    return { workspace, role, environment: JSON.stringify({ host, workspaceRoot: d.workspace, resourceRoot }) };
+    const loaded = await loadWorkspaceContext({ host, root: d.workspace, role: "general-purpose" });
+    return { workspace: loaded.workspace, role: loaded.role, environment: JSON.stringify(loaded.environment) };
   };
   return { files, d, id, generation, check, context,
     input() {

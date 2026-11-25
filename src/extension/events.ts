@@ -1,10 +1,8 @@
-import { readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { resourceRoot } from "../common/paths.js";
-import { agentText } from "../integrations/agent-resources.js";
+import { loadWorkspaceContext } from "../integrations/agent-resources.js";
 import type { Confirmations } from "../ui/confirmation.js";
 import type { Lifecycle } from "./lifecycle.js";
 import { readWorkspaceConfig, workspaceDisabledMessage } from "../services/workspace/workspace-config.js";
@@ -35,13 +33,12 @@ export function registerEvents(pi: ExtensionAPI, lifecycle: Lifecycle, confirmat
     if (!instance) return;
     instance.cancelWork();
     try {
-      const role = await agentText("coordinator", instance.root);
-      const workspace = await readFile(join(resourceRoot, "prompts/workspace.md"), "utf8");
+      const context = await loadWorkspaceContext({ host: "pi", root: instance.root, role: "coordinator" });
       instance.check();
       Object.assign(event.systemPromptOptions.sections, {
-        pbot_workspace: workspace,
-        pbot_environment: JSON.stringify({ host: "pi", workspaceRoot: instance.root, resourceRoot }),
-        pbot: role,
+        pbot_workspace: context.workspace,
+        pbot_environment: JSON.stringify(context.environment),
+        pbot: context.role,
       });
     } catch (error) {
       // Pi reports hook errors but continues preparation unless the run is explicitly aborted.

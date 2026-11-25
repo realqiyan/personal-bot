@@ -1,14 +1,10 @@
 import { realpathSync } from "node:fs";
 import { pathToFileURL } from "node:url";
-import { claudeCommand, claudeHook } from "./extension/claude-hooks.js";
+import { runPluginHost } from "./extension/plugin-runtime.js";
+import { claudeAdapter } from "./integrations/hosts/claude.js";
 
-export async function main(args: readonly string[]): Promise<void> {
-  if (args[0] === "hook") {
-    let input = "";
-    process.stdin.setEncoding("utf8");
-    for await (const chunk of process.stdin) input += String(chunk);
-    process.stdout.write(JSON.stringify(await claudeHook(JSON.parse(input))) + "\n");
-  } else process.stdout.write(JSON.stringify(await claudeCommand(args, process.cwd()), null, 2) + "\n");
+export function main(args: readonly string[]): Promise<void> {
+  return runPluginHost(claudeAdapter, args);
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href) {

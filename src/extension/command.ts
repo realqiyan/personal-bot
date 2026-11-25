@@ -1,22 +1,63 @@
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { spawn } from "node:child_process";
+import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
+import { Text, type TUI } from "@earendil-works/pi-tui";
 import { packageVersion } from "../common/version.js";
 import { initializeWorkspace } from "../services/workspace/workspace-preparation.js";
-import type { Confirmations } from "../ui/confirmation.js";
-import { readPage } from "../ui/pi/reader.js";
-import { choose } from "../ui/pi/menu.js";
-import { agentOwner } from "../integrations/pi/agent-context.js";
-import type { Lifecycle } from "./lifecycle.js";
-import { showAgents } from "./agents-command.js";
-import { showTeams } from "./teams-command.js";
-import { showHistory } from "./history.js";
 import { workspaceDisabledMessage } from "../services/workspace/workspace-config.js";
+import { agentOwner } from "../integrations/pi/agent-context.js";
+import { tmuxName } from "../integrations/pi/pi-agents.js";
+import type { Confirmations } from "../ui/confirmation.js";
+import { agentSummary } from "../ui/agent-display.js";
+import type { Lifecycle, WorkspaceInstance } from "./lifecycle.js";
+
+async function enterAgent(instance: WorkspaceInstance, ctx: ExtensionCommandContext, confirmations: Confirmations, query: string) {
+  instance.check();
+  if (ctx.mode !== "tui") { ctx.ui.notify("进入专家会话需要在交互终端（TUI）中使用。", "info"); return; }
+  if (confirmations.presenting) { ctx.ui.notify("请先处理待确认操作。", "info"); return; }
+  const owner = () => agentOwner(ctx);
+  const native = instance.agents.list(owner()).filter(value => value.owned && value.transport !== "acp");
+  if (!native.length) { ctx.ui.notify("还没有可进入的 Pi 原生专家会话。", "info"); return; }
+  let picked = native[0];
+  const target = query.trim();
+  if (target) {
+    const matches = native.filter(value => value.agentId === target || value.agentId.startsWith(target) || value.name === target);
+    if (!matches.length) { ctx.ui.notify("未找到匹配的 Pi 原生专家：" + target, "error"); return; }
+    if (matches.length > 1) { ctx.ui.notify("匹配到多位专家，请指定更完整的 ID 或名称。", "error"); return; }
+    picked = matches[0];
+  } else {
+    const options = native.map(value => agentSummary(value) + (value.alive ? "" : " · 待命"));
+    const selected = await ctx.ui.select("进入专家会话", options);
+    picked = native[options.indexOf(selected ?? "")];
+  }
+  if (!picked) return;
+  const inTmux = Boolean(process.env.TMUX);
+  ctx.ui.notify(`返回主会话：Ctrl+B → ${inTmux ? "l" : "d"}`, "info");
+  let tui: TUI | undefined;
+  await ctx.ui.custom<void>((terminal, _theme, _keys, done) => { tui = terminal; queueMicrotask(() => done()); return new Text("", 0, 0); });
+  if (!tui) return;
+  instance.check();
+  await instance.agents.enter(picked.agentId, owner());
+  const terminal = tui;
+  terminal.stop();
+  try {
+    const code = await new Promise<number | null>(resolve => {
+      const child = spawn("tmux", [inTmux ? "switch-client" : "attach-session", "-t", "=" + tmuxName(picked.agentId)], { stdio: "inherit" });
+      child.on("error", () => resolve(null));
+      child.on("close", resolve);
+    });
+    if (code !== 0) ctx.ui.notify("无法进入专家会话。", "error");
+  } finally {
+    terminal.start();
+    terminal.requestRender(true);
+  }
+}
 
 export function registerCommand(pi: ExtensionAPI, lifecycle: Lifecycle, confirmations: Confirmations) {
   pi.registerCommand("pbot", {
-    description: "工作区、专家、团队与历史",
+    description: "工作区初始化、状态与进入专家会话",
     getArgumentCompletions: prefix => {
       if (/\s/.test(prefix)) return null;
-      return ["init", "status", "history", "agents", "teams"]
+      return ["init", "status", "enter"]
         .filter(command => command.startsWith(prefix)).map(command => ({ value: command, label: command }));
     },
     handler: async (args, ctx) => {
@@ -32,43 +73,45 @@ export function registerCommand(pi: ExtensionAPI, lifecycle: Lifecycle, confirma
       }
       if (!lifecycle.active) {
         const configuration = lifecycle.configuration;
-        const status = { workspaceRoot: lifecycle.root ?? ctx.cwd, release: packageVersion, enabled: false,
+        const status = {
+          workspaceRoot: lifecycle.root ?? ctx.cwd,
+          release: packageVersion,
+          enabled: false,
           state: configuration?.error || configuration?.enabled ? "error" : "disabled",
-          nextStep: configuration?.error ?? "/pbot init", configuration };
+          nextStep: configuration?.error ?? "/pbot init",
+          configuration,
+        };
         ctx.ui.notify(command === "status" ? JSON.stringify(status, null, 2)
           : configuration ? workspaceDisabledMessage(configuration) : "pbot 工作区实例不可用。", configuration?.error ? "error" : "info");
         return;
       }
-      async function execute(command: string | undefined, argument: string) {
-        const instance = lifecycle.get();
-        if (command === "status" && !argument) {
-          if (ctx.mode !== "tui") { ctx.ui.notify(JSON.stringify({ workspaceRoot: instance.root, release: packageVersion, enabled: true, state: "running", configuration: lifecycle.configuration }, null, 2), "info"); return; }
-          const agents = instance.agents.list(agentOwner(ctx)), history = instance.history.status;
-          await readPage(ctx, "工作区", [instance.root, "", "状态    已启动", `配置    ${lifecycle.configuration?.path ?? ""}`, `版本    ${packageVersion}`,
-            `模型    ${ctx.model && !(ctx.model.provider === "unknown" && ctx.model.id === "unknown") ? ctx.model.provider + "/" + ctx.model.id : "未选择"}`,
-            `专家    ${agents.length} 位 · ${agents.filter(value => value.alive).length} 位存活`,
-            "", `历史    ${history.organizing ? "整理中" : history.pending === null ? "查询时更新索引" : history.pending + " 项待整理"}`,
-            ...history.warnings].join("\n")); return;
+      const instance = lifecycle.get();
+      if (command === "status" && !argument) {
+        if (ctx.mode !== "tui") {
+          ctx.ui.notify(JSON.stringify({
+            workspaceRoot: instance.root,
+            release: packageVersion,
+            enabled: true,
+            state: "running",
+            configuration: lifecycle.configuration,
+          }, null, 2), "info");
+          return;
         }
-        if (command === "history") { await showHistory(instance, ctx, argument); return; }
-        if (command === "agents") { await showAgents(pi, instance, ctx, confirmations); return; }
-        if (command === "teams") { await showTeams(pi, instance, ctx, confirmations); return; }
-        ctx.ui.notify("/pbot init | status | history [关键词] | agents | teams", "info");
+        const agents = instance.agents.list(agentOwner(ctx)), history = instance.history.status;
+        ctx.ui.notify([
+          `工作区  ${instance.root}`,
+          `状态    已启动 · 版本 ${packageVersion}`,
+          `专家    ${agents.length} 位 · ${agents.filter(value => value.alive).length} 位存活`,
+          `历史    ${history.organizing ? "整理中" : history.pending === null ? "查询时更新索引" : history.pending + " 项待整理"}`,
+          ...history.warnings,
+        ].join("\n"), "info");
+        return;
       }
-      if (command || ctx.mode !== "tui") { await execute(command, argument); return; }
-      if (confirmations.presenting) { ctx.ui.notify("请先处理待确认操作。", "info"); return; }
-      for (;;) {
-        const instance = lifecycle.get(), agents = instance.agents.list(agentOwner(ctx));
-        const choices = ["专家 · " + agents.length, "团队", "历史", "工作区状态", "准备资料目录"];
-        const choice = await choose(ctx, "Personal Bot", choices);
-        if (!choice) return;
-        const command = ["agents", "teams", "history", "status", "init"][choices.indexOf(choice)]!;
-        try {
-          if (command === "init") { await ctx.waitForIdle(); instance.check(); await initializeWorkspace(instance.root); ctx.ui.notify("资料目录已准备。", "info"); }
-          else await execute(command, "");
-        }
-        catch (error) { ctx.ui.notify(error instanceof Error ? error.message : String(error), "error"); }
+      if (command === "enter") {
+        await enterAgent(instance, ctx, confirmations, argument);
+        return;
       }
+      ctx.ui.notify("/pbot init | status | enter [专家]", "info");
     },
   });
 }

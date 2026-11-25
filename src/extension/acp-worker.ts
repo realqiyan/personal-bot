@@ -1,4 +1,4 @@
-import { readFile, writeFile } from "node:fs/promises";
+import { writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { AgentFiles, descriptor, launch, status } from "../storage/agent-files.js";
 import { acpModelState, acpReference } from "../storage/acp-files.js";
@@ -8,7 +8,7 @@ import { openAcp } from "../integrations/acp/connection.js";
 import { acpExecutable } from "../integrations/acp/launch.js";
 import { claudeOptions } from "../integrations/acp/claude.js";
 import { acpContent } from "../integrations/acp/input.js";
-import { agentText } from "../integrations/agent-resources.js";
+import { loadWorkspaceContext } from "../integrations/agent-resources.js";
 import { resourceRoot } from "../common/paths.js";
 import { requireThat } from "../common/validation.js";
 import { packageVersion, releaseLine } from "../common/version.js";
@@ -17,8 +17,9 @@ import type { NativeAgentHost } from "../model/agent.js";
 const args = process.argv.slice(2);
 const option = (name: string) => args[args.indexOf(name) + 1];
 const directory = option("--directory"), id = option("--pbot-acp-agent"), generation = option("--generation");
+const host = option("--host") as NativeAgentHost;
 requireThat(directory && id && generation, "缺少 ACP worker 启动信息。");
-const files = new AgentFiles(dirname(directory), option("--host") as NativeAgentHost);
+const files = new AgentFiles(dirname(directory), host);
 requireThat(files.directory(id) === directory, "ACP worker 目录不匹配。");
 const d = files.read(id, "descriptor.json", descriptor), reference = files.read(id, "acp-session.json", acpReference);
 requireThat(d.agentId === id && releaseLine(d.release) === releaseLine(packageVersion), "ACP worker 身份或版本不匹配。");
@@ -33,6 +34,7 @@ async function main() {
     ...(validating ? { PBOT_ACP_VALIDATE: "1" } : {}) };
   const command = { ...reference, args: [...reference.args] };
   const packageRoot = resolve(resourceRoot, "..");
+  const managedMember = reference.backend === "pi" || reference.backend === "dsh";
   if (reference.backend === "pi") {
     Object.assign(env, { PBOT_ACP_PI_COMMAND: process.env.PI_ACP_PI_COMMAND ?? acpExecutable("pi", "pi"),
       PI_ACP_PI_COMMAND: join(packageRoot, "bin/pbot-pi-acp.mjs") });
@@ -43,9 +45,8 @@ async function main() {
     command.args.push("--patch", patch);
   }
   let prompt: string | undefined;
-  if (reference.backend === "claude") {
-    prompt = [await readFile(join(resourceRoot, "prompts/workspace.md"), "utf8"), await agentText("general-purpose", d.workspace),
-      "## 环境\n\n" + JSON.stringify({ host: "claude", workspaceRoot: d.workspace, resourceRoot })].join("\n\n");
+  if (!managedMember) {
+    prompt = (await loadWorkspaceContext({ host: reference.backend, root: d.workspace, role: "general-purpose" })).text;
   }
   const saveSelection = (selection: AcpModelSelection) => {
     if (validating) return;
@@ -63,6 +64,13 @@ async function main() {
     },
     async permission(request, signal) {
       if (!execution) return { outcome: { outcome: "cancelled" } };
+      if (host === "mcp") {
+        if (process.env.PBOT_ACP_NONINTERACTIVE_PERMISSION === "allow") {
+          const allowed = request.options.find(item => item.kind === "allow_once" || item.kind === "allow_always");
+          if (allowed) return { outcome: { outcome: "selected", optionId: allowed.optionId } };
+        }
+        return { outcome: { outcome: "cancelled" } };
+      }
       const selected = await execution.permission(JSON.stringify(request.toolCall, null, 2), request.options, signal);
       return { outcome: selected === null ? { outcome: "cancelled" } : { outcome: "selected", optionId: selected } };
     },
@@ -74,10 +82,15 @@ async function main() {
     requireThat(files.read(id!, "launch.json", launch).generation === generation && !files.read(id!, "launch.json", launch).stop, "ACP 启动已取消。");
     files.write(id!, "acp-session.json", { ...reference, sessionId: reference.backend === "dsh" || reference.sessionId !== null ? connection.sessionId : null, capabilities: connection.capabilities }, acpReference);
     saveSelection(connection.selection());
+    let promptInjected = reference.sessionId !== null || connection.systemPrompt;
     execution = new AcpAgentRun(files, d, generation!, {
       signal: connection.signal,
       async prompt(request) {
-        const content = await acpContent(request, connection.images, connection.signal);
+        const effective = !managedMember && prompt && !promptInjected
+          ? { ...request, message: prompt + "\n\n---\n\n" + request.message }
+          : request;
+        promptInjected = true;
+        const content = await acpContent(effective, connection.images, connection.signal);
         const run = files.read(id!, "launch.json", launch);
         requireThat(run.generation === generation && !run.stop, "ACP 输入已取消或启动代次变化。");
         connection.signal.throwIfAborted();
@@ -86,7 +99,7 @@ async function main() {
         return connection.prompt(content);
       },
       cancel: () => connection.cancel(),
-    }, reference.backend !== "claude");
+    }, managedMember);
     await execution.run();
   } finally {
     try { await connection.close(); } finally { await execution?.settled(); }

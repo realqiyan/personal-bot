@@ -82,9 +82,23 @@ test("ACP launch configuration validates the target and keeps native model defau
   assert.throws(() => acpLaunch("claude", { claude: { command: process.execPath, args: [] } }, { provider: "pi-provider" }));
   const ref = acpLaunch("pi", { pi: { command: process.execPath, args: ["--version"] } }, {});
   assert.equal(ref.command, await realpath(process.execPath)); assert.equal(ref.sessionId, null);
-  await writeFile(join(root, ".pbot/config.json"), JSON.stringify({ enabled: true, acp: { dsh: { command: "dsh", args: ["--profile", "acp"] } } }));
-  assert.equal((await readWorkspaceConfig(root)).acp.dsh.command, "dsh");
-  await writeFile(join(root, ".pbot/config.json"), '{"enabled":true,"acp":{"other":{"command":"x","args":[]}}}');
+  await writeFile(join(root, ".pbot/config.json"), JSON.stringify({
+    enabled: true,
+    acp: {
+      dsh: { command: "dsh", args: ["--profile", "acp"] },
+      antigravity: { command: "agy", args: ["acp"] },
+      codex: { command: "codex-acp", args: [] },
+      "custom-harness": { command: process.execPath, args: [] },
+    },
+  }));
+  const loaded = await readWorkspaceConfig(root);
+  assert.equal(loaded.enabled, true);
+  assert.equal(loaded.acp.dsh.command, "dsh");
+  assert.equal(loaded.acp["custom-harness"].command, process.execPath);
+  const customRef = acpLaunch("custom-harness", loaded.acp, {});
+  assert.equal(customRef.backend, "custom-harness");
+  assert.equal(customRef.command, await realpath(process.execPath));
+  await writeFile(join(root, ".pbot/config.json"), '{"enabled":true,"acp":{"Bad_Name":{"command":"x","args":[]}}}');
   assert.equal((await readWorkspaceConfig(root)).enabled, false);
 });
 

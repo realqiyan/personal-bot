@@ -1,12 +1,12 @@
 import { isAbsolute } from "node:path";
 import { object } from "../common/json.js";
-import { requireThat } from "../common/validation.js";
+import { isAcpBackend, requireThat } from "../common/validation.js";
 import { fileId } from "./file-access.js";
 import type { AcpAnswer, AcpInput, AcpPermission, AcpPermissionReply, AcpModelState, AcpProcess, AcpReport, AcpSessionReference } from "../model/acp.js";
 
 const text = (value: unknown): value is string => typeof value === "string" && value.length > 0 && !value.includes("\0");
 export function acpReference(value: unknown): AcpSessionReference {
-  requireThat(object(value) && value.host === "acp" && ["pi", "dsh", "claude"].includes(String(value.backend)) &&
+  requireThat(object(value) && value.host === "acp" && isAcpBackend(value.backend) &&
     text(value.command) && isAbsolute(value.command) && Array.isArray(value.args) && value.args.every(arg => typeof arg === "string" && !arg.includes("\0")) &&
     (value.sessionId === null || text(value.sessionId)), "ACP 会话引用无效。");
   const capabilities = value.capabilities;

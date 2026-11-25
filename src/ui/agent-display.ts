@@ -9,6 +9,6 @@ export function agentBoard(values: AgentView[], theme: Theme): Component {
     return [...active.slice(0, 4).map(v => truncateToWidth(
       theme.fg("accent", v.name) + theme.fg("dim", ` · ${stateLabel(v.state)} · ${duration(Date.now() - (v.cycle?.startedAt ?? v.createdAt))} · `) +
       oneLine(v.activity), Math.max(1, width))),
-      ...(active.length > 4 ? [truncateToWidth(theme.fg("dim", `另有 ${active.length - 4} 位专家 · /pbot agents`), Math.max(1, width))] : [])];
+      ...(active.length > 4 ? [truncateToWidth(theme.fg("dim", `另有 ${active.length - 4} 位专家 · /pbot enter`), Math.max(1, width))] : [])];
   } };
 }
