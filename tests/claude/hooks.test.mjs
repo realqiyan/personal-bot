@@ -33,7 +33,6 @@ test("disabled command hooks use the bound root and leave workspace and user dat
   assert.equal(status.workspaceRoot, workspace);
   assert.equal(status.configuration.enabled, false);
   assert.deepEqual(await hook("UserPromptSubmit"), {});
-  assert.deepEqual(await hook("SubagentStart", { agent_type: "personal-bot:general-purpose" }), {});
   const skill = skill => hook("PreToolUse", { tool_name: "Skill", tool_input: { skill } });
   assert.equal((await skill("personal-bot:project-maintenance")).hookSpecificOutput.permissionDecision, "deny");
   assert.deepEqual(await skill("personal-bot:pbot"), {});
@@ -48,7 +47,7 @@ test("disabled command hooks use the bound root and leave workspace and user dat
   await assert.rejects(access(env.CLAUDE_CONFIG_DIR), { code: "ENOENT" });
 });
 
-test("init preserves user configuration and materials without modifying native Claude data", async t => {
+test("init preserves user configuration and materials without interfering with native Claude subagents", async t => {
   const { workspace, env, run, hook } = await fixture(t);
   await mkdir(join(workspace, ".pbot"));
   const stored = { enabled: false, custom: { keep: true } };
@@ -66,8 +65,8 @@ test("init preserves user configuration and materials without modifying native C
   assert.equal(context.hookEventName, "UserPromptSubmit");
   const environment = JSON.parse(context.additionalContext.slice(context.additionalContext.lastIndexOf("\n\n") + 2));
   assert.deepEqual(environment, { host: "claude", workspaceRoot: workspace, resourceRoot });
-  assert.deepEqual(await hook("SubagentStart", { agent_type: "Explore" }), {});
-  assert.equal((await hook("SubagentStart", { agent_type: "personal-bot:general-purpose" })).hookSpecificOutput.hookEventName, "SubagentStart");
+  // Native Claude subagents (bearing agent_id) are left untouched.
+  assert.deepEqual(await hook("UserPromptSubmit", { agent_id: "native-subagent-1" }), {});
   assert.deepEqual(await hook("PreToolUse", { tool_name: "Skill", tool_input: { skill: "personal-bot:project-maintenance" } }), {});
   assert.deepEqual(await hook("UserPromptExpansion", { expansion_type: "slash_command", command_name: "personal-bot:project-maintenance" }), {});
   assert.deepEqual(await readdir(join(workspace, ".pbot")), ["config.json"]);

@@ -37,11 +37,11 @@ try {
 import assert from "node:assert/strict";
 import { mkdir, readdir } from "node:fs/promises";
 import { join } from "node:path";
-import { createAgentSession, DefaultResourceLoader, ModelRuntime, SessionManager, SettingsManager } from "@earendil-works/pi-coding-agent";
+import { createAgentSession, createMcpExtension, DefaultResourceLoader, ModelRuntime, SessionManager, SettingsManager } from "@earendil-works/pi-coding-agent";
 const [workspace, agentDir, packed] = process.argv.slice(2);
 await mkdir(agentDir);
 const settingsManager = SettingsManager.inMemory({ packages: [packed] });
-const loader = new DefaultResourceLoader({ cwd: workspace, agentDir, settingsManager, noContextFiles: true });
+const loader = new DefaultResourceLoader({ cwd: workspace, agentDir, settingsManager, noContextFiles: true, extensionFactories: [createMcpExtension()] });
 await loader.reload();
 assert.deepEqual(loader.getExtensions().errors, []);
 assert.deepEqual(loader.getExtensions().warnings ?? [], []);
@@ -57,7 +57,7 @@ try {
   await session.prompt("/pbot init");
   assert.ok(loader.getSkills().skills.length > 0);
   assert.deepEqual(session.getAllTools().map(tool => tool.name).filter(name => name.startsWith("pbot_")).sort(),
-    ["pbot_agent", "pbot_history", "pbot_team", "pbot_team_message"]);
+    ["pbot_history"]);
   assert.ok((await readdir(workspace)).includes("AGENTS.md"));
   assert.equal(session.messages.length, 0);
   assert.deepEqual(errors, []);

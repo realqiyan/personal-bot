@@ -1,13 +1,10 @@
 {
   "name": "personal-bot",
   "version": "0.2.20",
-  "description": "Workspace materials, skills, and native experts.",
+  "description": "Workspace materials, skills, and cross-harness MCP worker delegation.",
   "skills": [
     "./resources/skills",
     "./resources/claude/skills"
-  ],
-  "agents": [
-    "./resources/claude/agents/general-purpose.md"
   ],
   "engines": {
     "claude-code": ">=2.1.325"

@@ -3,7 +3,7 @@ import { after } from "node:test";
 import { mkdtemp, rm, mkdir, realpath } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { createAgentSession, createCodemodeExtension, DefaultResourceLoader, ModelRuntime, SessionManager, SettingsManager } from "@earendil-works/pi-coding-agent";
+import { createAgentSession, createCodemodeExtension, createMcpExtension, DefaultResourceLoader, ModelRuntime, SessionManager, SettingsManager } from "@earendil-works/pi-coding-agent";
 
 import { initializeWorkspaceConfig } from "../../dist/services/workspace/workspace-config.js";
 
@@ -24,7 +24,7 @@ export async function host(t, { prepare, enabled = true, workspaceEnabled = true
   const settingsManager = SettingsManager.inMemory({ packages: enabled ? [packageEntry] : [], defaultTools: ["+codemode"] });
   let api;
   const loader = new DefaultResourceLoader({ cwd: root, agentDir, settingsManager, noContextFiles, noSkills,
-    extensionFactories: [createCodemodeExtension({ models: false }), pi => { api = pi; }, ...extensions] });
+    extensionFactories: [createCodemodeExtension({ models: false }), createMcpExtension(), pi => { api = pi; }, ...extensions] });
   await loader.reload();
   assert.equal(loader.getExtensions().errors.length, 0);
   const runtime = await ModelRuntime.create({ authPath: join(agentDir, "auth.json"), modelsPath: join(agentDir, "models.json") });

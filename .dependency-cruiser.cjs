@@ -28,7 +28,7 @@ module.exports = {
       to: { path: "^src/(?:dsh\\.ts|(?:integrations|extension|ui)/dsh/)|node_modules/@deepseek-ai/" } },
     { name: "dsh-does-not-load-pi", severity: "error", from: { path: "^src/(?:dsh\\.ts|(?:integrations|extension|ui)/dsh/)" },
       to: { path: "^src/(?:pbot\\.ts|integrations/pi/)|node_modules/@earendil-works/" } },
-    { name: "plugin-hosts-do-not-load-sdks", severity: "error", from: { path: "^src/(?:(?:claude|plugin|mcp)\\.ts|extension/(?:plugin-runtime|mcp-agents)\\.ts|integrations/hosts/)" },
+    { name: "plugin-hosts-do-not-load-sdks", severity: "error", from: { path: "^src/(?:(?:claude|plugin|mcp)\\.ts|extension/(?:plugin-runtime|mcp-workers)\\.ts|integrations/hosts/)" },
       to: { path: "^src/(?:pbot\\.ts|dsh\\.ts|(?:extension|ui|integrations)/(?:pi|dsh)/)|node_modules/@(?:earendil-works|deepseek-ai|anthropic-ai)/" } },
     { name: "composition-is-not-a-dependency", severity: "error", from: { path: "^src/" },
       to: { path: "^src/(?:pbot|dsh|claude|plugin|mcp)\\.ts$" } },

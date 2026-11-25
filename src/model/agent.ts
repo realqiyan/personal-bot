@@ -1,21 +1,13 @@
-import type { AcpBackend, AcpModelSelection, AcpSessionReference } from "./acp.js";
+import type { AcpBackend, AcpModelSelection, AcpSessionReference, AcpStartOptions } from "./acp.js";
 
-export interface AgentStartOptions extends AgentOptions { backend?: AcpBackend }
-export interface AgentOptions {
-  name?: string; message?: string; files?: string[];
-  provider?: string; model?: string; thinking?: string; cwd?: string; tools?: string[];
-  noExtensions?: boolean; noSkills?: boolean; noPromptTemplates?: boolean; noContextFiles?: boolean;
-}
+export type AgentOptions = AcpStartOptions;
+export interface AgentStartOptions extends AgentOptions { backend: AcpBackend }
 export interface AgentOwner { sessionId: string; leaf: string | null; branch: string[] }
 export interface AgentDescriptor {
   agentId: string; release: string; workspace: string; cwd: string; parentSessionId: string;
   parentLeaf: string | null; createdAt: number; options: AgentOptions;
 }
-/** null means no conversation input has been handed to Pi yet. */
-export interface AgentSessionRef { file: string | null }
-export type NativeAgentHost = "pi" | "dsh" | "mcp";
-/** Native references are interpreted only by their owning host adapter. */
-export type AgentSessionReference = { host: "pi"; file: string | null } | { host: "dsh"; sessionId: string } | AcpSessionReference;
+export type AgentSessionReference = AcpSessionReference;
 export interface AgentLaunch { generation: string; name: string; sequence: number; stop: boolean; startedAt: number }
 export interface AgentMessage { requestId: string; generation: string; sequence: number; message: string; delivery: "steer" | "followUp"; files: string[] }
 export interface AgentCycle {
@@ -30,8 +22,9 @@ export interface AgentStatus {
 }
 export interface AgentView extends AgentDescriptor {
   name: string; generation: string; state: AgentStatus["state"]; activity: string;
-  backend?: AcpBackend; transport?: "native" | "acp"; selection?: AcpModelSelection;
-  capabilities?: { steer: boolean; resume: boolean; team: boolean; transcript: boolean };
+  alive: boolean;
+  backend: AcpBackend; transport: "acp"; selection?: AcpModelSelection;
+  capabilities: { steer: boolean; resume: boolean; transcript: boolean };
   cycle?: AgentCycle; error?: string; owned: boolean;
 }
 export interface AgentCompletion { agentId: string; name: string; cycle: AgentCycle; report: string }

@@ -1,1 +1,0 @@
-同宿主专家使用 Claude 原生 Agent（`personal-bot:general-purpose`），成员直接协作使用 Claude 原生团队及成员消息。需要调用其他 Harness（如 `antigravity`、`codex`、`pi`、`dsh` 或 `.pbot/config.json` 自定义 ACP 目标）时，使用 MCP 工具 `pbot_agent`（传入 `workspace` 为当前 `workspaceRoot`，可用 `backends` 查看本机可用目标，支持 `start` / `wait` / `read` / `send` / `stop`），并优先遵循工作区 `AGENTS.md` 或 `agents/coordinator.md` 中的分工偏好。

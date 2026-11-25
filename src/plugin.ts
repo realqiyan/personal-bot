@@ -2,19 +2,13 @@ import { realpathSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import { requireThat } from "./common/validation.js";
 import { runPluginHost } from "./extension/plugin-runtime.js";
-import { antigravityAdapter } from "./integrations/hosts/antigravity.js";
-import { claudeAdapter } from "./integrations/hosts/claude.js";
-import type { PluginHostAdapter, PluginHostId } from "./model/plugin-host.js";
-
-const adapters: Record<PluginHostId, PluginHostAdapter> = {
-  claude: claudeAdapter,
-  antigravity: antigravityAdapter,
-};
+import { listPluginHosts, pluginHosts } from "./integrations/hosts/registry.js";
 
 export async function main(args: readonly string[]): Promise<void> {
   const [host, ...rest] = args;
-  requireThat(host === "claude" || host === "antigravity", "用法：node <插件目录>/lib/plugin.js <claude|antigravity> hook|init|status");
-  await runPluginHost(adapters[host], rest);
+  const adapter = host ? pluginHosts.get(host) : undefined;
+  requireThat(adapter, `用法：node <插件目录>/lib/plugin.js <${listPluginHosts().join("|")}> hook|init|status`);
+  await runPluginHost(adapter, rest);
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href) {

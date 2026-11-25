@@ -1,11 +1,11 @@
 import { existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
-import { isAbsolute, join } from "node:path";
+import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { canonical, object } from "../common/json.js";
 import { requireThat } from "../common/validation.js";
 import { readJsonFile, writeJsonFile } from "./atomic-json.js";
 import { fileId, privateDirectory } from "./file-access.js";
-import type { AgentDescriptor, AgentLaunch, AgentMessage, AgentStatus, AgentCycle, AgentSessionRef, AgentSessionReference, NativeAgentHost } from "../model/agent.js";
+import type { AgentDescriptor, AgentLaunch, AgentMessage, AgentStatus, AgentCycle, AgentSessionReference } from "../model/agent.js";
 import type { AcpSessionReference } from "../model/acp.js";
 import { acpReference } from "./acp-files.js";
 
@@ -15,15 +15,6 @@ export function descriptor(v: unknown): AgentDescriptor {
   requireThat(object(v) && text(v.agentId) && text(v.release) && text(v.workspace) && text(v.cwd) && text(v.parentSessionId) &&
     (v.parentLeaf === null || text(v.parentLeaf)) && number(v.createdAt) && object(v.options), "子会话身份无效。");
   fileId(v.agentId as string); return v as unknown as AgentDescriptor;
-}
-export function sessionRef(v: unknown): AgentSessionRef {
-  requireThat(object(v) && (v.file === null || (text(v.file) && isAbsolute(v.file) && !v.file.includes("\0"))), "子会话引用无效。");
-  return v as unknown as AgentSessionRef;
-}
-function dshSessionRef(v: unknown): Extract<AgentSessionReference, { host: "dsh" }> {
-  requireThat(object(v) && v.host === "dsh" && text(v.sessionId), "dsh 原生会话引用无效。");
-  fileId(v.sessionId as string);
-  return v as unknown as Extract<AgentSessionReference, { host: "dsh" }>;
 }
 export function launch(v: unknown): AgentLaunch {
   requireThat(object(v) && text(v.generation) && text(v.name) && Number.isSafeInteger(v.sequence) && typeof v.stop === "boolean" && number(v.startedAt), "子会话启动状态无效。");
@@ -48,9 +39,7 @@ export function status(v: unknown): AgentStatus {
 }
 export class AgentFiles {
   #failure: unknown;
-  constructor(readonly root: string, readonly host: NativeAgentHost = "pi") {
-    requireThat(host === "pi" || host === "dsh" || host === "mcp", "子会话所属宿主无效。");
-  }
+  constructor(readonly root: string) {}
   check() { if (this.#failure) throw this.#failure; }
   fail(error: unknown) { this.#failure = error; }
   directory(id: string) { return join(this.root, fileId(id)); }
@@ -65,21 +54,15 @@ export class AgentFiles {
     catch (error) { this.fail(error); throw error; }
     requireThat(published, "子会话文件已存在。");
   }
-  create(value: AgentDescriptor, run: AgentLaunch, acp?: AcpSessionReference) {
+  create(value: AgentDescriptor, run: AgentLaunch, acp: AcpSessionReference) {
     this.check();
-    if (acp) acpReference(acp);
+    acpReference(acp);
     mkdirSync(this.root, { recursive: true, mode: 0o700 });
     mkdirSync(this.directory(value.agentId), { mode: 0o700 });
-    for (const dir of ["inbox", "completions"]) privateDirectory(this.directory(value.agentId), dir);
+    for (const dir of ["inbox", "completions", "reports", "permissions"]) privateDirectory(this.directory(value.agentId), dir);
     this.write(value.agentId, "descriptor.json", value, descriptor, true);
     this.write(value.agentId, "launch.json", run, launch, true);
-    if (acp) {
-      for (const dir of ["reports", "permissions"]) privateDirectory(this.directory(value.agentId), dir);
-      this.write(value.agentId, "acp-session.json", acp, acpReference, true);
-    }
-    else if (this.host === "pi") this.write(value.agentId, "session-ref.json", { file: null }, sessionRef, true);
-    else if (this.host === "dsh") this.write(value.agentId, "native-session.json", { host: "dsh", sessionId: value.agentId }, dshSessionRef, true);
-    else throw new Error("MCP 宿主仅支持 ACP 子会话。");
+    this.write(value.agentId, "acp-session.json", acp, acpReference, true);
   }
   list() {
     if (!existsSync(this.root)) return [];
@@ -96,25 +79,7 @@ export class AgentFiles {
       .map(n => this.read(id, "completions/" + n, cycle)).sort((a, b) => (a.finishedAt ?? 0) - (b.finishedAt ?? 0));
   }
   reference(id: string): AgentSessionReference {
-    const acp = this.optional(id, "acp-session.json", acpReference);
-    if (acp) return acp;
-    if (this.host === "pi") return { host: "pi", file: this.session(id) };
-    if (this.host === "mcp") throw new Error("MCP 宿主仅支持 ACP 子会话。");
-    const ref = this.read(id, "native-session.json", dshSessionRef);
-    requireThat(ref.sessionId === id, "dsh 原生会话身份不匹配。");
-    return ref;
-  }
-  session(id: string): string | null {
-    requireThat(this.host === "pi", "该宿主不使用 Pi 会话文件引用。");
-    const ref = this.optional(id, "session-ref.json", sessionRef);
-    requireThat(ref, "缺少原生会话引用；不导入旧记录，请重新 start。");
-    return ref.file;
-  }
-  /** The child fixes the native path before accepting input; never reset it to null. */
-  bindSession(id: string, file: string) {
-    const previous = this.session(id);
-    requireThat(previous === null || previous === file, "子会话文件引用不匹配。");
-    if (previous === null) this.write(id, "session-ref.json", { file }, sessionRef);
+    return this.read(id, "acp-session.json", acpReference);
   }
   /** Short controller edits are serialized; an abandoned lock fails closed. */
   control<T>(work: () => T): T {

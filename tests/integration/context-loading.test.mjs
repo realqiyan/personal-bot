@@ -15,7 +15,7 @@ for (const [filter, expected] of [
   test("Pi applies package filters to workspace-owned skill discovery: " + JSON.stringify(filter), async t => {
     const { loader, session } = await host(t, { packageEntry: { source: resolve("."), ...filter } });
     assert.deepEqual(loader.getSkills().skills.map(skill => skill.name).sort(), expected);
-    assert.ok(session.getAllTools().some(tool => tool.name === "pbot_agent"));
+    assert.ok(session.getAllTools().some(tool => tool.name === "pbot_history"));
   });
 }
 

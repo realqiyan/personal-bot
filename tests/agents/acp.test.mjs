@@ -8,13 +8,13 @@ import { setTimeout as delay } from "node:timers/promises";
 import { AgentService } from "../../dist/services/agents/agent-service.js";
 import { AgentRun } from "../../dist/services/agents/agent-run.js";
 import { AcpAnswerBuffer } from "../../dist/services/agents/acp-run.js";
-import { AgentBackends } from "../../dist/integrations/acp/agents.js";
-import { PiAgents } from "../../dist/integrations/pi/pi-agents.js";
-import { acpLaunch } from "../../dist/integrations/acp/launch.js";
-import { applicableStartOptions } from "../../dist/services/agents/start-options.js";
+import { AcpWorkerHost } from "../../dist/integrations/acp/agents.js";
+import { acpLaunch, filterAcpStartOptions, inspectAcpBackends } from "../../dist/integrations/acp/launch.js";
+import { acpHarnesses, registerAcpHarness } from "../../dist/integrations/acp/registry.js";
+import { acpModelSelection, acpModelValue } from "../../dist/integrations/acp/model-selection.js";
 import { acpContent } from "../../dist/integrations/acp/input.js";
 import { launch } from "../../dist/storage/agent-files.js";
-import { acpModelState, acpPermission, acpPermissionReply, acpReference, acpReport } from "../../dist/storage/acp-files.js";
+import { acpModelState, acpReference, acpReport } from "../../dist/storage/acp-files.js";
 import { packageVersion } from "../../dist/common/version.js";
 import { readWorkspaceConfig } from "../../dist/services/workspace/workspace-config.js";
 
@@ -32,7 +32,7 @@ async function fixture(t, keyless = false) {
   const prior = Object.fromEntries(Object.keys(environment).map(key => [key, process.env[key]])); Object.assign(process.env, environment);
   const commands = { dsh: keyless ? { command: process.execPath, args: [new URL("../helpers/dsh-acp-driver.mjs", import.meta.url).pathname] }
     : { command: new URL("../../node_modules/@deepseek-ai/dsh/lib/bin.js", import.meta.url).pathname, args: ["--profile", "acp"] } };
-  const host = new AgentBackends(new PiAgents(), directory, commands);
+  const host = new AcpWorkerHost(directory, commands);
   const service = new AgentService(root, directory, host);
   t.after(async () => {
     await service.close(owner);
@@ -72,32 +72,49 @@ test("ACP attachments preserve source files, binary links and image bytes withou
   await assert.rejects(acpContent(request, true, AbortSignal.abort()));
 });
 
-test("ACP launch configuration validates the target and keeps native model defaults separate", async t => {
-  const { root, service } = await fixture(t);
-  assert.deepEqual(applicableStartOptions("dsh", "dsh", { noExtensions: true, noSkills: true, provider: "p", model: "m" }),
+test("ACP harness registry is dynamically extensible without changing runtime code", async t => {
+  const { root } = await fixture(t);
+  assert.deepEqual(filterAcpStartOptions("dsh", { noExtensions: true, noSkills: true, provider: "p", model: "m" }),
     { provider: "p", model: "m" });
-  assert.deepEqual(applicableStartOptions("dsh", undefined, { noExtensions: true, noSkills: true }), { noSkills: true });
-  assert.deepEqual(applicableStartOptions("claude", "claude",
-    { provider: "p", model: "m", tools: ["read"], noSkills: true, noExtensions: true }), { model: "m" });
+  assert.deepEqual(filterAcpStartOptions("claude", { provider: "p", model: "m", tools: ["read"], noSkills: true, noExtensions: true }),
+    { model: "m" });
   assert.throws(() => acpLaunch("claude", { claude: { command: process.execPath, args: [] } }, { provider: "pi-provider" }));
   const ref = acpLaunch("pi", { pi: { command: process.execPath, args: ["--version"] } }, {});
   assert.equal(ref.command, await realpath(process.execPath)); assert.equal(ref.sessionId, null);
+
+  // Register a custom specialized ACP harness dynamically at runtime.
+  registerAcpHarness({
+    id: "ext-harness",
+    defaultCommand: { command: process.execPath, args: ["--version"] },
+    parseModelValue: value => {
+      const [provider, model] = value.split(":");
+      return model ? { provider, model } : { model: value };
+    },
+    formatModelQuery: (model, provider) => provider ? `${provider}:${model}` : undefined,
+  });
+  t.after(() => acpHarnesses.unregister("ext-harness"));
+
+  const extOptions = [{ id: "model", category: "model", type: "select", name: "model", currentValue: "acme:pro",
+    options: [{ value: "acme:pro", name: "Pro" }, { value: "other:pro", name: "Other Pro" }] }];
+  assert.equal(acpModelValue("ext-harness", extOptions, "pro", "other").value, "other:pro");
+  assert.deepEqual(acpModelSelection("ext-harness", extOptions), { provider: "acme", model: "pro" });
+  assert.ok(inspectAcpBackends().some(item => item.backend === "ext-harness" && item.available));
+
+  // Arbitrary un-registered custom harness in .pbot/config.json resolves via generic ACP v1 with optional env.
   await writeFile(join(root, ".pbot/config.json"), JSON.stringify({
     enabled: true,
     acp: {
       dsh: { command: "dsh", args: ["--profile", "acp"] },
-      antigravity: { command: "agy", args: ["acp"] },
-      codex: { command: "codex-acp", args: [] },
-      "custom-harness": { command: process.execPath, args: [] },
+      "custom-harness": { command: process.execPath, args: [], env: { CUSTOM_FLAG: "1" } },
     },
   }));
   const loaded = await readWorkspaceConfig(root);
   assert.equal(loaded.enabled, true);
-  assert.equal(loaded.acp.dsh.command, "dsh");
-  assert.equal(loaded.acp["custom-harness"].command, process.execPath);
+  assert.equal(loaded.acp["custom-harness"].env.CUSTOM_FLAG, "1");
   const customRef = acpLaunch("custom-harness", loaded.acp, {});
   assert.equal(customRef.backend, "custom-harness");
   assert.equal(customRef.command, await realpath(process.execPath));
+  assert.deepEqual(customRef.env, { CUSTOM_FLAG: "1" });
   await writeFile(join(root, ".pbot/config.json"), '{"enabled":true,"acp":{"Bad_Name":{"command":"x","args":[]}}}');
   assert.equal((await readWorkspaceConfig(root)).enabled, false);
 });
@@ -107,7 +124,7 @@ test("real dsh ACP workers keep empty sessions across reload, stop and explicit 
   const created = await service.start({ backend: "dsh", name: "resident" }, owner);
   const ready = await until(() => service.status(created.agentId, owner), value => value.state === "idle" || value.state === "error");
   assert.equal(ready.state, "idle", ready.error);
-  assert.equal(ready.transport, "acp"); assert.equal(ready.capabilities.resume, true); assert.equal(ready.capabilities.team, false);
+  assert.equal(ready.transport, "acp"); assert.equal(ready.capabilities.resume, true);
   const model = files.read(created.agentId, "acp-model.json", acpModelState);
   assert.equal(model.generation, ready.generation); assert.equal(typeof ready.selection.model, "string");
   assert.equal(Object.hasOwn(ready.selection, "generation"), false);
@@ -116,17 +133,9 @@ test("real dsh ACP workers keep empty sessions across reload, stop and explicit 
   files.write(created.agentId, "acp-model.json", model, acpModelState);
   assert.deepEqual(service.status(created.agentId, owner).selection, ready.selection);
   assert.deepEqual(service.cycles(created.agentId, owner), []);
-  const permissionId = randomUUID();
-  files.write(created.agentId, "permissions/" + permissionId + ".json", { generation: ready.generation, requestId: permissionId, description: "Review this local operation",
-    options: [{ optionId: "allow", name: "Allow once", kind: "allow_once" }] }, acpPermission, true);
-  assert.equal(service.pendingPermissions(owner).length, 1);
-  assert.throws(() => service.answerPermission(created.agentId, permissionId, "unlisted", owner));
-  service.answerPermission(created.agentId, permissionId, "allow", owner);
-  assert.equal(files.read(created.agentId, "permissions/" + permissionId + "-reply.json", acpPermissionReply).optionId, "allow");
-  assert.equal(service.pendingPermissions(owner).length, 0);
   const reference = files.reference(created.agentId); assert.equal(reference.host, "acp"); assert.notEqual(reference.sessionId, created.agentId);
   assert.equal(JSON.parse(await readFile(join(directory, created.agentId, "descriptor.json"), "utf8")).options.backend, undefined);
-  const reopened = new AgentService(root, directory, new AgentBackends(new PiAgents(), directory));
+  const reopened = new AgentService(root, directory, new AcpWorkerHost(directory));
   assert.equal(reopened.status(created.agentId, owner).state, "idle");
   await reopened.close(owner, true); assert.equal(host.alive(created.agentId), true);
   const stoppingAt = Date.now();
@@ -167,8 +176,6 @@ test("a real missing-model failure seals one ACP cycle and resume never repeats 
   assert.deepEqual(before.flatMap(c => c.requestIds).sort(), [created.requestId, next.requestId].sort());
   const firstReport = await service.read(created.agentId, owner, before[0].cycleId);
   assert.equal(firstReport.cycle.state, "failed"); assert.equal(firstReport.report, "");
-  const page = await service.recordPage(created.agentId, owner);
-  assert.equal(page.kind, "acp"); assert.equal(page.total, 4);
   service.stop(created.agentId, owner);
   await until(() => service.status(created.agentId, owner), value => value.state === "stopped");
   const resumed = await service.resume(created.agentId, "Only the new task", owner);
@@ -178,7 +185,7 @@ test("a real missing-model failure seals one ACP cycle and resume never repeats 
   assert.equal((await service.read(created.agentId, owner, before[0].cycleId)).report, firstReport.report);
 });
 
-test("ACP report references remain fixed and permission replies require the current owner and generation", async t => {
+test("ACP report references remain fixed and isolated by owner", async t => {
   const { root, service, files } = await fixture(t);
   const id = randomUUID(), generation = randomUUID();
   files.create({ agentId: id, release: packageVersion, workspace: root, cwd: root, parentSessionId: owner.sessionId,
@@ -198,11 +205,6 @@ test("ACP report references remain fixed and permission replies require the curr
   assert.equal((await service.read(id, owner)).report, "Later report");
   assert.throws(() => service.status(id, { ...owner, branch: [] }));
   await assert.rejects(service.read(id, owner, "missing"));
-  const requestId = randomUUID();
-  files.write(id, "permissions/" + requestId + ".json", { generation, requestId, description: "Local operation",
-    options: [{ optionId: "allow", name: "Allow once", kind: "allow_once" }] }, acpPermission, true);
-  assert.throws(() => service.answerPermission(id, requestId, "allow", owner));
-  assert.equal(files.optional(id, "permissions/" + requestId + "-reply.json", acpPermissionReply), undefined);
   assert.equal(files.read(id, "launch.json", launch).generation, generation);
   assert.throws(() => acpReference({ host: "acp", backend: "claude", command: "relative", args: [], sessionId: "x" }));
 });

@@ -32,7 +32,7 @@ try {
   assert.equal(marketplace.plugins[0].source.version, manifest.version);
   assert.equal(plugin.types, undefined);
   assert.equal(hooks.modules, undefined);
-  for (const path of [...plugin.skills, ...plugin.agents, "lib/claude.js", "lib/extension/mcp.js", "lib/extension/acp-worker.js", ".mcp.json", "resources/skills/.claude-plugin/plugin.json"]) {
+  for (const path of [...plugin.skills, "lib/claude.js", "lib/extension/mcp.js", "lib/extension/acp-worker.js", ".mcp.json", "resources/skills/.claude-plugin/plugin.json"]) {
     await stat(resolve(packed, path));
   }
   const validation = JSON.parse(execFileSync(process.env.PBOT_CLAUDE_COMMAND ?? "claude",
@@ -71,12 +71,12 @@ try {
   assert.equal(blocked.decision, "block");
   await mkdir(join(enabled, ".pbot"));
   await writeFile(join(enabled, ".pbot/config.json"), JSON.stringify({ enabled: true }));
-  const member = JSON.parse(execFileSync(process.execPath, args,
+  const enabledPrompt = JSON.parse(execFileSync(process.execPath, args,
     { cwd: enabled, env, encoding: "utf8", timeout: 30_000,
-      input: JSON.stringify({ hook_event_name: "SubagentStart", cwd: enabled, agent_type: "personal-bot:general-purpose" }) }));
-  const environment = JSON.parse(member.hookSpecificOutput.additionalContext.split("\n\n").at(-1));
+      input: JSON.stringify({ hook_event_name: "UserPromptSubmit", cwd: enabled }) }));
+  const environment = JSON.parse(enabledPrompt.hookSpecificOutput.additionalContext.split("\n\n").at(-1));
   assert.deepEqual(environment, { host: "claude", workspaceRoot: enabled, resourceRoot: join(raw, "resources") + "/" });
-  assert.equal(member.hookSpecificOutput.hookEventName, "SubagentStart");
+  assert.equal(enabledPrompt.hookSpecificOutput.hookEventName, "UserPromptSubmit");
   await assert.rejects(stat(join(workspace, ".pbot")), { code: "ENOENT" });
   console.log(`Packed Claude command hooks, native plugin validation and standalone CLI passed; extracted Claude hooks and CLI ran without node_modules: personal-bot@${version}, Node ${process.version}.`);
 } finally {

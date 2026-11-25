@@ -7,7 +7,7 @@
     {
       "name": "personal-bot",
       "version": "0.2.20",
-      "description": "Workspace materials, skills, and native experts.",
+      "description": "Workspace materials, skills, and cross-harness MCP worker delegation.",
       "source": {
         "source": "npm",
         "package": "personal-bot",

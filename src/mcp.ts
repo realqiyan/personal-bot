@@ -1,6 +1,6 @@
 import { realpathSync } from "node:fs";
 import { pathToFileURL } from "node:url";
-import { serveMcpStdio } from "./extension/mcp-agents.js";
+import { serveMcpStdio } from "./extension/mcp-workers.js";
 
 export function main(): Promise<void> {
   return serveMcpStdio();

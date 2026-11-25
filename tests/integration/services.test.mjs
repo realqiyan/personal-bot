@@ -6,11 +6,9 @@ import { createAgentSession, SessionManager, SettingsManager, ModelRuntime, Defa
 import { convertResponsesTools } from "@earendil-works/pi-ai/api/openai-responses-shared";
 import { join } from "node:path";
 import { host } from "../helpers/pi-host.mjs";
-import { PiAgents } from "../../dist/integrations/pi/pi-agents.js";
 import { agentFileTools } from "../../dist/integrations/pi/agent-tools.js";
-import { AgentService } from "../../dist/services/agents/agent-service.js";
-import { TeamService } from "../../dist/services/agents/team-service.js";
 import { WorkspaceInstance } from "../../dist/extension/lifecycle.js";
+import { McpWorkerRuntime } from "../../dist/extension/mcp-workers.js";
 import { Confirmations } from "../../dist/ui/confirmation.js";
 import { HistoryService } from "../../dist/services/history/history-service.js";
 import { HistoryFiles } from "../../dist/storage/history-files.js";
@@ -19,9 +17,13 @@ import { PiHistory } from "../../dist/integrations/pi/history.js";
 async function fixture(t) {
   const { root, session } = await host(t);
   const confirmations = new Confirmations(), ctx = session.extensionRunner.createToolContext("local", undefined);
-  const agents = new AgentService(root, join(root, "agent-state"), new PiAgents());
-  const instance = new WorkspaceInstance(root, agents,
-    new TeamService(root, agents.files, agents.teamFiles), new HistoryService(root, new HistoryFiles(join(root, "history-index")), new PiHistory(root)));
+  const workers = new McpWorkerRuntime(join(root, "worker-state"), "test-session");
+  const instance = new WorkspaceInstance(
+    root,
+    "test-session",
+    new HistoryService(root, new HistoryFiles(join(root, "history-index")), new PiHistory(root)),
+    workers,
+  );
   t.after(() => instance.close());
   return { root, ctx, confirmations, instance };
 }

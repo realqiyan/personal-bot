@@ -1,0 +1,49 @@
+# Pi 使用指南
+
+Personal Bot 以 Pi 扩展形式接入 [Pi](https://pi.dev)，提供共享工作区资料、专业技能、工作区外写保护、`pbot_history` 历史检索，并通过 Pi 原生 `registerMcpServer` 自动挂载统一的跨 Harness 调度 MCP 服务（`pbot_worker`）。会话、模型、认证与外部 MCP 均由 Pi 管理。
+
+## 安装与启用
+
+支持 Linux 和 macOS，需要 Node.js 22.19+ 与 npm。
+
+### 向导安装
+
+```bash
+npx personal-bot@latest setup
+# 或直接指定工作区
+npx personal-bot@latest setup --workspace ~/pbot-workspace
+```
+
+向导负责安装或更新 Pi 与工作区扩展，并在确认后启动 Pi 执行 `/pbot init`。已有全局或本地来源按原生规则保留，可按需切换到 npm 最新稳定版。
+
+### 已有 Pi 安装
+
+在目标工作区根目录执行：
+
+```bash
+pi install --local npm:personal-bot
+pi
+```
+
+在 Pi 聊天框执行 `/pbot init` 补建缺失资料目录与根 `AGENTS.md`，并写入 `.pbot/config.json`（`{ "enabled": true }`）。首次从停用状态初始化后自动触发 `/reload` 使工具、技能和 MCP 服务一起生效。
+
+## 命令与工具
+
+| 入口 | 用途 |
+| --- | --- |
+| `/pbot init` | 初始化工作区资料目录与根 `AGENTS.md` 并启用 Personal Bot |
+| `/pbot status` | 查看工作区路径、启用状态、版本与历史整理状态 |
+| `/pbot worker <JSON>` | 直接调用统一 `pbot_worker`（支持简写 `/pbot worker backends`、`/pbot worker list` 或完整 JSON 如 `/pbot worker {"action":"status","workerId":"..."}`） |
+| `/reload` | Pi 原生命令，重载扩展、资源与 `.pbot/config.json` |
+
+已启用工作区向模型暴露：
+- **MCP 工具 `pbot_worker`**（通过 `pbot` MCP 服务自动注册，直连共享 `lib/extension/mcp.js`）：用于调度其他 ACP Harness，详见[跨 Harness 专家调度](../guides/cross-harness-workers.md)。
+- **原生工具 `pbot_history`**：搜索与读取本工作区历史归档，详见[历史对话](../guides/history.md)。
+
+未启用或配置损坏时，Personal Bot 保持休眠，不注入提示词、不注册技能与工具，也不挂载 MCP 服务；状态栏提示 `/pbot init` 或配置错误。
+
+## 原生 MCP 与技能
+
+- 项目级外部 MCP 通过 `pi mcp add --local <server> ...` 管理，用 `/mcp` 查看状态。
+- 工作区自有技能放在 `.agents/skills/<name>/SKILL.md`；包内技能遵守 Pi 原生 `--no-skills` 与包级过滤。
+- 修改工作区外文件时，Pi 通过安全确认队列提示人工确认。

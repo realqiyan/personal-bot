@@ -28,7 +28,7 @@ export async function main(args: string[]): Promise<number> {
       "      pbot mcp\n\n" +
       "setup 安装或升级 Pi、pbot 和选中的插件，然后启动 Pi 执行 /pbot init。\n" +
       "install-antigravity 通过原生 agy plugin install 安装或更新 Antigravity 插件。\n" +
-      "mcp 启动跨 Harness 专家调度 stdio MCP 服务（供 Claude、Antigravity、Codex 等宿主调用）。\n" +
+      "mcp 启动跨 Harness 专家调度 stdio MCP 服务（暴露 pbot_worker，供 Pi、dsh、Claude、Antigravity、Codex 等宿主调用）。\n" +
       "支持 Linux/macOS，需要 Node.js 22.19+ 和 npm。\n--help 显示帮助；--version 显示安装器版本。");
     return 0;
   }

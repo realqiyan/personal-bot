@@ -37,9 +37,17 @@ function exchange(session, turn, prompt, text, { finish = "stop", interrupted = 
 }
 async function fixture(t) {
   const temp = await realpath(await mkdtemp(join(tmpdir(), "pbot-dsh-history-"))), root = join(temp, "workspace");
+  const previousAgentDir = process.env.PI_CODING_AGENT_DIR;
+  process.env.PI_CODING_AGENT_DIR = join(temp, "pi-agent");
   await mkdir(root);
   const host = await dshHost(join(temp, "native"));
-  t.after(async () => { try { await host.close(); } finally { await rm(temp, { recursive: true, force: true }); } });
+  t.after(async () => {
+    try { await host.close(); } finally {
+      if (previousAgentDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
+      else process.env.PI_CODING_AGENT_DIR = previousAgentDir;
+      await rm(temp, { recursive: true, force: true });
+    }
+  });
   return { temp, root, host };
 }
 

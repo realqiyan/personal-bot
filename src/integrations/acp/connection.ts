@@ -2,13 +2,12 @@ import { spawn } from "node:child_process";
 import { Readable, Writable } from "node:stream";
 import { setTimeout as delay } from "node:timers/promises";
 import * as acp from "@agentclientprotocol/sdk";
-import type { AcpModelSelection, AcpSessionReference } from "../../model/acp.js";
+import type { AcpHarnessAdapter, AcpModelSelection, AcpSessionReference } from "../../model/acp.js";
 import type { AgentOptions } from "../../model/agent.js";
 import { requireThat } from "../../common/validation.js";
 import { packageVersion } from "../../common/version.js";
 import { acpModelSelection, acpModelValue, acpThinkingValue } from "./model-selection.js";
-import type { ClaudeConfiguration } from "./claude.js";
-import { object } from "../../common/json.js";
+import { resolveAcpHarness } from "./registry.js";
 
 export function acpFailure(error: unknown): unknown {
   return error instanceof acp.RequestError && error.data !== undefined
@@ -21,10 +20,24 @@ export interface AcpCallbacks {
   permission(request: acp.RequestPermissionRequest, signal: AbortSignal): Promise<acp.RequestPermissionResponse>;
 }
 
-/** One ACP v1 connection. The worker owns its process group and business state. */
-export async function openAcp(reference: AcpSessionReference, cwd: string, env: NodeJS.ProcessEnv,
-  callbacks: AcpCallbacks, signal: AbortSignal, systemPrompt?: string, claude?: ClaudeConfiguration) {
+export interface OpenAcpOptions {
+  readonly harness?: AcpHarnessAdapter;
+  readonly systemPrompt?: string;
+  readonly sessionMeta?: Record<string, unknown>;
+  readonly defaultThinking?: string;
+}
+
+/** One ACP v1 connection. The worker owns its process group and business state; harness hooks stay in AcpHarnessAdapter. */
+export async function openAcp(
+  reference: AcpSessionReference,
+  cwd: string,
+  env: NodeJS.ProcessEnv,
+  callbacks: AcpCallbacks,
+  signal: AbortSignal,
+  openOptions: OpenAcpOptions = {},
+) {
   signal.throwIfAborted();
+  const harness = openOptions.harness ?? resolveAcpHarness(reference.backend);
   const child = spawn(reference.command, reference.args, { cwd, env, stdio: ["pipe", "pipe", "pipe"] });
   const lifetime = new AbortController();
   const cancel = AbortSignal.any([signal, lifetime.signal]);
@@ -36,10 +49,12 @@ export async function openAcp(reference: AcpSessionReference, cwd: string, env: 
   let sessionId: string | undefined;
   let options: acp.SessionConfigOption[] = [];
   let resolvedModel: string | undefined;
-  const selection = (): AcpModelSelection => ({ ...acpModelSelection(reference.backend, options, claude?.thinking),
-    ...(resolvedModel ? { resolvedModel } : {}) });
+  const selection = (): AcpModelSelection => ({
+    ...acpModelSelection(reference.backend, options, openOptions.defaultThinking),
+    ...(resolvedModel ? { resolvedModel } : {}),
+  });
   let updating = Promise.resolve();
-  const app = acp.client({ name: "personal-bot" })
+  let app = acp.client({ name: "personal-bot" })
     .onRequest(acp.methods.client.session.requestPermission, async ctx => {
       if (cancel.aborted || ctx.params.sessionId !== sessionId) return { outcome: { outcome: "cancelled" as const } };
       return callbacks.permission(ctx.params, cancel);
@@ -58,16 +73,19 @@ export async function openAcp(reference: AcpSessionReference, cwd: string, env: 
       });
       void updating.catch(error => lifetime.abort(error));
       return updating;
-    })
-    .onNotification("_claude/sdkMessage", (value: unknown) => value, ctx => {
-      if (reference.backend !== "claude" || !object(ctx.params) || ctx.params.sessionId !== sessionId || cancel.aborted) return;
-      const message = ctx.params.message;
-      if (!object(message) || message.type !== "system" || message.subtype !== "init" || typeof message.model !== "string" || !message.model) return;
-      const model = message.model;
+    });
+  if (harness.customNotificationMethod && harness.parseCustomNotification) {
+    const parse = harness.parseCustomNotification;
+    app = app.onNotification(harness.customNotificationMethod, (value: unknown) => value, ctx => {
+      if (!sessionId || cancel.aborted) return;
+      const parsed = parse(ctx.params, sessionId);
+      if (!parsed?.resolvedModel) return;
+      const model = parsed.resolvedModel;
       updating = updating.then(() => { resolvedModel = model; callbacks.selection?.(selection()); });
       void updating.catch(error => lifetime.abort(error));
       return updating;
     });
+  }
   const connection = await app.connect(acp.ndJsonStream(Writable.toWeb(child.stdin), Readable.toWeb(child.stdout) as ReadableStream<Uint8Array>, { maxMessageBytes: 8 * 1024 * 1024 }));
   const abort = () => connection.close(cancel.reason);
   cancel.addEventListener("abort", abort, { once: true });
@@ -98,13 +116,19 @@ export async function openAcp(reference: AcpSessionReference, cwd: string, env: 
     }, { cancellationSignal: AbortSignal.any([cancel, AbortSignal.timeout(30_000)]), stopWaitingOnCancel: true });
     requireThat(initialized.protocolVersion === 1, "目标宿主没有协商 ACP v1。");
     const advertised = initialized.agentCapabilities;
-    const capabilities = { resume: Boolean(advertised?.sessionCapabilities?.resume), load: advertised?.loadSession === true,
-      close: Boolean(advertised?.sessionCapabilities?.close) };
-    const setup = { cwd, mcpServers: [],
-      ...(reference.backend === "claude" ? { _meta: { claudeCode: { options: { ...claude?.options, disallowedTools: ["Agent", "Task"] },
-        emitRawSDKMessages: [{ type: "system", subtype: "init" }] } } } : {}), ...(systemPrompt && advertised?.sessionCapabilities?.systemPrompt ? {
-      systemPrompt: { mode: "append" as const, content: [{ type: "text" as const, text: systemPrompt }] },
-    } : {}) };
+    const capabilities = {
+      resume: Boolean(advertised?.sessionCapabilities?.resume),
+      load: advertised?.loadSession === true,
+      close: Boolean(advertised?.sessionCapabilities?.close),
+    };
+    const setup = {
+      cwd,
+      mcpServers: [],
+      ...(openOptions.sessionMeta ? { _meta: openOptions.sessionMeta } : {}),
+      ...(openOptions.systemPrompt && advertised?.sessionCapabilities?.systemPrompt ? {
+        systemPrompt: { mode: "append" as const, content: [{ type: "text" as const, text: openOptions.systemPrompt }] },
+      } : {}),
+    };
     if (reference.sessionId === null) {
       const created = await connection.agent.request<acp.NewSessionResponse>(acp.methods.agent.session.new, setup, { cancellationSignal: AbortSignal.any([cancel, AbortSignal.timeout(30_000)]), stopWaitingOnCancel: true });
       sessionId = created.sessionId; options = created.configOptions ?? [];

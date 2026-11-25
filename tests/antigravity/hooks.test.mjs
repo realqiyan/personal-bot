@@ -5,6 +5,8 @@ import { access, cp, mkdir, mkdtemp, readFile, readdir, realpath, rm, writeFile 
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
+import { pluginHook, pluginCommand } from "../../dist/extension/plugin-runtime.js";
+import { pluginHosts, registerPluginHost } from "../../dist/integrations/hosts/registry.js";
 
 const exec = promisify(execFile);
 const builtBundle = resolve("lib/antigravity-plugin");
@@ -50,13 +52,14 @@ test("disabled Antigravity hooks gate bundled skills and leave workspace untouch
   assert.equal((await skillRead(join(pluginDir, "skills/provider-connections/SKILL.md"))).decision, "deny");
   assert.deepEqual(await skillRead(join(pluginDir, "skills/pbot/SKILL.md")), { decision: "allow" });
   assert.deepEqual(await skillRead(join(workspace, "README.md")), { decision: "allow" });
+  // Host-native subagent calls are never intercepted or modified.
   assert.deepEqual(await hook("PreToolUse", {
-    toolCall: { id: "t2", name: "invoke_subagent", args: { TypeName: "general-purpose", Role: "Helper", Prompt: "Check status" } },
+    toolCall: { id: "t2", name: "invoke_subagent", args: { TypeName: "research", Role: "Explorer", Prompt: "Check status" } },
   }), { decision: "allow" });
   await assert.rejects(access(join(workspace, ".pbot")), { code: "ENOENT" });
 });
 
-test("enabled Antigravity workspace injects SessionStart context and subagent workspace supplement", async t => {
+test("enabled Antigravity workspace injects SessionStart context and never interferes with native subagents", async t => {
   const { pluginDir, workspace, run, hook } = await fixture(t);
   await mkdir(join(workspace, ".pbot"));
   const stored = { enabled: false, custom: { keep: true } };
@@ -69,7 +72,7 @@ test("enabled Antigravity workspace injects SessionStart context and subagent wo
   for (const directory of ["areas", "projects", "knowledge", "providers", "scratch", "agents"]) {
     await access(join(workspace, directory));
   }
-  await writeFile(join(workspace, "agents/general-purpose.md"), "LOCAL_EXPERT_RULE\n");
+  await assert.rejects(access(join(pluginDir, "agents")), { code: "ENOENT" });
 
   const started = await hook("SessionStart");
   assert.equal(Array.isArray(started.injectSteps), true);
@@ -82,16 +85,9 @@ test("enabled Antigravity workspace injects SessionStart context and subagent wo
     toolCall: { id: "t3", name: "read_file", args: { Path: join(pluginDir, "skills/project-maintenance/SKILL.md") } },
   }), { decision: "allow" });
 
-  const subagent = await hook("PreToolUse", {
-    toolCall: { id: "t4", name: "invoke_subagent", args: { TypeName: "general-purpose", Role: "Analyst", Prompt: "Run analysis" } },
-  });
-  assert.equal(subagent.decision, "allow");
-  assert.ok(subagent.overwrite.Prompt.includes("LOCAL_EXPERT_RULE"));
-  assert.ok(subagent.overwrite.Prompt.includes("Run analysis"));
-  assert.ok(subagent.overwrite.Prompt.includes(workspace));
-
+  // Native invoke_subagent passes through without any overwrite.
   assert.deepEqual(await hook("PreToolUse", {
-    toolCall: { id: "t5", name: "invoke_subagent", args: { TypeName: "research", Role: "Explorer", Prompt: "Scan repo" } },
+    toolCall: { id: "t4", name: "invoke_subagent", args: { TypeName: "self", Role: "Analyst", Prompt: "Run analysis" } },
   }), { decision: "allow" });
   assert.deepEqual(await readdir(join(workspace, ".pbot")), ["config.json"]);
 });
@@ -108,4 +104,34 @@ test("invalid config stays read-only and managed subagents pass through cleanly"
   assert.deepEqual(await hook("PreToolUse", {
     toolCall: { id: "t6", name: "read_file", args: { Path: "/tmp/file" } },
   }, { PBOT_SUBAGENT_RUN_ID: "managed" }), { decision: "allow" });
+});
+
+test("plugin host registry supports registering new hosts without modifying runtime code", async t => {
+  const workspace = await realpath(await mkdtemp(join(tmpdir(), "pbot-custom-host-")));
+  t.after(() => rm(workspace, { recursive: true, force: true }));
+  const customAdapter = {
+    host: "custom-ide",
+    nativeRootAgents: true,
+    coordinatorPrompt: "plugin-coordinator.md",
+    initCommandHint: "/pbot init",
+    usage: "custom-ide init|status",
+    async resolveRoot(cwd) { return realpath(cwd); },
+    parseEvent(payload) {
+      if (payload?.event === "start") return { kind: "inject-context", role: "coordinator", cwd: payload.cwd, raw: payload };
+      return { kind: "ignore" };
+    },
+    formatPass() { return { ok: true }; },
+    formatContext(_event, context) { return { injected: context.text, host: context.environment.host }; },
+    formatDeny(_event, reason) { return { denied: reason }; },
+  };
+  registerPluginHost(customAdapter);
+  t.after(() => pluginHosts.unregister("custom-ide"));
+
+  assert.equal(pluginHosts.require("custom-ide"), customAdapter);
+  assert.deepEqual(await pluginHook(customAdapter, { event: "start", cwd: workspace }), { ok: true });
+  const initResult = await pluginCommand(customAdapter, ["init"], workspace);
+  assert.equal(initResult.configuration.enabled, true);
+  const started = await pluginHook(customAdapter, { event: "start", cwd: workspace });
+  assert.equal(started.host, "custom-ide");
+  assert.equal(typeof started.injected, "string");
 });

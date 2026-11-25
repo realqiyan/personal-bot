@@ -13,18 +13,28 @@ function memberDirectory(home: string, host: "pi" | "dsh") {
   return join(tilde ? join(homedir(), home.slice(2)) : home, "pbot/subagents");
 }
 
-/** A target session can be owned by either coordinator, even when its cwd belongs to another workspace. */
-export function acpHistorySessions(directories: { pi?: string; dsh?: string }) {
+function defaultMcpWorkerDirectories(): string[] {
+  const dirs = [join(homedir(), ".pbot/subagents")];
+  if (process.env.PBOT_MCP_AGENT_DIR) dirs.push(process.env.PBOT_MCP_AGENT_DIR);
+  if (process.env.PLUGIN_DATA) dirs.push(join(process.env.PLUGIN_DATA, "subagents"));
+  return dirs;
+}
+
+/** Exclude ACP worker sessions owned by MCP or legacy Pi/dsh control directories from native history. */
+export function acpHistorySessions(directories: { pi?: string; dsh?: string; mcp?: string } = {}) {
   const ids: Record<HistoryHost, Set<string>> = { pi: new Set(), dsh: new Set(), claude: new Set() };
   const warnings: string[] = [];
   const warn = (path: string, error: unknown) => {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") warnings.push(path + ": " + String(error));
   };
   const homes = { pi: process.env.PI_CODING_AGENT_DIR || "~/.pi/agent", dsh: process.env.DSH_HOME?.trim() ? process.env.DSH_HOME : "~/.dsh" };
-  for (const host of ["pi", "dsh"] as const) {
-    let directory = directories[host];
+  const scanDirs = new Set<string>([
+    directories.pi ?? memberDirectory(homes.pi, "pi"),
+    directories.dsh ?? memberDirectory(homes.dsh, "dsh"),
+    ...(directories.mcp ? [directories.mcp] : defaultMcpWorkerDirectories()),
+  ]);
+  for (const directory of scanDirs) {
     try {
-      directory ??= memberDirectory(homes[host], host);
       for (const entry of readdirSync(directory, { withFileTypes: true })) {
         if (!entry.isDirectory() || entry.name.startsWith(".")) continue;
         const path = join(directory, entry.name);
@@ -33,7 +43,7 @@ export function acpHistorySessions(directories: { pi?: string; dsh?: string }) {
           if (ref.sessionId !== null && isHistoryHost(ref.backend)) ids[ref.backend].add(ref.sessionId);
         } catch (error) { warn(path, error); }
       }
-    } catch (error) { warn(directory ?? homes[host], error); }
+    } catch (error) { warn(directory, error); }
   }
   return { ids, warnings };
 }

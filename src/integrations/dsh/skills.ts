@@ -1,5 +1,6 @@
 import { join } from "node:path";
 import type { Context } from "@deepseek-ai/cordis";
+import type {} from "@deepseek-ai/dsh-fs";
 import type { Agent } from "@deepseek-ai/dsh-agent";
 import { scopeParentOf } from "@deepseek-ai/dsh-scope";
 import { FileSystemSkillProvider } from "@deepseek-ai/dsh-skill-filesystem";

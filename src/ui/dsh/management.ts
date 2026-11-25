@@ -1,15 +1,12 @@
 import type { Context } from "@deepseek-ai/cordis";
 import type {} from "@deepseek-ai/dsh-api-remotes/client";
 import type { SessionId } from "@deepseek-ai/dsh-session/types";
-import type { CommandSubmitAttachment } from "@deepseek-ai/dsh-commands/types";
-import { commandAttachments } from "./attachments.js";
 import { object, json } from "../../common/json.js";
-import { stateLabel } from "../presentation.js";
-import { badge, block, details, element, empty, facts, field, group, lines, note, objectInput, pageTitle, record, rows, select, text, time } from "./elements.js";
+import { block, details, element, empty, facts, field, group, note, pageTitle, record, rows, select, text, time } from "./elements.js";
 import { managementStyles } from "./styles.js";
 import type {} from "./remote.js";
 
-/** The view owns drafts, uploads and queries. Accepted commands belong to the server workspace. */
+/** The view owns workspace and history queries. Accepted commands belong to the server workspace. */
 export function showManagement(ctx: Context, parentSessionId: SessionId) {
   const opener = document.activeElement, dialog = element("dialog"), style = element("style");
   dialog.className = "pbot-management"; dialog.setAttribute("aria-label", "Personal Bot 工作台"); style.textContent = managementStyles;
@@ -21,10 +18,10 @@ export function showManagement(ctx: Context, parentSessionId: SessionId) {
   const notice = element("div", "", "pbot-notice"), connection = element("span", "正在连接…"); notice.setAttribute("role", "status");
   main.append(notice); footer.append(connection); shell.append(nav, main, footer); dialog.prepend(style);
   const lifetime = new AbortController(); let closed = false, timer: number | undefined, tab = "status";
-  let snapshot: Record<string, unknown> | undefined, expertId = "", teamId = "", expertOffset: number | undefined;
-  let snapshotRevision = 0, expertRevision = 0, teamRevision = 0, historyRevision = 0, recordRevision = 0;
-  let expertPageKey = "", teamPageKey = "", pollError = false;
-  const sections = new Map<string, HTMLElement>(), tabs = new Map<string, HTMLButtonElement>(), tabCounts = new Map<string, HTMLElement>();
+  let snapshot: Record<string, unknown> | undefined;
+  let snapshotRevision = 0, historyRevision = 0, pollError = false;
+  const sections = new Map<string, HTMLElement>(), tabs = new Map<string, HTMLButtonElement>();
+
   function inform(message: string, tone = "info") {
     if (closed) return; notice.textContent = message; notice.dataset.tone = tone;
     notice.setAttribute("role", tone === "error" ? "alert" : "status");
@@ -59,7 +56,7 @@ export function showManagement(ctx: Context, parentSessionId: SessionId) {
     node.setAttribute("role", "tabpanel"); node.setAttribute("aria-labelledby", `pbot-tab-${id}`); main.append(node); sections.set(id, node);
     const control = button(nav, title, () => activate(id)); control.id = `pbot-tab-${id}`; control.setAttribute("role", "tab");
     control.setAttribute("aria-controls", node.id); control.setAttribute("aria-selected", String(id === tab)); control.tabIndex = id === tab ? 0 : -1;
-    const count = element("small"); count.setAttribute("aria-hidden", "true"); control.append(count); tabCounts.set(id, count); tabs.set(id, control); return node;
+    tabs.set(id, control); return node;
   }
   nav.addEventListener("keydown", event => {
     const controls = [...tabs.values()], current = controls.indexOf(document.activeElement as HTMLButtonElement);
@@ -69,15 +66,14 @@ export function showManagement(ctx: Context, parentSessionId: SessionId) {
       : ["ArrowLeft", "ArrowUp"].includes(event.key) ? (current + controls.length - 1) % controls.length : -1;
     if (index < 0) return; event.preventDefault(); const id = [...tabs.keys()][index]!; activate(id); controls[index]!.focus();
   });
-  async function query(method: "snapshot" | "expert" | "team" | "history", input?: unknown) {
+  async function query(method: "snapshot" | "history", input?: unknown) {
     lifetime.signal.throwIfAborted();
     const result = await ctx.remote.pbot[method](json({ parentSessionId, ...(input === undefined ? {} : { input }) }), lifetime.signal);
     if (!result.ok) throw new Error(result.error.message);
     lifetime.signal.throwIfAborted(); return record(result.value);
   }
-  async function command(verb: string, input?: unknown, message = "操作已接纳。", attachments: readonly CommandSubmitAttachment[] = []) {
-    // Closing the view must not cancel an admitted command.
-    const result = await ctx.remote.commands.execute(parentSessionId, "/pbot " + verb + (input === undefined ? "" : " " + JSON.stringify(input)), attachments);
+  async function command(verb: string, input?: unknown, message = "操作已接纳。") {
+    const result = await ctx.remote.commands.execute(parentSessionId, "/pbot " + verb + (input === undefined ? "" : " " + JSON.stringify(input)), []);
     if (!result.ok) throw new Error(result.error.message + "；如连接中断，请先刷新记录确认操作是否已接纳。");
     if (!result.value) throw new Error("管理命令未被接纳。");
     if (result.value.result.kind === "error") throw new Error(result.value.result.text);
@@ -91,211 +87,6 @@ export function showManagement(ctx: Context, parentSessionId: SessionId) {
   const materials = group(status, "pbot-setting"); materials.append(element("h3", "资料目录"));
   const initializeButton = button(materials, "准备目录", async () => { await command("init", undefined, "工作区已初始化并启用。"); });
   const diagnostic = details(status, "环境详情"), statusBody = block(""); statusBody.classList.add("pbot-raw"); diagnostic.append(statusBody);
-  const permissions = group(status, "pbot-setting"); permissions.hidden = true;
-  let permissionKey = "";
-
-  const experts = section("experts", "专家"); pageTitle(experts, "专家", "");
-  const create = details(experts, "创建专家"), createForm = form(create), newName = field(createForm, "名称"), initial = field(createForm, "任务（可选）", true);
-  newName.placeholder = "例如：研究员"; initial.placeholder = "任务目标与交付要求";
-  const backend = select(createForm, "运行宿主", [["", "当前宿主"], ["pi", "Pi"], ["dsh", "dsh"], ["claude", "Claude Code"]]);
-  const options = details(createForm, "模型与选项"), modelFields = group(options, "pbot-grid");
-  options.querySelector("summary")!.after(note("当前宿主留空沿用主会话；其他宿主留空使用目标配置。"));
-  const provider = field(modelFields, "Provider"), model = field(modelFields, "模型");
-  const effort = field(options, "Reasoning effort"), cwd = field(options, "工作目录");
-  const files = field(options, "文件路径（每行一个）", true);
-  const advanced = field(details(options, "其他选项"), "JSON", true, "{}");
-  submit(createForm, "创建", async () => {
-    const args = { ...objectInput(advanced.value), action: "start", ...(backend.value ? { backend: backend.value } : {}), ...(newName.value ? { name: newName.value } : {}),
-      ...(initial.value ? { message: initial.value } : {}), ...(provider.value ? { provider: provider.value } : {}),
-      ...(model.value ? { model: model.value } : {}), ...(effort.value ? { thinking: effort.value } : {}),
-      ...(cwd.value ? { cwd: cwd.value } : {}), ...(lines(files.value).length ? { files: lines(files.value) } : {}) };
-    const output = objectInput(await command("agent", args, "专家已创建。"));
-    if (initial.value === (args.message ?? "")) initial.value = ""; create.open = false; await chooseExpert(text(output.agentId));
-  });
-  const expertSplit = group(experts, "pbot-split"), expertAside = group(expertSplit), expertFilter = field(expertAside, "筛选专家");
-  expertFilter.placeholder = "名称或状态"; const expertList = group(expertAside, "pbot-list");
-  expertList.setAttribute("aria-label", "专家列表");
-  const expertDetail = group(expertSplit, "pbot-detail"), expertEmpty = empty("选择专家", "查看记录或发送消息。"); expertDetail.append(expertEmpty);
-  const expertPanel = group(expertDetail); expertPanel.hidden = true;
-  const expertHeading = group(expertPanel, "pbot-detail-title"), expertTitle = element("h3"), expertBadge = element("span"); expertHeading.append(expertTitle, expertBadge);
-  const expertInfo = group(expertPanel), expertError = element("p", "", "pbot-warning"); expertPanel.append(expertError); expertError.hidden = true;
-  const expertControls = group(expertPanel, "pbot-row"), requireExpert = () => { if (!expertId) throw new Error("请先选择专家。"); return expertId; };
-  const stopButton = button(expertControls, "停止专家", async () => { await command("agent", { action: "stop", agentId: requireExpert() }, "已请求停止专家。"); await loadExpert(); }, "pbot-danger");
-  const editExpert = details(expertPanel, "名称与会话详情"), renameForm = form(editExpert), rename = field(renameForm, "新名称"); rename.required = true;
-  submit(renameForm, "重命名", async () => { await command("agent", { action: "rename", agentId: requireExpert(), name: rename.value }, "专家名称已更新。"); await loadExpert(); });
-  const expertState = block(""); expertState.classList.add("pbot-raw"); editExpert.append(expertState);
-  const resume = details(expertPanel, "恢复专家"), resumeForm = form(resume), resumeText = field(resumeForm, "新任务", true); resumeText.required = true;
-  const resumeButton = submit(resumeForm, "恢复并发送新任务", async () => {
-    const message = resumeText.value; await command("agent", { action: "resume", agentId: requireExpert(), message }, "专家已恢复，新任务已排队。");
-    if (resumeText.value === message) resumeText.value = ""; await loadExpert();
-  });
-  const chatCard = group(expertPanel, "pbot-card"); chatCard.append(element("h3", "人工对话"), note("发送前暂停团队新安排。"));
-  const chatForm = form(chatCard), chat = field(chatForm, "消息", true); chat.maxLength = 24000; chat.placeholder = "补充资料、调整方向，或提出新问题…";
-  const delivery = select(chatForm, "投递时机", [["steer", "下一个安全步骤"], ["followUp", "下一轮"]]);
-  const localFiles = field(chatForm, "附件") as HTMLInputElement; localFiles.type = "file"; localFiles.multiple = true;
-  const chatFiles = field(details(chatForm, "服务器文件"), "路径（每行一个）", true);
-  const expertDrafts = new Map<string, { text: string; delivery: string; paths: string; files: File[] }>();
-  function clearSentDraft(id: string, input: { text: string }, paths: string, chosen: File[]) {
-    const draft = expertDrafts.get(id);
-    if (draft) {
-      if (draft.text === input.text) draft.text = ""; if (draft.paths === paths) draft.paths = "";
-      if (draft.files.length === chosen.length && draft.files.every((file, index) => file === chosen[index])) draft.files = [];
-    }
-  }
-  const sendButton = submit(chatForm, "发送人工消息", async () => {
-    const id = requireExpert(), fileText = chatFiles.value, files = lines(fileText), chosen = Array.from(localFiles.files ?? []);
-    if (files.length && chosen.length) throw new Error("一次对话请选择服务器文件或本机附件，不能同时使用。");
-    if (!chat.value.trim() && !files.length && !chosen.length) { chat.focus(); throw new Error("请输入消息或添加附件。"); }
-    const input = { agentId: id, text: chat.value, delivery: delivery.value, files };
-    const attachments = await commandAttachments(ctx, parentSessionId, chosen, lifetime.signal, inform);
-    lifetime.signal.throwIfAborted(); await command("chat", input, "消息已排队，专家会在所选时机接收。", attachments);
-    clearSentDraft(id, input, fileText, chosen);
-    if (expertId === id) {
-      if (chat.value === input.text) chat.value = ""; if (chatFiles.value === fileText) chatFiles.value = "";
-      const current = Array.from(localFiles.files ?? []);
-      if (current.length === chosen.length && current.every((file, index) => file === chosen[index])) localFiles.value = "";
-      await loadExpert();
-    }
-  });
-  const transcript = group(expertPanel, "pbot-transcript"); transcript.append(element("h3", "对话与活动"));
-  const recordControls = group(transcript, "pbot-pagination"), eventList = group(transcript), rawEvents = details(transcript, "全部原生事件"), rawEventList = group(rawEvents);
-  const eventDetail = details(transcript, "完整记录"), eventBody = block(""), eventPaging = element("div", "", "pbot-pagination"); eventDetail.append(eventBody, eventPaging); eventDetail.hidden = true;
-  async function chooseExpert(id: string) {
-    if (id !== expertId) {
-      if (expertId) expertDrafts.set(expertId, { text: chat.value, delivery: delivery.value, paths: chatFiles.value, files: Array.from(localFiles.files ?? []) });
-      const draft = expertDrafts.get(id); chat.value = draft?.text ?? ""; delivery.value = draft?.delivery ?? "steer"; chatFiles.value = draft?.paths ?? "";
-      const transfer = new DataTransfer(); for (const file of draft?.files ?? []) transfer.items.add(file); localFiles.files = transfer.files;
-      rename.value = ""; resumeText.value = "";
-    }
-    expertId = id; expertOffset = undefined; expertPageKey = ""; ++recordRevision; ++expertRevision;
-    eventBody.textContent = ""; eventDetail.hidden = true; eventPaging.replaceChildren(); expertPanel.hidden = true;
-    expertEmpty.hidden = false; expertEmpty.replaceChildren(note("正在读取专家记录…"));
-    renderLists(); await loadExpert();
-  }
-  function showExpert(agent: Record<string, unknown>) {
-    expertTitle.textContent = text(agent.name); expertBadge.replaceChildren(badge(agent.state)); expertPanel.hidden = false; expertEmpty.hidden = true;
-    const config = object(agent.options) ? agent.options : {}, selected = record(agent.selection);
-    const configuredModel = [selected.provider ?? config.provider, selected.model ?? config.model].filter(Boolean).join("/");
-    const chosenModel = selected.resolvedModel && selected.resolvedModel !== configuredModel ? `${configuredModel} → ${text(selected.resolvedModel)}` : configuredModel;
-    expertInfo.replaceChildren(note(text(agent.activity) || "等待新的任务。"), facts([["宿主", agent.backend || "当前宿主"], ["模型", chosenModel || (agent.transport === "acp" ? "目标宿主配置" : "继承父会话")],
-      ["思考等级", selected.thinking || config.thinking || "宿主默认"], ["工作目录", agent.cwd]]));
-    const steering = delivery.querySelector<HTMLOptionElement>('option[value="steer"]')!;
-    steering.disabled = agent.transport === "acp";
-    if (steering.disabled && delivery.value === "steer") delivery.value = "followUp";
-    expertState.textContent = JSON.stringify(agent, null, 2); expertError.textContent = text(agent.error); expertError.hidden = !agent.error;
-    const alive = agent.alive === true, owned = agent.owned === true;
-    enabled(stopButton, owned && alive && agent.state !== "stopping"); enabled(sendButton, owned && alive && !["starting", "stopping"].includes(text(agent.state)));
-    enabled(resumeButton, owned && !alive); resume.hidden = alive;
-  }
-  async function loadRecord(seq: number, offset = 0, format: "text" | "json" = "text") {
-    const revision = ++recordRevision, id = requireExpert(), data = await query("expert", { agentId: id, seq, textOffset: offset, format });
-    if (id !== expertId || revision !== recordRevision) return;
-    eventDetail.hidden = false; eventDetail.open = true; eventBody.textContent = text(data.text); eventBody.classList.toggle("pbot-raw", format === "json");
-    eventPaging.replaceChildren(element("span", `记录 ${seq} · ${offset + 1}–${offset + text(data.text).length} / ${data.totalLength}`));
-    button(eventPaging, format === "text" ? data.kind === "acp" ? "查看记录详情" : "查看原始事件" : "查看正文", () => loadRecord(seq, 0, format === "text" ? "json" : "text"));
-    if (offset) button(eventPaging, "从头读取", () => loadRecord(seq, 0, format));
-    if (typeof data.nextOffset === "number") button(eventPaging, "继续读取", () => loadRecord(seq, data.nextOffset as number, format));
-  }
-  async function loadExpert() {
-    if (!expertId) return;
-    const revision = ++expertRevision, id = expertId, data = await query("expert", { agentId: id, ...(expertOffset === undefined ? {} : { offset: expertOffset }) });
-    if (id !== expertId || revision !== expertRevision) return;
-    showExpert(record(data.agent)); const actualOffset = Number(data.offset), key = `${id}:${data.cursor}:${actualOffset}`;
-    if (key === expertPageKey) return; expertPageKey = key; recordControls.replaceChildren();
-    button(recordControls, "最新记录", async () => { expertOffset = undefined; await loadExpert(); });
-    if (actualOffset > 0) button(recordControls, "上一页", async () => { expertOffset = Math.max(0, actualOffset - 30); await loadExpert(); });
-    if (typeof data.nextOffset === "number") button(recordControls, "下一页", async () => { expertOffset = data.nextOffset as number; await loadExpert(); });
-    recordControls.append(element("span", `${data.total} 条记录 · 从 ${actualOffset + 1} 开始`));
-    const expanded = new Set(Array.from(rawEventList.querySelectorAll("details[open]")).map(item => (item as HTMLElement).dataset.seq));
-    eventList.replaceChildren(); rawEventList.replaceChildren();
-    rawEvents.querySelector("summary")!.textContent = data.kind === "acp" ? "全部任务与报告" : "全部原生事件";
-    const labels: Record<string, string> = { "user/message": "输入", "assistant/message": "专家回复", "tool/result": "工具结果", "turn/end": "本轮结束", "acp/input": "任务", "acp/report": "专家报告" };
-    for (const event of rows(data.kind === "acp" ? data.records : data.events)) {
-      const seq = Number(event.seq), label = event.type === "user/message"
-        ? event.source === "user" ? "输入" : event.source === "pbot-input" ? "任务" : undefined : labels[text(event.type)];
-      if (label && text(event.preview)) {
-        const item = element("article", "", "pbot-event"), meta = group(item, "pbot-row"); meta.append(element("h4", label), note(time(event.time)));
-        item.append(block(event.preview)); button(item, "阅读全文", () => loadRecord(seq), "pbot-quiet"); eventList.append(item);
-      }
-      const item = details(rawEventList, `${seq} · ${event.type} · ${time(event.time)}`); item.dataset.seq = text(seq); item.open = expanded.has(text(seq));
-      item.append(block(event.preview)); button(item, "读取事件", () => loadRecord(seq, 0, "json"));
-    }
-    if (!eventList.childElementCount) eventList.append(empty("还没有对话内容", "发送任务后，可在这里查看专家的回复与工具结果。"));
-  }
-
-  const teams = section("teams", "团队"); pageTitle(teams, "团队", "");
-  const createTeam = details(teams, "创建团队"), teamForm = form(createTeam), teamName = field(teamForm, "团队名称"), brief = field(teamForm, "共同目标", true);
-  teamName.required = true; brief.required = true; teamName.placeholder = "例如：投资研究小组";
-  teamForm.append(note("为成员填写职责，留空则不加入。")); const memberFields = group(teamForm);
-  submit(teamForm, "创建团队", async () => {
-    const members = Array.from(memberFields.querySelectorAll<HTMLInputElement>("input[data-agent-id]")).filter(input => input.value.trim())
-      .map(input => ({ agentId: input.dataset.agentId!, role: input.value }));
-    const value = objectInput(await command("team", { action: "create", name: teamName.value, brief: brief.value, members }, "团队已创建，可以安排首个批次。"));
-    createTeam.open = false; await chooseTeam(text(value.teamId));
-  });
-  const teamSplit = group(teams, "pbot-split"), teamList = group(teamSplit, "pbot-list"), teamDetail = group(teamSplit, "pbot-detail");
-  teamList.setAttribute("aria-label", "团队列表");
-  const teamEmpty = empty("选择团队", "查看进展与公共消息。"), teamPanel = group(teamDetail); teamDetail.prepend(teamEmpty); teamPanel.hidden = true;
-  const teamHeading = group(teamPanel, "pbot-detail-title"), teamTitle = element("h3"), teamBadge = element("span"); teamHeading.append(teamTitle, teamBadge);
-  const teamInfo = group(teamPanel), teamState = block(""); teamState.classList.add("pbot-raw");
-  const teamControls = group(teamPanel, "pbot-row"), requireTeam = () => { if (!teamId) throw new Error("请先选择团队。"); return teamId; };
-  const pauseButton = button(teamControls, "暂停新安排", async () => { await command("team", { action: "pause", teamId: requireTeam() }, "已暂停新安排；在途任务仍可能完成。"); await loadTeam(); });
-  const teamConfig = details(teamPanel, "成员与团队详情"); teamConfig.append(teamState);
-  const closeTeamButton = button(teamConfig, "关闭团队", async () => { await command("team", { action: "close", teamId: requireTeam() }, "团队已关闭，成员专家仍可独立使用。"); await loadTeam(); }, "pbot-danger");
-  const batch = details(teamPanel, "新批次"), batchForm = form(batch), instruction = field(batchForm, "任务与交付要求", true); instruction.required = true;
-  const batchOptions = group(batchForm, "pbot-grid"), mode = select(batchOptions, "讨论模式", [["roundRobin", "轮流讨论"], ["parallel", "并行轮次"]]);
-  const rounds = field(batchOptions, "每位成员轮数", false, "2"), concurrency = field(batchOptions, "并发上限", false, "1"), timeout = field(batchOptions, "整批期限（秒）", false, "900");
-  for (const [input, max] of [[rounds, 10], [concurrency, 50], [timeout, 86400]] as const) { input.setAttribute("type", "number"); input.setAttribute("min", "1"); input.setAttribute("max", text(max)); input.required = true; }
-  const runButton = submit(batchForm, "开始新批次", async () => {
-    await command("team", { action: "run", teamId: requireTeam(), instruction: instruction.value,
-      mode: mode.value, rounds: Number(rounds.value), maxConcurrent: Number(concurrency.value), timeoutSeconds: Number(timeout.value) }, "新批次已开始。"); await loadTeam();
-  });
-  const publicCard = group(teamPanel, "pbot-card");
-  const postForm = form(publicCard), post = field(postForm, "公共消息", true); post.required = true;
-  const replyTo = field(details(postForm, "回复消息"), "回复序号"); replyTo.setAttribute("type", "number"); replyTo.setAttribute("min", "1");
-  const postButton = submit(postForm, "发布公共消息", async () => {
-    const id = requireTeam(), message = post.value;
-    await command("post", { teamId: id, text: message, ...(replyTo.value ? { replyTo: Number(replyTo.value) } : {}) }, "公共消息已发布。");
-    if (teamId === id && post.value === message) post.value = "";
-    const draft = teamDrafts.get(id); if (draft?.text === message) draft.text = "";
-    await loadTeam();
-  });
-  const teamMessages = group(teamPanel), teamPaging = group(teamPanel, "pbot-pagination");
-  let teamAfter = 0, teamPage: Record<string, unknown> = { afterSeq: 0 };
-  const teamDrafts = new Map<string, { text: string; reply: string; instruction: string; mode: string; rounds: string; concurrency: string; timeout: string }>();
-  async function chooseTeam(id: string) {
-    if (id !== teamId) {
-      if (teamId) teamDrafts.set(teamId, { text: post.value, reply: replyTo.value, instruction: instruction.value, mode: mode.value, rounds: rounds.value, concurrency: concurrency.value, timeout: timeout.value });
-      const draft = teamDrafts.get(id); post.value = draft?.text ?? ""; replyTo.value = draft?.reply ?? ""; instruction.value = draft?.instruction ?? "";
-      mode.value = draft?.mode ?? "roundRobin"; rounds.value = draft?.rounds ?? "2"; concurrency.value = draft?.concurrency ?? "1"; timeout.value = draft?.timeout ?? "900";
-    }
-    teamId = id; teamAfter = 0; teamPageKey = ""; ++teamRevision; teamPanel.hidden = true; teamEmpty.hidden = false;
-    teamEmpty.replaceChildren(note("正在读取团队记录…")); renderLists(); await loadTeam({ afterSeq: 0 });
-  }
-  async function loadTeam(nextPage?: Record<string, unknown>) {
-    if (!teamId) return; if (nextPage) teamPage = nextPage; const page = teamPage, id = teamId;
-    const revision = ++teamRevision, data = await query("team", { teamId: id, ...page }); if (id !== teamId || revision !== teamRevision) return;
-    const team = record(data.team), messages = record(data.page), run = object(team.run) ? team.run : undefined;
-    teamPanel.hidden = false; teamEmpty.hidden = true; teamTitle.textContent = text(team.name); teamBadge.replaceChildren(badge(team.closed ? "closed" : run?.state ?? "open"));
-    teamInfo.replaceChildren(block(team.brief), facts([["成员", rows(team.members).map(member => `${member.name} · ${member.role}`).join("\n")],
-      ["批次进展", run ? `已安排 ${run.scheduled} · 已交付 ${run.published} · 在途 ${team.activeCount}` : "尚未开始"],
-      ...(run?.reason ? [["暂停原因", run.reason] as [string, unknown]] : [])]));
-    teamState.textContent = JSON.stringify(team, null, 2);
-    enabled(pauseButton, !team.closed && run?.state === "running"); enabled(closeTeamButton, !team.closed);
-    enabled(runButton, !team.closed && run?.state !== "running" && Number(team.activeCount) === 0); enabled(postButton, !team.closed);
-    const key = JSON.stringify([id, page, messages]); if (key === teamPageKey) return; teamPageKey = key;
-    teamMessages.replaceChildren(); teamPaging.replaceChildren();
-    for (const message of rows(messages.messages)) {
-      const author = record(message.author), item = element("article", "", "pbot-message"), meta = group(item, "pbot-row");
-      meta.append(element("h4", text(author.name)), note(`#${message.seq}${message.replyTo ? ` · 回复 #${message.replyTo}` : ""}`)); item.append(block(message.text));
-      if (typeof message.nextOffset === "number") button(item, "继续读取这条消息", () => loadTeam({ seq: message.seq, offset: message.nextOffset }), "pbot-quiet");
-      teamMessages.append(item);
-    }
-    if (!teamMessages.childElementCount) teamMessages.append(empty("还没有公共消息", "发布资料或开启批次后，成员会在这里共享结果。"));
-    button(teamPaging, "从第一条读取", async () => { teamAfter = 0; await loadTeam({ afterSeq: 0 }); });
-    if (typeof messages.nextAfterSeq === "number") button(teamPaging, "后续消息", async () => { teamAfter = messages.nextAfterSeq as number; await loadTeam({ afterSeq: teamAfter }); });
-    if (page.seq !== undefined) button(teamPaging, "返回消息列表", () => loadTeam({ afterSeq: teamAfter }));
-  }
 
   const history = section("history", "历史"); pageTitle(history, "历史", "");
   const searchForm = form(history); searchForm.className = "pbot-search";
@@ -311,8 +102,12 @@ export function showManagement(ctx: Context, parentSessionId: SessionId) {
     if (Array.isArray(values)) for (const warning of values) if (warning) parent.append(element("p", text(warning), "pbot-warning"));
   }
   async function searchHistory(offset = 0, keepFilters = false) {
-    if (!keepFilters) historySearch = { query: historyQuery.value, ...(host.value ? { host: host.value } : {}),
-      ...(historyFrom.value ? { from: new Date(historyFrom.value).toISOString() } : {}), ...(historyTo.value ? { to: new Date(historyTo.value).toISOString() } : {}) };
+    if (!keepFilters) historySearch = {
+      query: historyQuery.value,
+      ...(host.value ? { host: host.value } : {}),
+      ...(historyFrom.value ? { from: new Date(historyFrom.value).toISOString() } : {}),
+      ...(historyTo.value ? { to: new Date(historyTo.value).toISOString() } : {}),
+    };
     const revision = ++historyRevision, data = await query("history", { action: "search", ...historySearch, offset });
     if (revision !== historyRevision) return;
     historyNode.hidden = true; historyBody.replaceChildren(note(`共 ${data.total} 项`)); warnings(historyBody, data.warnings); historyPaging.replaceChildren();
@@ -330,8 +125,12 @@ export function showManagement(ctx: Context, parentSessionId: SessionId) {
     const revision = ++historyRevision, data = await query("history", { action: "read", id, host: source, offset, childrenOffset });
     if (revision !== historyRevision) return;
     const node = record(data.node); historyNode.hidden = false;
-    historyNode.replaceChildren(element("h3", text(node.name)), note(`${text(node.host)} · ${time(node.from)} · ${node.completed ? "原交互已完成" : "原交互未确认完成"}`),
-      block(node.text || "摘要尚未生成，可展开下级记录阅读原文。")); warnings(historyNode, data.warnings);
+    historyNode.replaceChildren(
+      element("h3", text(node.name)),
+      note(`${text(node.host)} · ${time(node.from)} · ${node.completed ? "原交互已完成" : "原交互未确认完成"}`),
+      block(node.text || "摘要尚未生成，可展开下级记录阅读原文。"),
+    );
+    warnings(historyNode, data.warnings);
     for (const item of historyBody.querySelectorAll<HTMLElement>("article")) item.setAttribute("aria-current", String(item.dataset.id === id && item.dataset.host === source));
     const paging = group(historyNode, "pbot-pagination");
     if (offset) button(paging, "正文开头", () => readHistory(id, source, 0, childrenOffset));
@@ -347,40 +146,16 @@ export function showManagement(ctx: Context, parentSessionId: SessionId) {
     historyNode.scrollIntoView({ block: "start" });
   }
 
-  const expertButtons = new Map<string, HTMLButtonElement>(), teamButtons = new Map<string, HTMLButtonElement>();
-  function syncList(container: HTMLElement, buttons: Map<string, HTMLButtonElement>, values: Record<string, unknown>[], kind: "agent" | "team") {
-    const ids = new Set(values.map(value => text(value[kind + "Id"])));
-    for (const [id, node] of buttons) if (!ids.has(id)) { node.remove(); buttons.delete(id); }
-    container.querySelector(":scope > .pbot-empty")?.remove();
-    for (const value of values) {
-      const id = text(value[kind + "Id"]), state = kind === "agent" ? value.state : value.closed ? "closed" : object(value.run) ? value.run.state : "open";
-      let node = buttons.get(id);
-      if (!node) { node = button(container, "", () => kind === "agent" ? chooseExpert(id) : chooseTeam(id), "pbot-list-item"); buttons.set(id, node); }
-      node.setAttribute("aria-label", text(value.name)); node.setAttribute("aria-pressed", String(id === (kind === "agent" ? expertId : teamId)));
-      const signature = JSON.stringify([value.name, state, value.activity, value.brief]);
-      if (node.dataset.content !== signature) {
-        node.dataset.content = signature; node.replaceChildren(); const row = group(node, "pbot-between"); row.append(element("strong", text(value.name)), badge(state));
-        if (kind === "team" || !["idle", "stopped"].includes(text(state))) node.append(note(text(kind === "agent" ? value.activity : value.brief)));
-      }
-      node.hidden = kind === "agent" && !`${value.name} ${stateLabel(state)}`.toLowerCase().includes(expertFilter.value.trim().toLowerCase());
-    }
-    if (!values.length || [...buttons.values()].every(node => node.hidden)) {
-      container.append(empty(values.length ? "没有匹配的专家" : kind === "agent" ? "还没有专家" : "还没有团队", values.length ? "调整名称或状态关键词。" : kind === "agent" ? "展开上方“创建专家”开始。" : "先创建专家，再为成员分配职责。"));
-    }
-  }
-  function renderLists() {
-    if (!snapshot) return;
-    syncList(expertList, expertButtons, rows(snapshot.agents), "agent"); syncList(teamList, teamButtons, rows(snapshot.teams), "team");
-  }
-  expertFilter.addEventListener("input", renderLists);
   function renderSnapshot() {
     if (!snapshot) return;
     location.textContent = text(snapshot.workspaceRoot).split(/[\\/]/).filter(Boolean).at(-1) ?? ""; location.title = text(snapshot.workspaceRoot);
     if (snapshot.enabled === false) {
       const configuration = record(snapshot.configuration);
       counts.textContent = configuration.error ? "Personal Bot 配置错误" : "Personal Bot 未启用";
-      workspaceInfo.replaceChildren(facts([["状态", configuration.error ? "配置错误" : "未启用"], ["工作区", snapshot.workspaceRoot], ["配置文件", configuration.path]]),
-        note(configuration.error ? "修复配置文件后执行 /pbot init。" : "执行 /pbot init，或点击下方按钮初始化并启用。"));
+      workspaceInfo.replaceChildren(
+        facts([["状态", configuration.error ? "配置错误" : "未启用"], ["工作区", snapshot.workspaceRoot], ["配置文件", configuration.path]]),
+        note(configuration.error ? "修复配置文件后执行 /pbot init。" : "执行 /pbot init，或点击下方按钮初始化并启用。"),
+      );
       materials.hidden = false; initializeButton.textContent = "初始化并启用";
       enabled(initializeButton, !configuration.error);
       for (const [id, control] of tabs) enabled(control, id === "status");
@@ -391,42 +166,25 @@ export function showManagement(ctx: Context, parentSessionId: SessionId) {
     }
     for (const control of tabs.values()) enabled(control, true);
     materials.hidden = false; initializeButton.textContent = "准备目录"; enabled(initializeButton, true);
-    const agents = rows(snapshot.agents), teams = rows(snapshot.teams), history = record(snapshot.history);
-    tabCounts.get("experts")!.textContent = text(agents.length); tabCounts.get("teams")!.textContent = text(teams.length);
-    const active = agents.filter(agent => ["starting", "busy", "stopping"].includes(text(agent.state))).length;
-    counts.textContent = `Personal Bot 已启动 · 专家 ${agents.length} · 执行中 ${active} · 团队 ${teams.length}`;
+    const historyState = record(snapshot.history);
+    counts.textContent = "Personal Bot 已启动 · 跨 Harness 调度通过 MCP pbot_worker 提供";
     const model = object(snapshot.model) ? snapshot.model : {};
-    workspaceInfo.replaceChildren(facts([["状态", "已启动"], ["工作区", snapshot.workspaceRoot], ["配置文件", record(snapshot.configuration).path], ["模型", model.model || "尚未选择"], ["Provider", model.provider || "—"],
-      ["历史", history.organizing ? "整理中" : history.pending === null ? "查询时更新索引" : `${history.pending} 项待整理`]]));
-    const { agents: _agents, teams: _teams, ...summary } = snapshot; statusBody.textContent = JSON.stringify(summary, null, 2);
-    const pending = rows(snapshot.permissions), nextPermissionKey = pending.map(request => text(request.agentId) + ":" + text(request.requestId)).join(",");
-    permissions.hidden = !pending.length;
-    if (nextPermissionKey !== permissionKey) {
-      permissionKey = nextPermissionKey; permissions.replaceChildren(element("h3", "专家请求确认"));
-      for (const request of pending) {
-        const card = group(permissions, "pbot-card"); card.append(element("h4", text(request.name)), block(request.description));
-        const choices = group(card, "pbot-row");
-        for (const option of rows(request.options)) button(choices, text(option.name), async () => {
-          await command("approval", { agentId: request.agentId, requestId: request.requestId, optionId: option.optionId }, "确认答复已提交。");
-        });
-        button(choices, "取消", async () => { await command("approval", { agentId: request.agentId, requestId: request.requestId, optionId: null }, "已取消该请求。"); });
-      }
-    }
-    if (snapshot.controlError) inform(text(snapshot.controlError), "error"); renderLists();
-    const owned = agents.filter(value => value.owned && record(value.capabilities).team !== false), ids = new Set(owned.map(agent => text(agent.agentId)));
-    for (const input of memberFields.querySelectorAll<HTMLInputElement>("input[data-agent-id]")) if (!ids.has(input.dataset.agentId!)) input.parentElement?.remove();
-    memberFields.querySelector(":scope > p")?.remove();
-    for (const agent of owned) {
-      const id = text(agent.agentId); let input = Array.from(memberFields.querySelectorAll<HTMLInputElement>("input[data-agent-id]")).find(input => input.dataset.agentId === id);
-      if (!input) { input = field(memberFields, `${agent.name} · 职责`) as HTMLInputElement; input.dataset.agentId = id; }
-      const label = `${agent.name} · 职责`; input.setAttribute("aria-label", label); input.parentElement!.querySelector("span")!.textContent = label;
-    }
-    if (!owned.length) memberFields.append(note("还没有可加入的专家，请先在专家页创建。"));
+    workspaceInfo.replaceChildren(facts([
+      ["状态", "已启动"],
+      ["工作区", snapshot.workspaceRoot],
+      ["配置文件", record(snapshot.configuration).path],
+      ["模型", model.model || "尚未选择"],
+      ["Provider", model.provider || "—"],
+      ["历史", historyState.organizing ? "整理中" : historyState.pending === null ? "查询时更新索引" : `${historyState.pending} 项待整理`],
+    ]));
+    statusBody.textContent = JSON.stringify(snapshot, null, 2);
   }
+
   async function refresh() {
     const revision = ++snapshotRevision, value = await query("snapshot"); if (revision !== snapshotRevision) return;
     snapshot = value; renderSnapshot(); connection.textContent = "已连接 · 状态自动更新";
   }
+
   button(footer, "刷新状态", refresh, "pbot-quiet");
   const close = button(header, "×", () => dispose(), "pbot-close pbot-quiet"); close.setAttribute("aria-label", "关闭工作台"); close.title = "关闭 · Esc";
   const dispose = ctx.effect(() => {
@@ -436,7 +194,7 @@ export function showManagement(ctx: Context, parentSessionId: SessionId) {
   dialog.addEventListener("cancel", event => { event.preventDefault(); void dispose(); });
   async function poll() {
     try {
-      await refresh(); if (tab === "experts" && expertId) await loadExpert(); if (tab === "teams" && teamId) await loadTeam();
+      await refresh();
       if (pollError) { inform("连接已恢复，状态已更新。"); pollError = false; }
     } catch (error) {
       if (!closed) { connection.textContent = "连接中断 · 正在重试"; if (!pollError) inform("读取状态失败：" + String(error), "error"); pollError = true; }

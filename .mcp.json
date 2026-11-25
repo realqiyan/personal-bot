@@ -1,6 +1,6 @@
 {
   "mcpServers": {
-    "personal-bot-agents": {
+    "pbot": {
       "command": "node",
       "args": ["${CLAUDE_PLUGIN_ROOT}/lib/extension/mcp.js"]
     }

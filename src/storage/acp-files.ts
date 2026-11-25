@@ -9,6 +9,9 @@ export function acpReference(value: unknown): AcpSessionReference {
   requireThat(object(value) && value.host === "acp" && isAcpBackend(value.backend) &&
     text(value.command) && isAbsolute(value.command) && Array.isArray(value.args) && value.args.every(arg => typeof arg === "string" && !arg.includes("\0")) &&
     (value.sessionId === null || text(value.sessionId)), "ACP 会话引用无效。");
+  if (value.env !== undefined) {
+    requireThat(object(value.env) && Object.entries(value.env).every(([k, v]) => text(k) && typeof v === "string" && !v.includes("\0")), "ACP 环境变量配置无效。");
+  }
   const capabilities = value.capabilities;
   if (capabilities !== undefined) requireThat(object(capabilities) &&
     ["resume", "load", "close"].every(key => typeof capabilities[key] === "boolean"), "ACP 会话能力无效。");

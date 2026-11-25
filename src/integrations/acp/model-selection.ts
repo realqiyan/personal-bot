@@ -1,6 +1,7 @@
 import type { SessionConfigOption } from "@agentclientprotocol/sdk";
 import type { AcpBackend, AcpModelSelection } from "../../model/acp.js";
 import { requireThat } from "../../common/validation.js";
+import { resolveAcpHarness } from "./registry.js";
 
 type SelectOption = Extract<SessionConfigOption, { type: "select" }>;
 
@@ -13,28 +14,19 @@ function values(option: SelectOption) {
   return [...new Map(option.options.flatMap(item => "options" in item ? item.options : [item]).map(item => [item.value, item])).values()];
 }
 function modelIdentity(backend: AcpBackend, value: string): { provider?: string; model: string } {
-  if (backend === "dsh") {
-    try {
-      const parts: unknown = JSON.parse(value);
-      if (Array.isArray(parts) && parts.length === 2 && parts.every(part => typeof part === "string" && part.length > 0)) {
-        return { provider: parts[0], model: parts[1] };
-      }
-    } catch { /* Unencoded identifiers remain usable as exact ACP option values. */ }
-  }
-  if (backend === "pi") {
-    const separator = value.indexOf("/");
-    if (separator > 0) return { provider: value.slice(0, separator), model: value.slice(separator + 1) };
-  }
-  return { model: value };
+  const harness = resolveAcpHarness(backend);
+  return harness.parseModelValue ? harness.parseModelValue(value) : { model: value };
 }
 
-/** Resolve a native model ID against the peer's advertised values. */
+/** Resolve a native model ID against the peer's advertised values using the harness adapter. */
 export function acpModelValue(backend: AcpBackend, options: SessionConfigOption[], model: string, provider?: string) {
   const option = optionFor(options, "model");
   requireThat(option, "ACP 后端未提供可选择的模型。");
   const choices = values(option);
-  if (backend === "pi" && provider) {
-    const qualified = choices.find(item => item.value === provider + "/" + model);
+  const harness = resolveAcpHarness(backend);
+  const formatted = harness.formatModelQuery?.(model, provider);
+  if (formatted) {
+    const qualified = choices.find(item => item.value === formatted);
     if (qualified) return { configId: option.id, value: qualified.value };
   }
   const available = choices.map(item => ({ ...modelIdentity(backend, item.value), value: item.value }));

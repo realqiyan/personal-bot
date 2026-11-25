@@ -55,6 +55,6 @@ export default function(pi) {
   assert.equal(code, 0, diagnostic);
   const observed = JSON.parse(await readFile(output, "utf8"));
   assert.deepEqual(observed.skills, expected);
-  assert.deepEqual(observed.tools, ["pbot_agent", "pbot_history", "pbot_team", "pbot_team_message"]);
+  assert.deepEqual(observed.tools, ["pbot_history"]);
   assert.equal(observed.assistantMessages, 0);
 });

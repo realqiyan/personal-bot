@@ -30,7 +30,7 @@ test("native autocomplete exposes current command contracts", async t => {
   const suggest = text => autocomplete.getSuggestions([text], 0, text.length, { force: false });
   const all = await suggest("/pbot ");
   assert.equal(all.prefix, "");
-  assert.deepEqual(all.items.map(item => item.value), ["init", "status", "enter"]);
+  assert.deepEqual(all.items.map(item => item.value), ["init", "status", "worker"]);
   const filtered = await suggest("/pbot st");
   assert.deepEqual(filtered.items.map(item => item.value), ["status"]);
   const completed = autocomplete.applyCompletion(["/pbot st"], 0, 8, filtered.items[0], filtered.prefix);
@@ -41,8 +41,8 @@ test("native autocomplete exposes current command contracts", async t => {
 });
 
 for (const legacy of [undefined, '{"format":"legacy/1","status":"pending"}', "invalid historical JSON"]) {
-  test("an opted-in workspace enables tools and skills and preserves legacy state: " + (legacy ?? "empty"), async t => {
-    const { root, loader, session, errors } = await host(t, { prepare: async root => {
+  test("an opted-in workspace enables pbot_history, registers unified MCP server, and preserves legacy state: " + (legacy ?? "empty"), async t => {
+    const { root, loader, session, errors, api } = await host(t, { prepare: async root => {
       if (legacy === undefined) return;
       await mkdir(join(root, ".legacy"));
       await writeFile(join(root, ".legacy/workspace.json"), legacy);
@@ -53,7 +53,8 @@ for (const legacy of [undefined, '{"format":"legacy/1","status":"pending"}', "in
     const environment = JSON.parse(started.systemPromptOptions.sections.pbot_environment);
     assert.deepEqual(environment, { host: "pi", workspaceRoot: root, resourceRoot });
     assert.deepEqual(errors, []);
-    assert.deepEqual(session.getAllTools().map(t => t.name).filter(n => n.startsWith("pbot_")).sort(), ["pbot_agent", "pbot_history", "pbot_team", "pbot_team_message"]);
+    assert.deepEqual(session.getAllTools().map(t => t.name).filter(n => n.startsWith("pbot_")).sort(), ["pbot_history"]);
+    assert.ok(api.getMcpServers().some(server => server.name === "pbot"));
     assert.ok(loader.getSkills().skills.length > 0);
     assert.deepEqual((await readdir(root)).sort(), legacy === undefined ? [".pbot"] : [".legacy", ".pbot"]);
     if (legacy !== undefined) assert.equal(await readFile(join(root, ".legacy/workspace.json"), "utf8"), legacy);
@@ -62,12 +63,11 @@ for (const legacy of [undefined, '{"format":"legacy/1","status":"pending"}', "in
     await writeFile(join(root, "AGENTS.md"), "User instructions");
     await session.prompt("/pbot init");
     assert.equal(await readFile(join(root, "AGENTS.md"), "utf8"), "User instructions");
-    assert.deepEqual(session.getAllTools().map(t => t.name).filter(n => n.startsWith("pbot_")).sort(), ["pbot_agent", "pbot_history", "pbot_team", "pbot_team_message"]);
+    assert.deepEqual(session.getAllTools().map(t => t.name).filter(n => n.startsWith("pbot_")).sort(), ["pbot_history"]);
   });
 }
 
 async function runScript(session, id, code, signal) {
-  // Restore a local session call record. No model produces or executes this fixture.
   const model = session.model;
   assert.ok(model);
   session.sessionManager.appendMessage({ role: "assistant", api: model.api, provider: model.provider, model: model.id,
@@ -82,20 +82,19 @@ function scriptValue(result) {
   return JSON.parse(result.content.slice(1).map(part => part.text).join(""));
 }
 
-
 test("real codemode discovers Personal Bot and uses native CLI without initialization", async t => {
   const { session } = await host(t);
   const result = await runScript(session, "native-tools", `
     const names = ALL_TOOLS.filter(tool => tool.name.startsWith("pbot_")).map(tool => tool.name).sort();
     const namespace = await describeNamespace("pbot");
     const output = await tools.bash({ command: "printf '%s' 42" });
-    const agents = await tools.pbot_agent({ action: "list" });
-    return { names, namespace: namespace.name, agents, output };
+    const history = await tools.pbot_history({ action: "search" });
+    return { names, namespace: namespace.name, history, output };
   `);
   const data = scriptValue(result);
-  assert.deepEqual(data.names, ["pbot_agent", "pbot_history", "pbot_team", "pbot_team_message"]);
+  assert.deepEqual(data.names, ["pbot_history"]);
   assert.equal(data.namespace, "pbot");
-  assert.deepEqual(data.agents, { agents: [] });
+  assert.equal(data.history.total, 0);
   assert.ok(result.details.calls.every(call => call.status === "ok"));
 });
 
@@ -118,11 +117,6 @@ test("remaining tool declarations and structured outputs match their contracts",
     assert.equal(tool.parameters.type, "object", tool.name);
     for (const keyword of ["anyOf", "oneOf", "allOf"]) assert.equal(tool.parameters[keyword], undefined);
   }
-  const agent = tools.find(t => t.name === "pbot_agent");
-  const output = await agent.execute("list", { action: "list" });
-  assert.ok(schema(agent.outputSchema)(output.structuredContent));
-  assert.deepEqual(output.details, output.structuredContent);
-  await assert.rejects(agent.execute("removed", { action: "wait", agentId: "x" }));
   const history = tools.find(t => t.name === "pbot_history");
   const found = await history.execute("history", { action: "search" });
   assert.ok(schema(history.outputSchema)(found.structuredContent));
@@ -130,12 +124,12 @@ test("remaining tool declarations and structured outputs match their contracts",
   await assert.rejects(history.execute("missing-node", { action: "read" }));
 });
 
-test("workspace shutdown invalidates previously acquired tools", async t => {
-  const { session } = await host(t);
-  const agent = session.agent.state.tools.find(t => t.name === "pbot_agent");
+test("workspace shutdown invalidates previously acquired tools and unregisters MCP server", async t => {
+  const { session, api } = await host(t);
   const history = session.agent.state.tools.find(t => t.name === "pbot_history");
+  assert.ok(api.getMcpServers().some(server => server.name === "pbot"));
   await session.extensionRunner.emit({ type: "session_shutdown", reason: "reload" });
-  await assert.rejects(agent.execute("stale", { action: "list" }));
   await assert.rejects(history.execute("stale", { action: "search" }));
-  assert.ok(!session.getCallableToolNames().includes("pbot_agent"));
+  assert.ok(!session.getCallableToolNames().includes("pbot_history"));
+  assert.equal(api.getMcpServers().some(server => server.name === "pbot"), false);
 });

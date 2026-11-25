@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
 import { readdir } from "node:fs/promises";
 import { join } from "node:path";
-import { createAgentSession, DefaultResourceLoader, ModelRuntime, SessionManager, SettingsManager } from "@earendil-works/pi-coding-agent";
+import { createAgentSession, createMcpExtension, DefaultResourceLoader, ModelRuntime, SessionManager, SettingsManager } from "@earendil-works/pi-coding-agent";
 import guard from "../../dist/extension/setup-guard.js";
 
 const [workspace, agentDir, source, enabled] = process.argv.slice(2);
 const settingsManager = SettingsManager.inMemory({ packages: enabled === "yes" ? [source] : [] });
-const loader = new DefaultResourceLoader({ cwd: workspace, agentDir, settingsManager, noContextFiles: true, extensionFactories: [guard] });
+const loader = new DefaultResourceLoader({ cwd: workspace, agentDir, settingsManager, noContextFiles: true, extensionFactories: [createMcpExtension(), guard] });
 await loader.reload();
 assert.equal(loader.getExtensions().errors.length, 0);
 const modelRuntime = await ModelRuntime.create({ authPath: join(agentDir, "auth.json"), modelsPath: join(agentDir, "models.json") });
@@ -24,7 +24,7 @@ try {
   const files = await readdir(workspace);
   if (enabled === "yes") {
     assert.ok(files.includes("AGENTS.md"));
-    assert.ok(session.getAllTools().some(tool => tool.name === "pbot_agent"));
+    assert.ok(session.getAllTools().some(tool => tool.name === "pbot_history"));
     assert.ok(loader.getSkills().skills.length > 0);
   }
   else assert.deepEqual(files, []);

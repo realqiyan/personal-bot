@@ -1,76 +1,90 @@
 import { realpath } from "node:fs/promises";
 import { requireThat } from "../common/validation.js";
 import { authorizeMutation } from "../services/workspace/workspace-files.js";
-import type { AgentOwner } from "../model/agent.js";
-import type { AgentService } from "../services/agents/agent-service.js";
-import type { TeamService } from "../services/agents/team-service.js";
 import type { CallAccess } from "../tools/access.js";
 import type { HistoryService } from "../services/history/history-service.js";
 import { readWorkspaceConfig, workspaceDisabledMessage } from "../services/workspace/workspace-config.js";
 import type { WorkspaceConfiguration } from "../model/workspace-config.js";
+import type { McpWorkerRuntime } from "./mcp-workers.js";
 
 export class WorkspaceInstance implements CallAccess {
   readonly #controller = new AbortController();
   #work = new AbortController();
   #closing: Promise<void> | undefined;
-  constructor(readonly root: string, readonly agents: AgentService, readonly teams: TeamService, readonly history: HistoryService) {}
+
+  constructor(
+    readonly root: string,
+    readonly sessionId: string,
+    readonly history: HistoryService,
+    readonly workers: McpWorkerRuntime,
+  ) {}
+
   check() {
     requireThat(!this.#controller.signal.aborted, "pbot 工作区实例已关闭。");
   }
+
   signal(signal?: AbortSignal) {
     this.check();
     return AbortSignal.any([this.#controller.signal, this.#work.signal, ...(signal ? [signal] : [])]);
   }
+
   async authorizeFile(path: string, change: unknown, confirm: (value: unknown) => Promise<boolean>, signal: AbortSignal) {
     this.check();
     await authorizeMutation(this.root, path, change, confirm, signal);
     this.check();
   }
-  agentOwner: AgentOwner | undefined;
+
   cancelWork() {
     this.#work.abort();
     this.#work = new AbortController();
   }
-  close(preserveAgents = false): Promise<void> {
+
+  close(preserveWorkers = false): Promise<void> {
     if (this.#closing) return this.#closing;
     this.#controller.abort();
     this.#work.abort();
     this.#closing = (async () => {
-      const errors: unknown[] = [];
-      try { if (this.agentOwner) this.teams.pauseAll(this.agentOwner, "主会话关闭或重新载入"); }
-      catch (error) { errors.push(error); }
-      this.teams.dispose();
-      const results = await Promise.allSettled([this.agents.close(this.agentOwner, preserveAgents), this.history.close()]);
-      errors.push(...results.filter(result => result.status === "rejected").map(result => result.reason));
+      const results = await Promise.allSettled([this.workers.close(preserveWorkers), this.history.close()]);
+      const errors = results.filter(result => result.status === "rejected").map(result => result.reason);
       if (errors.length) throw new AggregateError(errors, "工作区关闭失败。");
     })();
     return this.#closing;
   }
 }
+
 export class Lifecycle {
   #active: WorkspaceInstance | undefined;
   configuration: WorkspaceConfiguration | undefined;
   root: string | undefined;
-  constructor(private readonly create: (root: string, configuration: WorkspaceConfiguration) => WorkspaceInstance,
-    private readonly register: (instance: WorkspaceInstance) => void, private readonly hide: () => void) {}
+
+  constructor(
+    private readonly create: (root: string, sessionId: string, configuration: WorkspaceConfiguration) => WorkspaceInstance,
+    private readonly register: (instance: WorkspaceInstance) => void,
+    private readonly hide: () => void,
+  ) {}
+
   get active() { return this.#active; }
+
   get() {
     requireThat(this.#active, this.configuration ? workspaceDisabledMessage(this.configuration) : "pbot 工作区实例不可用。");
-    this.#active.check(); return this.#active;
+    this.#active.check();
+    return this.#active;
   }
-  async open(root: string) {
+
+  async open(root: string, sessionId: string) {
     await this.close();
     this.root = await realpath(root);
     this.configuration = await readWorkspaceConfig(this.root);
     if (!this.configuration.enabled) return;
-    const instance = this.create(this.root, this.configuration);
+    const instance = this.create(this.root, sessionId, this.configuration);
     this.#active = instance;
     try { this.register(instance); }
     catch (error) { await this.close(); throw error; }
   }
-  async close(preserveAgents = false) {
+
+  async close(preserveWorkers = false) {
     const old = this.#active;
     this.#active = undefined;
-    try { await old?.close(preserveAgents); } finally { this.hide(); }
+    try { await old?.close(preserveWorkers); } finally { this.hide(); }
   }
 }

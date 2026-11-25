@@ -14,7 +14,8 @@ async function fixture(t) {
   const files = new AgentFiles(root), id = randomUUID(), generation = randomUUID();
   files.create({ agentId: id, release: packageVersion, workspace: root, cwd: root,
     parentSessionId: "parent", parentLeaf: null, createdAt: 1, options: {} },
-  { generation, name: "local", sequence: 0, stop: false, startedAt: 1 });
+  { generation, name: "local", sequence: 0, stop: false, startedAt: 1 },
+  { host: "acp", backend: "local", command: process.execPath, args: [], sessionId: null });
   return { files, id, generation };
 }
 

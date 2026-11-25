@@ -26,7 +26,7 @@ test("E2E: an unconfigured workspace stays inactive until native init starts it"
   assert.equal(status().state, "running");
   assert.equal(status().enabled, true);
   const after = await pi.inspect();
-  assert.ok(after.tools.includes("pbot_agent"));
+  assert.ok(after.tools.includes("pbot_history"));
   assert.ok(after.skills.includes("provider-connections"));
   assert.deepEqual(await readJson(join(workspace.root, ".pbot/config.json")), { enabled: true });
   assert.equal(await readFile(join(workspace.root, "AGENTS.md"), "utf8"), original);
@@ -38,7 +38,7 @@ test("E2E: startup preserves history and leaves native Bash available", { timeou
   const workspace = await rpcWorkspace(t);
   let pi = await workspace.start();
   const resources = await pi.inspect();
-  assert.deepEqual(resources.tools.filter(name => name.startsWith("pbot_")).sort(), ["pbot_agent", "pbot_history", "pbot_team", "pbot_team_message"]);
+  assert.deepEqual(resources.tools.filter(name => name.startsWith("pbot_")).sort(), ["pbot_history"]);
   assert.ok(resources.skills.length > 0);
   assert.deepEqual(await readdir(workspace.root), [".pbot"]);
   const context = await pi.driver("context");

@@ -30,7 +30,7 @@ test("Pi init starts a missing workspace and discovers methods only after activa
   assert.deepEqual(pbotSkills(session._baseSystemPromptOptions), []);
   await session.prompt("/pbot init");
   assert.deepEqual(JSON.parse(await readFile(workspaceConfigPath(root), "utf8")), { enabled: true });
-  assert.ok(session.getAllTools().some(tool => tool.name === "pbot_agent"));
+  assert.ok(session.getAllTools().some(tool => tool.name === "pbot_history"));
   assert.ok(pbotSkills(session._baseSystemPromptOptions).length > 0);
   assert.ok(loader.getAgentsFiles().agentsFiles.some(file => file.path === join(root, "AGENTS.md")));
   assert.deepEqual(errors, []);
@@ -40,7 +40,7 @@ test("Pi reload applies workspace opt-in and opt-out and invalidates previously 
   const { root, session, errors } = await host(t, { workspaceEnabled: false });
   await initializeWorkspaceConfig(root);
   await session.reload();
-  const previous = session.agent.state.tools.find(tool => tool.name === "pbot_agent");
+  const previous = session.agent.state.tools.find(tool => tool.name === "pbot_history");
   assert.ok(previous);
   await session._prepareRun({ messageType: "user", prompt: "Inspect enabled workspace" });
   assert.equal(JSON.parse(session._runSystemPromptOptions.sections.pbot_environment).workspaceRoot, root);
@@ -48,7 +48,7 @@ test("Pi reload applies workspace opt-in and opt-out and invalidates previously 
   await writeFile(workspaceConfigPath(root), JSON.stringify({ enabled: false, future: { preserved: true } }));
   await session.reload();
   assert.equal(session.getCallableToolNames().some(name => name.startsWith("pbot_")), false);
-  await assert.rejects(previous.execute("stale", { action: "list" }));
+  await assert.rejects(previous.execute("stale", { action: "search" }));
   await session._prepareRun({ messageType: "user", prompt: "Inspect disabled workspace" });
   assert.equal(Object.hasOwn(session._runSystemPromptOptions.sections, "pbot_environment"), false);
   assert.deepEqual(pbotSkills(session._runSystemPromptOptions), []);

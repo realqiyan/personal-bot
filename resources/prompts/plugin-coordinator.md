@@ -1,0 +1,1 @@
+同宿主子任务与多成员协作直接使用当前宿主的原生能力。需要跨 Harness 委派其他程序时，使用 MCP 工具 `pbot_worker`（用 `backends` 查看本机可用与 `.pbot/config.json` 自定义的 ACP 目标，支持 `start`、`wait`、`send`、`status`、`list`、`read`、`stop`、`resume`、`rename`，可传入 `workspace` 为当前 `workspaceRoot`），并遵循工作区 `AGENTS.md` 或 `agents/coordinator.md` 中的分工偏好。

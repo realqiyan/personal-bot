@@ -4,7 +4,7 @@ import { json, type Json } from "../../common/json.js";
 type Query = (request: Json, signal?: AbortSignal) => Promise<RemoteResult<Json>>;
 declare module "@deepseek-ai/dsh-typert-protocol" {
   interface TypertRemoteNamespaceMap {
-    pbot: { snapshot: Query; expert: Query; team: Query; history: Query };
+    pbot: { snapshot: Query; history: Query };
   }
 }
 
@@ -12,7 +12,7 @@ declare module "@deepseek-ai/dsh-typert-protocol" {
 const value: TypertCodec<Json> = { mode: "strict", typeSymbol: "personal-bot#Json", create: () => ({ parse: json }) };
 export const pbotReadRemote: TypertRemoteContribution = {
   package: "personal-bot",
-  descriptors: ["snapshot", "expert", "team", "history"].map((method): InvocationDescriptor => ({
+  descriptors: ["snapshot", "history"].map((method): InvocationDescriptor => ({
     id: "personal-bot#PbotManagement." + method, service: "pbotManagement", namespace: "pbot", method,
     invocation: { kind: "direct" }, parameters: [{ name: "request", wire: "request", source: "json", codec: value }],
     cancellation: { parameter: "signal" }, result: value,

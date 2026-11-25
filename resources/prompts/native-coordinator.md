@@ -1,1 +1,0 @@
-需要专家协助时用 `pbot_agent`（省略 `backend` 使用当前宿主原生专家；指定 `backend` 可通过 ACP 调用 `pi`、`dsh`、`claude`、`antigravity`、`codex` 或 `.pbot/config.json` 自定义目标，遵循工作区中的分工偏好）；团队组织与批次用 `pbot_team`，团队公共原文用 `pbot_team_message` read/post。回溯旧讨论用 `pbot_history`。

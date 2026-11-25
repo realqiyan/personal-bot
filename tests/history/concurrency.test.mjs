@@ -19,7 +19,13 @@ function exchange(manager, text) {
 }
 async function fixture(t) {
   const root = await mkdtemp(join(tmpdir(), "pbot-history-writers-"));
-  t.after(() => rm(root, { recursive: true, force: true }));
+  const previousAgentDir = process.env.PI_CODING_AGENT_DIR;
+  process.env.PI_CODING_AGENT_DIR = join(root, "pi-agent");
+  t.after(async () => {
+    if (previousAgentDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
+    else process.env.PI_CODING_AGENT_DIR = previousAgentDir;
+    await rm(root, { recursive: true, force: true });
+  });
   const manager = SessionManager.create(root, join(root, "native"));
   for (let i = 0; i < 4; i++) exchange(manager, "问题 " + i);
   const files = new HistoryFiles(join(root, "index"));

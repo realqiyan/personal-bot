@@ -9,7 +9,7 @@ import * as pbot from "../../dist/dsh.js";
 import { initializeWorkspaceConfig, workspaceConfigPath } from "../../dist/services/workspace/workspace-config.js";
 import { dshHost } from "../helpers/dsh-host.mjs";
 
-test("one dsh profile applies workspace opt-in independently, including reload and malformed configuration", async () => {
+test("one dsh profile applies workspace opt-in independently, mounts unified MCP pbot_worker, and leaves native subagents intact", async () => {
   const root = await realpath(await mkdtemp(join(tmpdir(), "pbot-dsh-config-")));
   const saved = { HOME: process.env.HOME, XDG_DATA_HOME: process.env.XDG_DATA_HOME, DSH_HOME: process.env.DSH_HOME };
   Object.assign(process.env, { HOME: join(root, "user"), XDG_DATA_HOME: join(root, "user/data"), DSH_HOME: join(root, "home") });
@@ -33,8 +33,14 @@ test("one dsh profile applies workspace opt-in independently, including reload a
       assert.equal(view.enabled, enabled);
       assert.equal(view.state, index === 3 ? "error" : enabled ? "running" : "disabled");
       if (!enabled && index !== 3) assert.equal(view.nextStep, "/pbot init");
-      assert.equal(host.ctx.tools.definitions(agent).some(tool => tool.name === "pbot_agent"), enabled);
-      assert.ok(host.ctx.tools.definitions(agent).some(tool => tool.name === "read"));
+      const toolNames = host.ctx.tools.definitions(agent).map(tool => tool.name);
+      assert.equal(toolNames.includes("pbot_history"), enabled);
+      assert.equal(toolNames.includes("mcp__pbot__pbot_worker"), enabled);
+      assert.equal(toolNames.includes("pbot_agent"), false);
+      assert.equal(toolNames.includes("pbot_team"), false);
+      // Native tools including native subagent_fork stay untouched.
+      assert.ok(toolNames.includes("read"));
+      assert.ok(toolNames.includes("subagent_fork"));
       const skills = await host.ctx.skills.list({ scope: agent, cwd: agent.session.header.cwd });
       assert.equal(skills.some(skill => skill.provider === "pbot"), enabled);
       const context = await host.ctx.systemPrompt.assemble(assembleContextFor(agent, signal));
@@ -42,7 +48,7 @@ test("one dsh profile applies workspace opt-in independently, including reload a
       assert.equal(agent.session.snapshotEvents().some(event => event.type === "turn/start"), false);
     }
     assert.equal(typeof (await status(handles[3].agent)).configuration.error, "string");
-    await assert.rejects(host.ctx.commands.execute(handles[1].agent, '/pbot agent {"action":"list"}', [], signal));
+    await assert.rejects(host.ctx.commands.execute(handles[1].agent, '/pbot worker {"action":"list"}', [], signal));
     assert.deepEqual(await readdir(other), []);
     assert.deepEqual(await readdir(nested), []);
     const sibling = await create(other); handles.push(sibling);
@@ -50,7 +56,8 @@ test("one dsh profile applies workspace opt-in independently, including reload a
       host.ctx.commands.execute(agent, "/pbot init", [], signal)));
     for (const result of initialized) assert.equal(JSON.parse(result.result.text).state, "running");
     assert.equal((await status(sibling.agent)).enabled, true);
-    assert.ok(host.ctx.tools.definitions(sibling.agent).some(tool => tool.name === "pbot_agent"));
+    assert.ok(host.ctx.tools.definitions(sibling.agent).some(tool => tool.name === "pbot_history"));
+    assert.ok(host.ctx.tools.definitions(sibling.agent).some(tool => tool.name === "mcp__pbot__pbot_worker"));
     assert.equal((await status(handles[2].agent)).enabled, false);
     assert.deepEqual(JSON.parse(await readFile(workspaceConfigPath(other), "utf8")), { enabled: true });
     await assert.rejects(host.ctx.commands.execute(handles[3].agent, "/pbot init", [], signal));
@@ -63,8 +70,10 @@ test("one dsh profile applies workspace opt-in independently, including reload a
     extension = await host.ctx.plugin(pbot);
     assert.equal((await status(handles[0].agent)).enabled, false);
     assert.equal((await status(handles[1].agent)).enabled, true);
-    assert.equal(host.ctx.tools.definitions(handles[0].agent).some(tool => tool.name === "pbot_agent"), false);
-    assert.equal(host.ctx.tools.definitions(handles[1].agent).some(tool => tool.name === "pbot_agent"), true);
+    assert.equal(host.ctx.tools.definitions(handles[0].agent).some(tool => tool.name === "pbot_history"), false);
+    assert.equal(host.ctx.tools.definitions(handles[0].agent).some(tool => tool.name === "mcp__pbot__pbot_worker"), false);
+    assert.equal(host.ctx.tools.definitions(handles[1].agent).some(tool => tool.name === "pbot_history"), true);
+    assert.equal(host.ctx.tools.definitions(handles[1].agent).some(tool => tool.name === "mcp__pbot__pbot_worker"), true);
     await extension.dispose();
     for (const handle of handles) await handle.dispose();
   } finally {

@@ -1,127 +1,92 @@
+import { existsSync } from "node:fs";
 import { realpath } from "node:fs/promises";
-import { dshHomePath } from "@deepseek-ai/dsh-home-paths";
+import { resolve } from "node:path";
 import type { Agent } from "@deepseek-ai/dsh-agent";
 import type { Context } from "@deepseek-ai/cordis";
-import type { FileBlock, ImageBlock } from "@deepseek-ai/dsh-llm";
-import { AgentBackends } from "../../integrations/acp/agents.js";
-import type { AcpCommands } from "../../model/acp.js";
-import type { AgentOwner } from "../../model/agent.js";
+import * as McpClient from "@deepseek-ai/dsh-mcp-client";
 import { rootAgents } from "../../integrations/dsh/root-agents.js";
-import { DshAgents } from "../../integrations/dsh/dsh-agents.js";
-import { dshResources, dshExpertTools } from "../../integrations/dsh/resources.js";
-import { AgentService } from "../../services/agents/agent-service.js";
-import { TeamService } from "../../services/agents/team-service.js";
-import { registerDshAgentTool } from "../../tools/agents/dsh-tool.js";
-import { registerDshTeamTool, registerDshTeamMessageTool } from "../../tools/teams/dsh-tool.js";
-import { DshAgentRuntime } from "./agent-runtime.js";
-import { DshAgentEvents } from "./agent-events.js";
+import { dshResources } from "../../integrations/dsh/resources.js";
 import { registerDshFileEvents } from "./files.js";
 import { DshHistoryWork, registerDshHistoryEvents } from "./history.js";
 import type { HistoryService } from "../../services/history/history-service.js";
 import { registerDshHistoryTool } from "../../tools/history/dsh-tool.js";
+import { resourceRoot } from "../../common/paths.js";
 import { requireThat } from "../../common/validation.js";
 import { registerDshSkills } from "../../integrations/dsh/skills.js";
 import { readWorkspaceConfig, workspaceDisabledMessage } from "../../services/workspace/workspace-config.js";
 import type { WorkspaceConfiguration } from "../../model/workspace-config.js";
 import { initializeWorkspace } from "../../services/workspace/workspace-preparation.js";
+import { McpWorkerRuntime, defaultWorkerDirectory } from "../mcp-workers.js";
 
-export const dshDependencies = ["agents", "sessions", "sessionPersistence", "sessionQuery", "llm", "tools", "systemPrompt", "skills", "fs", "attachments", "workingDirectory", "approval"];
+export const dshDependencies = ["agents", "sessions", "sessionPersistence", "sessionQuery", "llm", "tools", "systemPrompt", "skills", "fs", "workingDirectory", "approval"];
 
 export class DshWorkspace {
   readonly lifetime = new AbortController();
-  readonly host: DshAgents;
-  readonly agents: AgentService;
-  readonly teams: TeamService;
   readonly history: HistoryService;
-  readonly owner: AgentOwner;
-  readonly #experts = new Map<string, DshAgentRuntime>();
+  readonly workers: McpWorkerRuntime;
   #scope: { dispose(): Promise<void> } | undefined;
-  #events: DshAgentEvents | undefined;
   #closing: Promise<void> | undefined;
-  constructor(readonly ctx: Context, readonly root: string, readonly agent: Agent,
+
+  constructor(
+    readonly ctx: Context,
+    readonly root: string,
+    readonly agent: Agent,
     readonly component: AbortSignal,
-    private readonly historyWork: DshHistoryWork, private readonly releaseHistory: () => Promise<void>, acp?: AcpCommands) {
+    private readonly historyWork: DshHistoryWork,
+    private readonly releaseHistory: () => Promise<void>,
+  ) {
     this.history = historyWork.service;
-    this.owner = { sessionId: agent.id, leaf: null, branch: [] };
-    this.host = new DshAgents(ctx, agent, {
-      setup: (d, _directory, generation) => async (agentCtx, child) => {
-        await agentCtx.plugin({ name: "pbot-expert", inject: dshDependencies, apply: async scope => {
-          const runtime = new DshAgentRuntime(scope, child, d, generation, this.agents.files, this.teams,
-            { check: this.check, release: () => this.host.release(d.agentId, generation) });
-          this.#experts.set(d.agentId, runtime);
-          scope.effect(() => () => { if (this.#experts.get(d.agentId) === runtime) this.#experts.delete(d.agentId); });
-          registerDshSkills(scope, child);
-          await dshResources(scope, child, root, "general-purpose", runtime.check);
-          const teamTool = dshExpertTools(scope, child, d.options);
-          if (teamTool) registerDshTeamMessageTool(scope, child, this.teams, runtime.actor, runtime.check);
-          registerDshFileEvents(scope, child, root, true, runtime.check);
-          runtime.initialize(teamTool);
-        } });
-        return { commit: this.check };
-      },
-      ready: (child, generation) => {
-        const runtime = this.#experts.get(child.id);
-        requireThat(runtime?.generation === generation, "专家执行组件未就绪。"); runtime.start();
-      },
-      stopping: async (child, generation) => { const runtime = this.#experts.get(child.id); if (runtime?.generation === generation) await runtime.stop(); },
-    }, this.lifetime.signal);
-    const directory = dshHomePath("pbot", "subagents");
-    this.agents = new AgentService(root, directory, new AgentBackends(this.host, directory, acp));
-    this.teams = new TeamService(root, this.agents.files, this.agents.teamFiles);
+    this.workers = new McpWorkerRuntime(defaultWorkerDirectory(), agent.id);
   }
+
   check = () => { this.component.throwIfAborted(); this.lifetime.signal.throwIfAborted(); };
-  get controlError() { return this.#events?.error; }
+
   async open() {
     this.check();
-    this.#scope = await this.agent.ctx.plugin({ name: "pbot-coordinator", inject: dshDependencies, apply: async ctx => {
-      registerDshSkills(ctx, this.agent);
-      await dshResources(ctx, this.agent, this.root, "coordinator", this.check);
-      registerDshFileEvents(ctx, this.agent, this.root, false, this.check);
-      registerDshAgentTool(ctx, this.agent, this.agents, this.owner, this.check);
-      registerDshTeamTool(ctx, this.agent, this.teams, this.agents, this.owner, this.check);
-      registerDshTeamMessageTool(ctx, this.agent, this.teams, () => ({ kind: "coordinator", owner: this.owner }), this.check);
-      registerDshHistoryTool(ctx, this.agent, this.history, this.lifetime.signal, this.check);
-      registerDshHistoryEvents(ctx, this.agent, this.historyWork, this.check);
-      this.#events = new DshAgentEvents(ctx, this.agent, this.agents, this.teams, this.owner, this.check);
-      this.#events.start();
-    } });
+    const mcpEntry = resolve(resourceRoot, "../lib/extension/mcp.js");
+    const workerDir = defaultWorkerDirectory();
+    this.#scope = await this.agent.ctx.plugin({
+      name: "pbot-coordinator",
+      inject: dshDependencies,
+      apply: async ctx => {
+        registerDshSkills(ctx, this.agent);
+        await dshResources(ctx, this.agent, this.root, "coordinator", this.check, "history-coordinator.md");
+        registerDshFileEvents(ctx, this.agent, this.root, false, this.check);
+        registerDshHistoryTool(ctx, this.agent, this.history, this.lifetime.signal, this.check);
+        registerDshHistoryEvents(ctx, this.agent, this.historyWork, this.check);
+        if (existsSync(mcpEntry)) {
+          await ctx.plugin(McpClient, McpClient.Config({
+            transport: "stdio",
+            serverName: "pbot",
+            command: process.execPath,
+            args: [mcpEntry],
+            env: {
+              ...(process.env.PATH ? { PATH: process.env.PATH } : {}),
+              ...(process.env.HOME ? { HOME: process.env.HOME } : {}),
+              ...(process.env.DSH_HOME ? { DSH_HOME: process.env.DSH_HOME } : {}),
+              PBOT_WORKSPACE_ROOT: this.root,
+              PBOT_MCP_AGENT_DIR: workerDir,
+              PBOT_MCP_SESSION_ID: this.agent.id,
+            },
+            cwd: this.root,
+            toolCallTimeoutMs: 600_000,
+            failOnStartupError: false,
+          }));
+        }
+      },
+    });
     this.check();
   }
-  async interact(id: string, text: string, delivery: "steer" | "followUp" | undefined, files: readonly string[] = [],
-    attachments: readonly (ImageBlock | FileBlock)[] = [], signal: AbortSignal) {
-    const view = this.agents.status(id, this.owner);
-    if (view.transport !== "acp") return this.expert(id).interact(text, delivery, files, attachments, signal);
-    this.check(); signal.throwIfAborted();
-    requireThat(text.length <= 24000 && files.length + attachments.length <= 32 && (!files.length || !attachments.length), "人工消息或附件参数无效。");
-    const paths = [...files, ...attachments.map(attachment => {
-      const path = attachment.type === "image" ? this.ctx.attachments.imageHostPath(attachment.attachment) : this.ctx.attachments.fileHostPath(attachment.attachment);
-      requireThat(path, "该原生附件存储不提供 ACP 子进程可读取的文件路径。"); return path;
-    })];
-    requireThat(text.trim() || paths.length, "请输入消息或附加文件。");
-    this.teams.pauseMember(id, "成员由人工接管");
-    return this.agents.send(id, text || "请处理所附文件。", delivery ?? "followUp", this.owner, paths);
-  }
-  expert(id: string) {
-    this.check(); const view = this.agents.status(id, this.owner), runtime = this.#experts.get(id);
-    requireThat(view.owned, "专家不属于当前父会话。");
-    requireThat(view.alive, "专家已停止；需要明确恢复后才能对话。");
-    requireThat(view.state !== "starting", "专家尚未就绪，请等待启动或恢复完成。");
-    requireThat(runtime?.generation === view.generation, "原生专家由其他执行实例持有；当前组件不能接管对话。");
-    return runtime;
-  }
+
   close() {
     if (this.#closing) return this.#closing;
     this.lifetime.abort();
     this.#closing = (async () => {
       const errors: unknown[] = [];
-      try { await this.#events?.close(); } catch (error) { errors.push(error); }
-      try { this.teams.pauseAll(this.owner, "父会话或执行组件关闭"); } catch (error) { errors.push(error); }
-      try { await this.agents.close(this.owner); } catch (error) { errors.push(error); }
-      try { await this.host.close(); } catch (error) { errors.push(error); }
-      this.teams.dispose();
+      try { await this.workers.close(); } catch (error) { errors.push(error); }
       try { await this.#scope?.dispose(); } catch (error) { errors.push(error); }
       try { await this.releaseHistory(); } catch (error) { errors.push(error); }
-      if (errors.length) throw new AggregateError(errors, "dsh 工作区关闭失败；请核对执行资源和控制记录。");
+      if (errors.length) throw new AggregateError(errors, "dsh 工作区关闭失败；请核对执行资源。");
     })();
     return this.#closing;
   }
@@ -148,17 +113,20 @@ export class DshWorkspaces {
     if (!entry) { entry = { work: new DshHistoryWork(this.ctx, root), users: 0 }; this.#histories.set(root, entry); }
     const owned = entry; owned.users++;
     let released = false;
-    return { work: owned.work, release: async () => {
-      if (released) return; released = true;
-      if (--owned.users === 0) {
-        try { await owned.work.close(); } finally { if (this.#histories.get(root) === owned) this.#histories.delete(root); }
-      }
-    } };
+    return {
+      work: owned.work,
+      release: async () => {
+        if (released) return; released = true;
+        if (--owned.users === 0) {
+          try { await owned.work.close(); } finally { if (this.#histories.get(root) === owned) this.#histories.delete(root); }
+        }
+      },
+    };
   }
 
   async open(agent: Agent) {
     this.#lifetime.signal.throwIfAborted();
-    requireThat(rootAgents(this.ctx.agents).includes(agent), "专家不拥有协调者管理入口。");
+    requireThat(rootAgents(this.ctx.agents).includes(agent), "子会话不拥有协调者管理入口。");
     const current = this.#parents.get(agent);
     if (current) return current;
     const opening = (async () => {
@@ -178,7 +146,7 @@ export class DshWorkspaces {
       const history = await this.history(root);
       let workspace: DshWorkspace | undefined;
       try {
-        workspace = new DshWorkspace(this.ctx, root, agent, this.#lifetime.signal, history.work, history.release, configuration.acp);
+        workspace = new DshWorkspace(this.ctx, root, agent, this.#lifetime.signal, history.work, history.release);
         const owned = workspace;
         const dispose = agent.ctx.effect(() => async () => {
           this.#parents.delete(agent); this.#configurations.delete(agent); this.#parentEffects.delete(agent); await owned.close();

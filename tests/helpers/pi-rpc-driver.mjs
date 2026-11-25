@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { join } from "node:path";
 import {
   createAgentSessionFromServices, createAgentSessionRuntime, createAgentSessionServices,
-  ModelRuntime, runRpcMode, SessionManager, SettingsManager,
+  createMcpExtension, ModelRuntime, runRpcMode, SessionManager, SettingsManager,
 } from "@earendil-works/pi-coding-agent";
 
 // Real SDK/RPC host. IPC submits explicit tool inputs, not generated model responses.
@@ -14,6 +14,7 @@ const runtime = await createAgentSessionRuntime(async ({ cwd, sessionManager, se
   });
   const services = await createAgentSessionServices({
     cwd, agentDir, modelRuntime,
+    resourceLoaderOptions: { extensionFactories: [createMcpExtension()] },
     settingsManager: SettingsManager.inMemory({ packages: [packagePath], retry: { enabled: false } }),
   });
   assert.deepEqual(services.resourceLoader.getExtensions().errors, []);

@@ -11,7 +11,7 @@ import { workspaceSkillPaths } from "../integrations/pi/skills.js";
 export function registerEvents(pi: ExtensionAPI, lifecycle: Lifecycle, confirmations: Confirmations) {
   pi.on("session_start", async (_event, ctx) => {
     try {
-      await lifecycle.open(ctx.cwd);
+      await lifecycle.open(ctx.cwd, ctx.sessionManager.getSessionId());
       if (!lifecycle.active) {
         ctx.ui.setStatus("pbot", lifecycle.configuration?.error ? "PBot 配置错误" : "PBot 未启用 · /pbot init");
         if (ctx.hasUI && lifecycle.configuration) ctx.ui.notify(workspaceDisabledMessage(lifecycle.configuration), lifecycle.configuration.error ? "error" : "info");
@@ -33,7 +33,12 @@ export function registerEvents(pi: ExtensionAPI, lifecycle: Lifecycle, confirmat
     if (!instance) return;
     instance.cancelWork();
     try {
-      const context = await loadWorkspaceContext({ host: "pi", root: instance.root, role: "coordinator" });
+      const context = await loadWorkspaceContext({
+        host: "pi",
+        root: instance.root,
+        role: "coordinator",
+        coordinatorPrompt: "history-coordinator.md",
+      });
       instance.check();
       Object.assign(event.systemPromptOptions.sections, {
         pbot_workspace: context.workspace,

@@ -10,6 +10,8 @@ import { resourceRoot } from "../common/paths.js";
 import { launch } from "../storage/agent-files.js";
 import { requireThat } from "../common/validation.js";
 
+const blockedTools = new Set(["pbot_worker", "mcp__pbot__pbot_worker", "pbot_history"]);
+
 /** Member resources and authoritative final answers; ACP owns input delivery. */
 export default async function piAcpMember(pi: ExtensionAPI) {
   const member = await acpMember(), lifetime = new AbortController();
@@ -32,7 +34,7 @@ export default async function piAcpMember(pi: ExtensionAPI) {
     for (const tool of agentFileTools(member.d.cwd, lifetime.signal, async (path, change, signal) => {
       member.check(); await authorizeMutation(member.d.workspace, path, change, async () => false, signal); member.check();
     })) pi.registerTool(tool);
-    pi.setActiveTools(active.filter(name => !["pbot_agent", "pbot_team", "pbot_history"].includes(name)));
+    pi.setActiveTools(active.filter(name => !blockedTools.has(name)));
     pi.setSessionName(member.files.read(member.id, "launch.json", launch).name);
     startLeaf = ctx.sessionManager.getLeafId();
   });
@@ -47,7 +49,7 @@ export default async function piAcpMember(pi: ExtensionAPI) {
   });
   pi.on("tool_call", event => {
     member.check();
-    if (["pbot_agent", "pbot_team", "pbot_history"].includes(event.toolName)) return { block: true, reason: "专家不提供协调管理工具。" };
+    if (blockedTools.has(event.toolName)) return { block: true, reason: "专家不提供协调管理工具。" };
     return;
   });
   pi.on("agent_settled", (event, ctx) => {

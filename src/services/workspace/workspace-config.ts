@@ -3,6 +3,7 @@ import { dirname, join } from "node:path";
 import { object } from "../../common/json.js";
 import { isAcpBackend } from "../../common/validation.js";
 import { readJsonFile, writeJsonFile } from "../../storage/atomic-json.js";
+import type { WorkspaceConfig, WorkspaceConfiguration } from "../../model/workspace-config.js";
 
 function config(value: unknown): Record<string, unknown> {
   if (!object(value) || value.enabled !== undefined && typeof value.enabled !== "boolean") {
@@ -15,12 +16,14 @@ function config(value: unknown): Record<string, unknown> {
     for (const command of Object.values(value.acp)) {
       if (!object(command) || typeof command.command !== "string" || !command.command.trim() || command.command.includes("\0") ||
         !Array.isArray(command.args) || command.args.some(arg => typeof arg !== "string" || arg.includes("\0")) ||
-        Object.keys(command).some(key => !["command", "args"].includes(key))) throw new Error("ACP 启动配置需要 command 和 args 字符串数组。");
+        (command.env !== undefined && (!object(command.env) || Object.entries(command.env).some(([k, v]) => !k || k.includes("\0") || typeof v !== "string" || v.includes("\0")))) ||
+        Object.keys(command).some(key => !["command", "args", "env"].includes(key))) {
+        throw new Error("ACP 启动配置需要 command、args 字符串数组（以及可选 env 字符串映射）。");
+      }
     }
   }
   return value;
 }
-import type { WorkspaceConfig, WorkspaceConfiguration } from "../../model/workspace-config.js";
 
 export function workspaceConfigPath(root: string): string {
   return join(root, ".pbot", "config.json");

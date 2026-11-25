@@ -4,7 +4,7 @@ import { object } from "../../common/json.js";
 import { requireThat } from "../../common/validation.js";
 import type { HostEvent, PluginHostAdapter } from "../../model/plugin-host.js";
 
-const supportedEvents = ["UserPromptSubmit", "SubagentStart", "PreToolUse", "UserPromptExpansion"];
+const supportedEvents = ["UserPromptSubmit", "PreToolUse", "UserPromptExpansion"];
 
 export async function claudeWorkspaceRoot(cwd: string, projectDirectory = process.env.CLAUDE_PROJECT_DIR): Promise<string> {
   const directory = projectDirectory || cwd;
@@ -17,6 +17,7 @@ export async function claudeWorkspaceRoot(cwd: string, projectDirectory = proces
 export const claudeAdapter: PluginHostAdapter = {
   host: "claude",
   nativeRootAgents: false,
+  coordinatorPrompt: "plugin-coordinator.md",
   initCommandHint: "/personal-bot:pbot init",
   usage: "用法：node <插件目录>/lib/claude.js init|status",
   resolveRoot(cwd) {
@@ -34,13 +35,10 @@ export const claudeAdapter: PluginHostAdapter = {
       requireThat(typeof value.cwd === "string", "Claude hook 缺少工作目录。");
       return { kind: "check-skill", skill, cwd: value.cwd, raw: value };
     }
+    // Leave Claude's native subagents untouched; only inject coordinator context into main sessions.
+    if (typeof value.agent_id === "string") return { kind: "ignore" };
     requireThat(typeof value.cwd === "string", "Claude hook 缺少工作目录。");
-    if (event === "SubagentStart") {
-      if (value.agent_type !== "personal-bot:general-purpose") return { kind: "ignore" };
-      return { kind: "inject-context", role: "general-purpose", localRoleOnly: true, cwd: value.cwd, raw: value };
-    }
-    const member = typeof value.agent_id === "string";
-    return { kind: "inject-context", role: member ? "general-purpose" : "coordinator", cwd: value.cwd, raw: value };
+    return { kind: "inject-context", role: "coordinator", cwd: value.cwd, raw: value };
   },
   formatPass() {
     return {};

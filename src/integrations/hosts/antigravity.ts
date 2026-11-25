@@ -24,10 +24,6 @@ function skillFromReadPath(targetPath: string, pluginRoot = process.env.PLUGIN_R
   return skill;
 }
 
-function isGeneralPurposeAgent(typeName: unknown): boolean {
-  return typeof typeName === "string" && (typeName === "general-purpose" || typeName.endsWith(":general-purpose"));
-}
-
 function isPreToolUse(payload: unknown): boolean {
   return object(payload) && payload.hookEventName === "PreToolUse";
 }
@@ -43,6 +39,7 @@ export async function antigravityWorkspaceRoot(cwd: string, payload?: unknown): 
 export const antigravityAdapter: PluginHostAdapter = {
   host: "antigravity",
   nativeRootAgents: true,
+  coordinatorPrompt: "plugin-coordinator.md",
   initCommandHint: "/pbot init",
   usage: "用法：node <插件目录>/lib/plugin.js antigravity init|status",
   resolveRoot(cwd, rawPayload) {
@@ -64,10 +61,6 @@ export const antigravityAdapter: PluginHostAdapter = {
     if (name === "read_file" && typeof args.Path === "string") {
       const skill = skillFromReadPath(args.Path);
       if (skill) return { kind: "check-skill", skill, cwd, raw: value };
-      return { kind: "ignore" };
-    }
-    if (name === "invoke_subagent" && isGeneralPurposeAgent(args.TypeName) && typeof args.Prompt === "string") {
-      return { kind: "subagent-call", prompt: args.Prompt, cwd, raw: value };
     }
     return { kind: "ignore" };
   },
@@ -83,15 +76,6 @@ export const antigravityAdapter: PluginHostAdapter = {
   },
   formatDeny(_event, reason) {
     return { decision: "deny", reason };
-  },
-  formatSubagentCall(event, supplement) {
-    if (!supplement.trim()) return { decision: "allow" };
-    return {
-      decision: "allow",
-      overwrite: {
-        Prompt: supplement + "\n\n---\n\n" + event.prompt,
-      },
-    };
   },
 };
 

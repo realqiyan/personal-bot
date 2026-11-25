@@ -42,21 +42,11 @@ export async function pluginHook(adapter: PluginHostAdapter, payload: unknown): 
     return adapter.formatDeny(event, disabledMessage(adapter, configuration));
   }
   if (!configuration.enabled) return adapter.formatPass(payload);
-  if (event.kind === "subagent-call") {
-    if (!adapter.formatSubagentCall) return adapter.formatPass(payload);
-    const context = await loadWorkspaceContext({
-      host: adapter.host,
-      root,
-      role: "general-purpose",
-      includeRootAgents: !adapter.nativeRootAgents,
-      localRoleOnly: true,
-    });
-    return adapter.formatSubagentCall(event, context.text);
-  }
   const context = await loadWorkspaceContext({
     host: adapter.host,
     root,
     role: event.role,
+    ...(adapter.coordinatorPrompt ? { coordinatorPrompt: adapter.coordinatorPrompt } : {}),
     includeRootAgents: !adapter.nativeRootAgents,
     ...(event.localRoleOnly ? { localRoleOnly: true } : {}),
   });
