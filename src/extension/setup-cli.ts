@@ -10,10 +10,154 @@ import type { InstalledPackage, SetupPlan } from "../services/installation/setup
 import { PiBootstrapRequired, PiSetup, piPackageName } from "../integrations/installation/pi-setup.js";
 import { findExecutable, inspectSystem, SetupProcesses } from "../integrations/installation/processes.js";
 import { resolveWorkspace } from "../integrations/installation/workspace.js";
+import type { WorkspaceMcpServer } from "../model/workspace-mcp.js";
+import {
+  readWorkspaceMcpConfig,
+  removeWorkspaceMcpServer,
+  upsertWorkspaceMcpServer,
+} from "../services/workspace/workspace-mcp.js";
 import { SetupUI } from "../ui/setup.js";
 
 const root = new URL("../../", import.meta.url);
 const quote = (value: string) => "'" + value.replaceAll("'", "'\\''") + "'";
+
+const mcpManageUsage =
+  "用法：\n" +
+  "  pbot mcp list [--workspace <目录>]\n" +
+  "  pbot mcp add <name> --url <url> [--header K=V]... [--description <说明>] [--timeout <秒>] [--disabled] [--workspace <目录>]\n" +
+  "  pbot mcp add <name> [--env K=V]... [--cwd <目录>] [--description <说明>] [--timeout <秒>] [--disabled] [--workspace <目录>] -- <command> [args...]\n" +
+  "  pbot mcp remove <name> [--workspace <目录>]";
+
+function parseKeyValue(raw: string, flag: string): [string, string] {
+  const sep = raw.indexOf("=");
+  if (sep <= 0) throw new Error(`${flag} 需要 KEY=VALUE 格式：${raw}`);
+  return [raw.slice(0, sep), raw.slice(sep + 1)];
+}
+
+async function runMcpManage(mcpArgs: string[]): Promise<number> {
+  const sub = mcpArgs[0];
+  if (!sub || ["--help", "-h"].includes(sub)) {
+    console.log(mcpManageUsage);
+    return 0;
+  }
+  const rest = mcpArgs.slice(1);
+  if (sub === "list") {
+    let workspace: string | undefined;
+    for (let i = 0; i < rest.length; i++) {
+      if (rest[i] === "--workspace") {
+        workspace = rest[++i];
+        if (!workspace) throw new Error("--workspace 需要目录。");
+      } else {
+        throw new Error(`未知参数：${rest[i]}\n${mcpManageUsage}`);
+      }
+    }
+    const target = await resolveWorkspace(workspace ?? process.cwd(), process.cwd(), homedir());
+    const configuration = await readWorkspaceMcpConfig(target);
+    if (configuration.error) throw new Error(configuration.error);
+    console.log(JSON.stringify({ workspaceRoot: target, path: configuration.path, mcpServers: configuration.servers }, null, 2));
+    return 0;
+  }
+  if (sub === "remove") {
+    const name = rest[0];
+    if (!name || name.startsWith("-")) throw new Error(`remove 需要服务名。\n${mcpManageUsage}`);
+    let workspace: string | undefined;
+    for (let i = 1; i < rest.length; i++) {
+      if (rest[i] === "--workspace") {
+        workspace = rest[++i];
+        if (!workspace) throw new Error("--workspace 需要目录。");
+      } else {
+        throw new Error(`未知参数：${rest[i]}\n${mcpManageUsage}`);
+      }
+    }
+    const target = await resolveWorkspace(workspace ?? process.cwd(), process.cwd(), homedir());
+    const result = await removeWorkspaceMcpServer(target, name);
+    console.log(JSON.stringify({ workspaceRoot: target, path: result.configuration.path, removed: result.removed, name }, null, 2));
+    return result.removed ? 0 : 1;
+  }
+  if (sub === "add") {
+    const name = rest[0];
+    if (!name || name.startsWith("-")) throw new Error(`add 需要服务名。\n${mcpManageUsage}`);
+    let workspace: string | undefined;
+    let url: string | undefined;
+    let cwd: string | undefined;
+    let description: string | undefined;
+    let timeout: number | undefined;
+    let enabled: boolean | undefined;
+    const env: Record<string, string> = {};
+    const headers: Record<string, string> = {};
+    let commandTokens: string[] = [];
+    for (let i = 1; i < rest.length; i++) {
+      const arg = rest[i]!;
+      if (arg === "--") {
+        commandTokens = rest.slice(i + 1);
+        break;
+      }
+      if (arg === "--workspace") {
+        workspace = rest[++i];
+        if (!workspace) throw new Error("--workspace 需要目录。");
+      } else if (arg === "--url") {
+        url = rest[++i];
+        if (!url) throw new Error("--url 需要地址。");
+      } else if (arg === "--cwd") {
+        cwd = rest[++i];
+        if (!cwd) throw new Error("--cwd 需要目录。");
+      } else if (arg === "--description") {
+        description = rest[++i];
+        if (description === undefined) throw new Error("--description 需要说明文本。");
+      } else if (arg === "--timeout") {
+        const raw = rest[++i];
+        timeout = Number(raw);
+        if (!raw || !Number.isInteger(timeout)) throw new Error("--timeout 需要整数秒。");
+      } else if (arg === "--disabled") {
+        enabled = false;
+      } else if (arg === "--env") {
+        const raw = rest[++i];
+        if (!raw) throw new Error("--env 需要 KEY=VALUE。");
+        const [k, v] = parseKeyValue(raw, "--env");
+        env[k] = v;
+      } else if (arg === "--header") {
+        const raw = rest[++i];
+        if (!raw) throw new Error("--header 需要 KEY=VALUE。");
+        const [k, v] = parseKeyValue(raw, "--header");
+        headers[k] = v;
+      } else {
+        throw new Error(`未知参数：${arg}\n${mcpManageUsage}`);
+      }
+    }
+    const base = {
+      ...(description !== undefined ? { description } : {}),
+      ...(timeout !== undefined ? { timeout } : {}),
+      ...(enabled !== undefined ? { enabled } : {}),
+    };
+    let server: WorkspaceMcpServer;
+    if (url !== undefined) {
+      if (commandTokens.length || Object.keys(env).length || cwd !== undefined) {
+        throw new Error("--url（HTTP）不能与 stdio 命令/--env/--cwd 同时使用。");
+      }
+      server = {
+        url,
+        ...(Object.keys(headers).length ? { headers } : {}),
+        ...base,
+      };
+    } else {
+      const [command, ...cmdArgs] = commandTokens;
+      if (!command) throw new Error(`stdio 服务需要通过 -- <command> [args...] 指定启动命令。\n${mcpManageUsage}`);
+      if (Object.keys(headers).length) throw new Error("--header 仅适用于 --url（HTTP）服务。");
+      server = {
+        command,
+        ...(cmdArgs.length ? { args: cmdArgs } : {}),
+        ...(Object.keys(env).length ? { env } : {}),
+        ...(cwd !== undefined ? { cwd } : {}),
+        ...base,
+      };
+    }
+    const target = await resolveWorkspace(workspace ?? process.cwd(), process.cwd(), homedir());
+    const updated = await upsertWorkspaceMcpServer(target, name, server);
+    console.log(JSON.stringify({ workspaceRoot: target, path: updated.path, name, server: updated.servers[name] }, null, 2));
+    return 0;
+  }
+  throw new Error(`未知 mcp 子命令：${sub}\n${mcpManageUsage}`);
+}
 
 export async function main(args: string[]): Promise<number> {
   let options: ReturnType<typeof parseSetupArgs>;
@@ -25,12 +169,17 @@ export async function main(args: string[]): Promise<number> {
     console.log("Personal Bot " + manifest.version + "\n\n用法：pbot setup [--workspace <目录>]\n" +
       "      npx personal-bot@latest setup\n" +
       "      pbot install-antigravity\n" +
-      "      pbot mcp\n\n" +
+      "      pbot mcp\n" +
+      "      pbot mcp list|add|remove ...\n\n" +
       "setup 安装或升级 Pi、pbot 和选中的插件，然后启动 Pi 执行 /pbot init。\n" +
       "install-antigravity 通过原生 agy plugin install 安装或更新 Antigravity 插件。\n" +
-      "mcp 启动跨 Harness 专家调度 stdio MCP 服务（暴露 pbot_worker，供 Pi、dsh、Claude、Antigravity、Codex 等宿主调用）。\n" +
+      "mcp 无参数时启动统一 stdio MCP 服务（暴露 worker_* 与 workspace_mcp_*）；带 list/add/remove 时管理工作区 .pbot/mcp.json。\n" +
       "支持 Linux/macOS，需要 Node.js 22.19+ 和 npm。\n--help 显示帮助；--version 显示安装器版本。");
     return 0;
+  }
+  if (options.action === "mcp-manage") {
+    try { return await runMcpManage(options.mcpArgs ?? []); }
+    catch (error) { console.error(error instanceof Error ? error.message : String(error)); return 2; }
   }
   if (options.action === "mcp") {
     const entry = fileURLToPath(new URL("lib/extension/mcp.js", root));

@@ -17,6 +17,7 @@ export async function claudeWorkspaceRoot(cwd: string, projectDirectory = proces
 export const claudeAdapter: PluginHostAdapter = {
   host: "claude",
   nativeRootAgents: false,
+  nativeWorkspaceSkills: false,
   coordinatorPrompt: "plugin-coordinator.md",
   initCommandHint: "/personal-bot:pbot init",
   usage: "用法：node <插件目录>/lib/claude.js init|status",

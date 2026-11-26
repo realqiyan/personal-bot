@@ -27,7 +27,14 @@ export function defaultPrepareLaunch(context: AcpLaunchContext): AcpPreparedLaun
 /** Generic ACP v1 harness adapter; works for any standard ACP v1 executable without special cases. */
 export function createGenericAcpHarness(
   id: AcpBackend,
-  preset: { label?: string; aliases?: readonly string[]; defaultCommand?: AcpCommand; installHint?: string; configureHint?: string } = {},
+  preset: {
+    label?: string;
+    aliases?: readonly string[];
+    defaultCommand?: AcpCommand;
+    installHint?: string;
+    configureHint?: string;
+    nativeWorkspaceSkills?: boolean;
+  } = {},
 ): AcpHarnessAdapter {
   return {
     id,
@@ -36,6 +43,7 @@ export function createGenericAcpHarness(
     ...(preset.defaultCommand ? { defaultCommand: preset.defaultCommand } : {}),
     ...(preset.installHint ? { installHint: preset.installHint } : {}),
     ...(preset.configureHint ? { configureHint: preset.configureHint } : {}),
+    ...(preset.nativeWorkspaceSkills !== undefined ? { nativeWorkspaceSkills: preset.nativeWorkspaceSkills } : {}),
     filterStartOptions: filterStandardAcpOptions,
     validateStartOptions: options => validateStandardAcpOptions(id, options),
     prepareLaunch: defaultPrepareLaunch,

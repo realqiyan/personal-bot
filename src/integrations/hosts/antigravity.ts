@@ -39,6 +39,7 @@ export async function antigravityWorkspaceRoot(cwd: string, payload?: unknown): 
 export const antigravityAdapter: PluginHostAdapter = {
   host: "antigravity",
   nativeRootAgents: true,
+  nativeWorkspaceSkills: true,
   coordinatorPrompt: "plugin-coordinator.md",
   initCommandHint: "/pbot init",
   usage: "用法：node <插件目录>/lib/plugin.js antigravity init|status",

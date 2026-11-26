@@ -20,6 +20,7 @@ src/extension/plugin-runtime.ts (唯一核心逻辑：init/status/hook 引擎)
 
 - `host: string`：任意宿主标识符，运行时不做联合类型限制。
 - `nativeRootAgents: boolean`：宿主是否原生加载工作区根 `AGENTS.md`（为 `false` 时由上下文拼装附带）。
+- `nativeWorkspaceSkills?: boolean`：宿主是否原生扫描 `.agents/skills/`（为 `false` 或省略时，在 `features.skills` 开启下由上下文拼装附带技能元数据索引）。
 - `coordinatorPrompt?: string`：主会话协调者操作导航文件（默认使用宿主无关的 `plugin-coordinator.md`）。
 - `resolveRoot(cwd, rawPayload)`：从宿主环境变量或 hook 载荷解析绑定工作区根目录。
 - `parseEvent(payload)`：将宿主原生 hook 载荷映射为窄事件（`ignore` | `inject-context` | `check-skill`）。**不提供 subagent 拦截事件**，确保不干扰宿主原生 subagent。
@@ -69,7 +70,7 @@ MCP Server (src/extension/mcp-workers.ts) -> AgentService -> AcpWorkerHost -> ac
 1. **用户级零代码接入**：在工作区 `.pbot/config.json` 的 `acp` 字段声明任意 `{ "command", "args", "env?" }`。`resolveAcpHarness(id)` 自动回退到 `createGenericAcpHarness(id)`：支持标准 ACP v1 协议、自动按对端 `sessionCapabilities.systemPrompt` 决定 append 还是首轮前置工作区上下文，并按流式 `agent_message_chunk` 收集最终报告。
 2. **开发者级特化适配**：新增 `src/integrations/acp/harnesses/<name>.ts` 实现 `AcpHarnessAdapter` 并调用 `registerAcpHarness` 注册。`acp-worker.ts`、`connection.ts`、`launch.ts`、`model-selection.ts` 与 `mcp-workers.ts` 均零修改。
 
-## 3. 薄 stdio MCP 桥接（`pbot_worker`）
+## 3. 薄 stdio MCP 桥接（`worker_*`）
 
 - `src/extension/mcp-workers.ts` 与 `src/mcp.ts` 使用 Node 内置模块实现 JSON-RPC 2.0 stdio MCP 服务（不依赖 `@modelcontextprotocol/sdk`），直接封装 `AgentService` + `AcpWorkerHost`。
 - 每次调用动态读取工作区 `.pbot/config.json` 并刷新 `acp` 映射，新增自定义 Harness 即改即生效。

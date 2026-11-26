@@ -12,6 +12,7 @@ export const claudeAcpHarness: AcpHarnessAdapter = {
   installHint: "npm install -g @agentclientprotocol/claude-agent-acp",
   configureHint: "在 Claude Code 中完成登录或 API 配置，并设置默认模型。",
   requireSystemPrompt: true,
+  nativeWorkspaceSkills: false,
   customNotificationMethod: "_claude/sdkMessage",
   filterStartOptions(options) {
     const filtered = filterStandardAcpOptions(options);
@@ -25,7 +26,7 @@ export const claudeAcpHarness: AcpHarnessAdapter = {
   },
   async prepareLaunch(context) {
     const base = defaultPrepareLaunch(context);
-    const claude = await claudeOptions(base.command, context.cwd, context.options.thinking);
+    const claude = await claudeOptions(base.command, context.cwd, context.options.thinking, context.features?.skills !== false);
     return {
       ...base,
       ...(claude.thinking ? { defaultThinking: claude.thinking } : {}),

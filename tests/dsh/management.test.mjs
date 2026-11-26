@@ -23,8 +23,8 @@ test("dsh management exposes snapshot, history, and /pbot worker while rejecting
       agentOptions: { provider: "not-configured", model: "none" },
     });
     const parent = parentHandle.agent;
-    const run = async (verb, input) => {
-      const output = await host.ctx.commands.execute(parent, "/pbot " + verb + " " + JSON.stringify(input), [], signal);
+    const run = async command => {
+      const output = await host.ctx.commands.execute(parent, command, [], signal);
       assert.equal(output.result.kind, "success", output.result.text);
       return JSON.parse(output.result.text);
     };
@@ -36,9 +36,15 @@ test("dsh management exposes snapshot, history, and /pbot worker while rejecting
     assert.deepEqual(parent.session.snapshotEvents(), before);
     await assert.rejects(management.snapshot({ ...request, input: {} }, signal));
 
-    const backends = await run("worker", { action: "backends" });
+    const backends = await run("/pbot worker backends");
+    assert.equal(backends.target, "backends");
     assert.ok(Array.isArray(backends.backends) && backends.backends.length > 0);
-    assert.deepEqual(await run("worker", { action: "status" }), { workers: [] });
+    assert.deepEqual(await run("/pbot worker status"), { target: "workers", workers: [] });
+    const overview = await run("/pbot worker");
+    assert.equal(overview.target, "overview");
+    assert.deepEqual(overview.workers, []);
+    assert.ok(overview.backends.length > 0);
+    assert.deepEqual(await run('/pbot worker discover {"target":"workers"}'), { target: "workers", workers: [] });
 
     const historyResult = await management.history({ ...request, input: { action: "search", host: "dsh" } }, signal);
     assert.equal(historyResult.total, 0);

@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { resourceRoot } from "../common/paths.js";
 import { requireThat } from "../common/validation.js";
 import type { HostId, WorkspaceContext, WorkspaceRole } from "../model/plugin-host.js";
+import type { WorkspaceSkillMeta } from "../model/workspace-mcp.js";
 
 export async function readOptionalFile(path: string): Promise<string> {
   try { return await readFile(path, "utf8"); }
@@ -33,26 +34,47 @@ export async function agentText(
   return text;
 }
 
+export function formatWorkspaceSkills(skills: readonly WorkspaceSkillMeta[]): string {
+  if (!skills.length) return "";
+  const lines = skills.map(skill => `- **${skill.name}**（\`${skill.path}\`）：${skill.description}`);
+  return "## 工作区技能\n\n以下为工作区自有专业方法（位于 `.agents/skills/`），匹配任务时按需读取对应 `SKILL.md` 正文：\n" + lines.join("\n");
+}
+
 export async function loadWorkspaceContext(options: {
   host: HostId;
   root: string;
   role: WorkspaceRole;
   coordinatorPrompt?: string;
+  includePrompts?: boolean;
   includeRootAgents?: boolean;
   localRoleOnly?: boolean;
+  workspaceSkills?: readonly WorkspaceSkillMeta[];
 }): Promise<WorkspaceContext> {
-  const { host, root, role, coordinatorPrompt, includeRootAgents = false, localRoleOnly = false } = options;
-  const [workspace, roleText, rootAgents] = await Promise.all([
-    readFile(join(resourceRoot, "prompts/workspace.md"), "utf8"),
-    localRoleOnly ? readLocalRole(role, root) : agentText(role, root, coordinatorPrompt),
-    includeRootAgents ? readOptionalFile(join(root, "AGENTS.md")) : Promise.resolve(""),
-  ]);
+  const {
+    host,
+    root,
+    role,
+    coordinatorPrompt,
+    includePrompts = true,
+    includeRootAgents = false,
+    localRoleOnly = false,
+    workspaceSkills = [],
+  } = options;
+  const [workspace, roleText, rootAgents] = includePrompts
+    ? await Promise.all([
+      readFile(join(resourceRoot, "prompts/workspace.md"), "utf8"),
+      localRoleOnly ? readLocalRole(role, root) : agentText(role, root, coordinatorPrompt),
+      includeRootAgents ? readOptionalFile(join(root, "AGENTS.md")) : Promise.resolve(""),
+    ])
+    : ["", "", ""];
+  const skillsSection = formatWorkspaceSkills(workspaceSkills);
   const environment = { host, workspaceRoot: root, resourceRoot };
   const text = [
     workspace,
     roleText,
     rootAgents,
+    skillsSection,
     "## 环境\n\n" + JSON.stringify(environment),
   ].filter(Boolean).join("\n\n");
-  return { workspace, role: roleText, rootAgents, environment, text };
+  return { workspace, role: roleText, rootAgents, workspaceSkills: [...workspaceSkills], environment, text };
 }

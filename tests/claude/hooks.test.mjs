@@ -84,3 +84,33 @@ test("invalid configuration remains read-only and managed ACP targets skip dupli
   env.PBOT_SUBAGENT_RUN_ID = "managed-target";
   assert.deepEqual(await hook("UserPromptSubmit"), {});
 });
+
+test("Claude hooks inject workspace .agents/skills metadata and honor optional feature toggles", async t => {
+  const { workspace, hook } = await fixture(t);
+  await mkdir(join(workspace, ".pbot"), { recursive: true });
+  await mkdir(join(workspace, ".agents/skills/data-audit"), { recursive: true });
+  await writeFile(join(workspace, ".agents/skills/data-audit/SKILL.md"), "---\nname: data-audit\ndescription: Cross-harness data audit workflow\n---\nDetailed steps\n");
+  await writeFile(join(workspace, "AGENTS.md"), "ROOT_AGENTS_MARKER\n");
+  await writeFile(join(workspace, ".pbot/config.json"), JSON.stringify({ enabled: true }));
+
+  const full = (await hook("UserPromptSubmit")).hookSpecificOutput.additionalContext;
+  assert.ok(full.includes("ROOT_AGENTS_MARKER"));
+  assert.ok(full.includes("data-audit"));
+  assert.ok(full.includes(".agents/skills/data-audit/SKILL.md"));
+  assert.equal(full.includes("Detailed steps"), false);
+  const envFull = JSON.parse(full.slice(full.lastIndexOf("\n\n") + 2));
+  assert.equal(envFull.host, "claude");
+
+  // Prompts disabled, skills still enabled -> injects workspace skills index only, omits workspace/AGENTS prompts.
+  await writeFile(join(workspace, ".pbot/config.json"), JSON.stringify({ enabled: true, features: { prompts: false, skills: true } }));
+  const skillsOnly = (await hook("UserPromptSubmit")).hookSpecificOutput.additionalContext;
+  assert.equal(skillsOnly.includes("ROOT_AGENTS_MARKER"), false);
+  assert.ok(skillsOnly.includes("data-audit"));
+  assert.deepEqual(await hook("PreToolUse", { tool_name: "Skill", tool_input: { skill: "personal-bot:project-maintenance" } }), {});
+
+  // Worker-only mode (prompts: false, skills: false, mcp: false) -> skips prompt injection and gates bundled skills.
+  await writeFile(join(workspace, ".pbot/config.json"), JSON.stringify({ enabled: true, features: { prompts: false, skills: false, mcp: false } }));
+  assert.deepEqual(await hook("UserPromptSubmit"), {});
+  assert.equal((await hook("PreToolUse", { tool_name: "Skill", tool_input: { skill: "personal-bot:project-maintenance" } })).hookSpecificOutput.permissionDecision, "deny");
+  assert.deepEqual(await hook("PreToolUse", { tool_name: "Skill", tool_input: { skill: "personal-bot:pbot" } }), {});
+});

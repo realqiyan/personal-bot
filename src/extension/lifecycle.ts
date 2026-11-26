@@ -3,8 +3,8 @@ import { requireThat } from "../common/validation.js";
 import { authorizeMutation } from "../services/workspace/workspace-files.js";
 import type { CallAccess } from "../tools/access.js";
 import type { HistoryService } from "../services/history/history-service.js";
-import { readWorkspaceConfig, workspaceDisabledMessage } from "../services/workspace/workspace-config.js";
-import type { WorkspaceConfiguration } from "../model/workspace-config.js";
+import { readWorkspaceConfig, workspaceDisabledMessage, workspaceFeatures } from "../services/workspace/workspace-config.js";
+import type { ResolvedWorkspaceFeatures, WorkspaceConfiguration } from "../model/workspace-config.js";
 import type { McpWorkerRuntime } from "./mcp-workers.js";
 
 export class WorkspaceInstance implements CallAccess {
@@ -17,6 +17,7 @@ export class WorkspaceInstance implements CallAccess {
     readonly sessionId: string,
     readonly history: HistoryService,
     readonly workers: McpWorkerRuntime,
+    readonly features: ResolvedWorkspaceFeatures = workspaceFeatures(),
   ) {}
 
   check() {
@@ -59,7 +60,7 @@ export class Lifecycle {
 
   constructor(
     private readonly create: (root: string, sessionId: string, configuration: WorkspaceConfiguration) => WorkspaceInstance,
-    private readonly register: (instance: WorkspaceInstance) => void,
+    private readonly register: (instance: WorkspaceInstance) => void | Promise<void>,
     private readonly hide: () => void,
   ) {}
 
@@ -78,7 +79,7 @@ export class Lifecycle {
     if (!this.configuration.enabled) return;
     const instance = this.create(this.root, sessionId, this.configuration);
     this.#active = instance;
-    try { this.register(instance); }
+    try { await this.register(instance); }
     catch (error) { await this.close(); throw error; }
   }
 

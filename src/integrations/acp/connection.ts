@@ -7,6 +7,7 @@ import type { AgentOptions } from "../../model/agent.js";
 import { requireThat } from "../../common/validation.js";
 import { packageVersion } from "../../common/version.js";
 import { acpChoices, acpModelSelection, acpModelValue, acpThinkingValue } from "./model-selection.js";
+import { filterAcpMcpServers } from "./mcp.js";
 import { resolveAcpHarness } from "./registry.js";
 
 export function acpFailure(error: unknown): unknown {
@@ -18,6 +19,7 @@ export interface AcpCallbacks {
   update(update: acp.SessionUpdate): void | Promise<void>;
   selection?(selection: AcpModelSelection): void;
   permission(request: acp.RequestPermissionRequest, signal: AbortSignal): Promise<acp.RequestPermissionResponse>;
+  elicitation?(request: acp.CreateElicitationRequest, signal: AbortSignal): Promise<acp.CreateElicitationResponse>;
 }
 
 export interface OpenAcpOptions {
@@ -25,6 +27,7 @@ export interface OpenAcpOptions {
   readonly systemPrompt?: string;
   readonly sessionMeta?: Record<string, unknown>;
   readonly defaultThinking?: string;
+  readonly mcpServers?: readonly acp.McpServer[];
 }
 
 /** One ACP v1 connection. The worker owns its process group and business state; harness hooks stay in AcpHarnessAdapter. */
@@ -58,6 +61,11 @@ export async function openAcp(
     .onRequest(acp.methods.client.session.requestPermission, async ctx => {
       if (cancel.aborted || ctx.params.sessionId !== sessionId) return { outcome: { outcome: "cancelled" as const } };
       return callbacks.permission(ctx.params, cancel);
+    })
+    .onRequest(acp.methods.client.elicitation.create, async ctx => {
+      if (cancel.aborted || !callbacks.elicitation) return { action: "cancel" as const };
+      if ("sessionId" in ctx.params && ctx.params.sessionId !== sessionId) return { action: "cancel" as const };
+      return callbacks.elicitation(ctx.params, cancel);
     })
     .onNotification(acp.methods.client.session.update, ctx => {
       // Load may replay before its response. Output from replay never becomes a new report.
@@ -112,7 +120,9 @@ export async function openAcp(
   let initialized: acp.InitializeResponse | undefined;
   try {
     initialized = await connection.agent.request(acp.methods.agent.initialize, {
-      protocolVersion: 1, clientCapabilities: {}, clientInfo: { name: "personal-bot", version: packageVersion },
+      protocolVersion: 1,
+      clientCapabilities: callbacks.elicitation ? { elicitation: { form: {}, url: {} } } : {},
+      clientInfo: { name: "personal-bot", version: packageVersion },
     }, { cancellationSignal: AbortSignal.any([cancel, AbortSignal.timeout(30_000)]), stopWaitingOnCancel: true });
     requireThat(initialized.protocolVersion === 1, "目标宿主没有协商 ACP v1。");
     const advertised = initialized.agentCapabilities;
@@ -121,9 +131,12 @@ export async function openAcp(
       load: advertised?.loadSession === true,
       close: Boolean(advertised?.sessionCapabilities?.close),
     };
+    const mcpServers = openOptions.mcpServers?.length
+      ? filterAcpMcpServers(openOptions.mcpServers, advertised?.mcpCapabilities)
+      : [];
     const setup = {
       cwd,
-      mcpServers: [],
+      mcpServers,
       ...(openOptions.sessionMeta ? { _meta: openOptions.sessionMeta } : {}),
       ...(openOptions.systemPrompt && advertised?.sessionCapabilities?.systemPrompt ? {
         systemPrompt: { mode: "append" as const, content: [{ type: "text" as const, text: openOptions.systemPrompt }] },

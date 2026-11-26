@@ -11,6 +11,8 @@ export const dshAcpHarness: AcpHarnessAdapter = {
   configureHint: "按 dsh 原生方式配置目标 profile 的模型与认证。",
   exactAnswer: true,
   eagerSessionId: true,
+  nativeWorkspaceSkills: true,
+  nativeWorkspaceMcp: true,
   filterStartOptions: filterStandardAcpOptions,
   validateStartOptions: options => validateStandardAcpOptions("dsh", options),
   async prepareLaunch(context) {

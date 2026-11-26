@@ -62,8 +62,7 @@ try {
   const args = hook.args.map(value => value.replaceAll("${CLAUDE_PLUGIN_ROOT}", raw));
   const result = JSON.parse(execFileSync(process.execPath, args, { cwd: workspace, env, encoding: "utf8", timeout: 10_000,
     input: JSON.stringify({ hook_event_name: "UserPromptSubmit", cwd: workspace }) }));
-  assert.equal(result.hookSpecificOutput.hookEventName, "UserPromptSubmit");
-  assert.equal(typeof result.hookSpecificOutput.additionalContext, "string");
+  assert.deepEqual(result, {});
   const expansion = hooks.hooks.UserPromptExpansion[0].hooks[0];
   const blocked = JSON.parse(execFileSync(expansion.command, expansion.args.map(value => value.replaceAll("${CLAUDE_PLUGIN_ROOT}", raw)),
     { cwd: workspace, env, encoding: "utf8", timeout: 10_000,

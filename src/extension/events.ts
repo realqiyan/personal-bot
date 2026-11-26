@@ -25,13 +25,14 @@ export function registerEvents(pi: ExtensionAPI, lifecycle: Lifecycle, confirmat
     }
   });
   pi.on("resources_discover", (_event, ctx) => {
-    if (!lifecycle.active) return;
+    if (!lifecycle.active || !lifecycle.active.features.skills) return;
     return { skillPaths: workspaceSkillPaths(pi, ctx.cwd) };
   });
   pi.on("before_agent_start", async (event, ctx) => {
     const instance = lifecycle.active;
     if (!instance) return;
     instance.cancelWork();
+    if (!instance.features.prompts) return;
     try {
       const context = await loadWorkspaceContext({
         host: "pi",

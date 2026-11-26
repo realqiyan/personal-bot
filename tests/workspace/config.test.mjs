@@ -3,7 +3,9 @@ import assert from "node:assert/strict";
 import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { initializeWorkspaceConfig, readWorkspaceConfig, workspaceConfigPath } from "../../dist/services/workspace/workspace-config.js";
+import { initializeWorkspaceConfig, readWorkspaceConfig, workspaceConfigPath, workspaceFeatures } from "../../dist/services/workspace/workspace-config.js";
+import { readWorkspaceMcpConfig, resolveWorkspaceMcpServers, upsertWorkspaceMcpServer } from "../../dist/services/workspace/workspace-mcp.js";
+import { discoverWorkspaceSkills } from "../../dist/services/workspace/workspace-skills.js";
 
 async function directory(t) {
   const root = await mkdtemp(join(tmpdir(), "pbot-config-"));
@@ -83,4 +85,49 @@ test("workspace acp configuration supports permission policies and built-in over
     assert.equal(parsed.enabled, false);
     assert.equal(typeof parsed.error, "string");
   }
+});
+
+test("workspace features toggles default to true, allow worker-only mode, and validate types", async t => {
+  const root = await directory(t), path = workspaceConfigPath(root);
+  await mkdir(join(root, ".pbot"));
+  assert.deepEqual(workspaceFeatures(), { prompts: true, skills: true, mcp: true });
+  await writeFile(path, JSON.stringify({ enabled: true, features: { prompts: false, skills: false, mcp: false } }));
+  const parsed = await readWorkspaceConfig(root);
+  assert.equal(parsed.enabled, true);
+  assert.deepEqual(workspaceFeatures(parsed), { prompts: false, skills: false, mcp: false });
+  await writeFile(path, JSON.stringify({ enabled: true, features: { prompts: false } }));
+  assert.deepEqual(workspaceFeatures(await readWorkspaceConfig(root)), { prompts: false, skills: true, mcp: true });
+  for (const bad of [
+    { enabled: true, features: "nope" },
+    { enabled: true, features: { prompts: "yes" } },
+    { enabled: true, features: { unknown: true } },
+  ]) {
+    await writeFile(path, JSON.stringify(bad));
+    const result = await readWorkspaceConfig(root);
+    assert.equal(result.enabled, false);
+    assert.equal(typeof result.error, "string");
+  }
+});
+
+test("workspace MCP config validates reserved names, env templates, and skills discovery parses YAML frontmatter", async t => {
+  const root = await directory(t);
+  assert.equal((await readWorkspaceMcpConfig(root)).present, false);
+  await assert.rejects(upsertWorkspaceMcpServer(root, "pbot", { url: "https://example.test/mcp" }));
+  await assert.rejects(upsertWorkspaceMcpServer(root, "both", { command: "node", url: "https://example.test/mcp" }));
+  await upsertWorkspaceMcpServer(root, "demo", { command: "node", args: ["a.js"], env: { KEY: "${REQUIRED_KEY}" } });
+  const cfg = await readWorkspaceMcpConfig(root);
+  assert.throws(() => resolveWorkspaceMcpServers(root, cfg, {}), /REQUIRED_KEY/);
+  const resolved = resolveWorkspaceMcpServers(root, cfg, { REQUIRED_KEY: "ok" });
+  assert.equal(resolved[0].transport, "stdio");
+  assert.equal(resolved[0].env.KEY, "ok");
+
+  await mkdir(join(root, ".agents/skills/alpha"), { recursive: true });
+  await mkdir(join(root, ".agents/skills/beta"), { recursive: true });
+  await writeFile(join(root, ".agents/skills/alpha/SKILL.md"), "---\nname: alpha\ndescription: >-\n  Multi-line\n  description\n---\nBody\n");
+  await writeFile(join(root, ".agents/skills/beta/SKILL.md"), '---\nname: "beta"\ndescription: "Single line"\n---\nBody\n');
+  const skills = await discoverWorkspaceSkills(root);
+  assert.deepEqual(skills, [
+    { name: "alpha", description: "Multi-line description", path: ".agents/skills/alpha/SKILL.md" },
+    { name: "beta", description: "Single line", path: ".agents/skills/beta/SKILL.md" },
+  ]);
 });

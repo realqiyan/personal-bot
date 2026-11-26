@@ -7,7 +7,7 @@ import { readJsonFile, writeJsonFile } from "./atomic-json.js";
 import { fileId, privateDirectory } from "./file-access.js";
 import type { AgentDescriptor, AgentLaunch, AgentMessage, AgentStatus, AgentCycle, AgentSessionReference } from "../model/agent.js";
 import type { AcpSessionReference } from "../model/acp.js";
-import { acpPermission, acpReference } from "./acp-files.js";
+import { acpElicitation, acpPermission, acpReference } from "./acp-files.js";
 
 const text = (v: unknown): v is string => typeof v === "string" && v.length > 0;
 const number = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
@@ -59,7 +59,7 @@ export class AgentFiles {
     acpReference(acp);
     mkdirSync(this.root, { recursive: true, mode: 0o700 });
     mkdirSync(this.directory(value.agentId), { mode: 0o700 });
-    for (const dir of ["inbox", "completions", "reports", "permissions"]) privateDirectory(this.directory(value.agentId), dir);
+    for (const dir of ["inbox", "completions", "reports", "permissions", "elicitations"]) privateDirectory(this.directory(value.agentId), dir);
     this.write(value.agentId, "descriptor.json", value, descriptor, true);
     this.write(value.agentId, "launch.json", run, launch, true);
     this.write(value.agentId, "acp-session.json", acp, acpReference, true);
@@ -80,9 +80,22 @@ export class AgentFiles {
   }
   /** Permission requests of a generation that have no reply yet. */
   pendingPermissions(id: string, generation: string) {
-    const names = readdirSync(join(this.directory(id), "permissions"));
+    const dir = join(this.directory(id), "permissions");
+    if (!existsSync(dir)) return [];
+    const names = readdirSync(dir);
     return names.filter(n => n.endsWith(".json") && !n.endsWith("-reply.json") && !names.includes(n.slice(0, -5) + "-reply.json"))
       .map(n => this.read(id, "permissions/" + n, acpPermission)).filter(item => item.generation === generation);
+  }
+  /** Elicitation requests (forms, choices, text inputs, URL confirmations) of a generation that have no reply yet. */
+  pendingElicitations(id: string, generation: string) {
+    const dir = join(this.directory(id), "elicitations");
+    if (!existsSync(dir)) return [];
+    const names = readdirSync(dir);
+    return names.filter(n => n.endsWith(".json") && !n.endsWith("-reply.json") && !names.includes(n.slice(0, -5) + "-reply.json"))
+      .map(n => this.read(id, "elicitations/" + n, acpElicitation)).filter(item => item.generation === generation);
+  }
+  ensureSubdirectory(id: string, name: string) {
+    privateDirectory(this.directory(id), name);
   }
   reference(id: string): AgentSessionReference {
     return this.read(id, "acp-session.json", acpReference);

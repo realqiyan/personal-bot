@@ -69,8 +69,14 @@ for (const noSkills of [false, true]) test(`Pi ACP member loads and refreshes na
     assert.equal(session.systemPrompt.split(updated).length - 1, 1);
     assert.equal(session.systemPrompt.includes(role), false);
     assert.deepEqual(session.getActiveToolNames().filter(name => name.startsWith("pbot_")), []);
-    const denied = await session.extensionRunner.emitToolCall({ type: "tool_call", toolCallId: "recursive", toolName: "pbot_worker", input: { action: "status" } });
-    assert.equal(denied.block, true);
+    for (const blocked of ["worker_create", "worker_request", "mcp__pbot__worker_discover", "pbot_worker", "pbot_history"]) {
+      const denied = await session.extensionRunner.emitToolCall({ type: "tool_call", toolCallId: "recursive-" + blocked, toolName: blocked, input: {} });
+      assert.equal(denied.block, true, blocked);
+    }
+    for (const allowed of ["workspace_mcp_discover", "workspace_mcp_call", "mcp__pbot__workspace_mcp_call", "mcp__sqlite__query"]) {
+      const passed = await session.extensionRunner.emitToolCall({ type: "tool_call", toolCallId: "allowed-" + allowed, toolName: allowed, input: {} });
+      assert.equal(passed?.block, undefined, allowed);
+    }
     await session.extensionRunner.emit({ type: "agent_settled", aborted: false });
     const answer = files.read(id, "acp-answer.json", acpAnswer);
     assert.equal(answer.requestId, request.requestId); assert.equal(answer.state, "failed"); assert.equal(answer.answer, "");

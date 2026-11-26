@@ -6,7 +6,7 @@ import type { AcpInput, AcpAnswer } from "../model/acp.js";
 import { requireThat } from "../common/validation.js";
 import { packageVersion, releaseLine } from "../common/version.js";
 import { loadWorkspaceContext } from "../integrations/agent-resources.js";
-import { readWorkspaceConfig, workspaceDisabledMessage } from "../services/workspace/workspace-config.js";
+import { readWorkspaceConfig, workspaceDisabledMessage, workspaceFeatures } from "../services/workspace/workspace-config.js";
 
 export async function acpMember() {
   const id = process.env.PBOT_SUBAGENT_RUN_ID, directory = process.env.PBOT_SUBAGENT_DIR, generation = process.env.PBOT_SUBAGENT_GENERATION;
@@ -17,6 +17,7 @@ export async function acpMember() {
   requireThat(d.agentId === id && releaseLine(d.release) === releaseLine(packageVersion), "ACP 成员身份或版本无效。");
   const configuration = await readWorkspaceConfig(d.workspace);
   requireThat(configuration.enabled, workspaceDisabledMessage(configuration));
+  const features = workspaceFeatures(configuration);
   const check = () => {
     files.check();
     const run = files.read(id, "launch.json", launch);
@@ -28,7 +29,7 @@ export async function acpMember() {
     const loaded = await loadWorkspaceContext({ host, root: d.workspace, role: "general-purpose" });
     return { workspace: loaded.workspace, role: loaded.role, environment: JSON.stringify(loaded.environment) };
   };
-  return { files, d, id, generation, check, context,
+  return { files, d, id, generation, configuration, features, check, context,
     input() {
       check(); const input = files.read(id, "acp-input.json", acpInput);
       requireThat(input.generation === generation, "ACP 输入代次无效。"); return input;

@@ -1,12 +1,13 @@
 import { randomUUID } from "node:crypto";
 import { realpathSync } from "node:fs";
 import { resolve } from "node:path";
+import { object } from "../../common/json.js";
 import { packageVersion, releaseLine } from "../../common/version.js";
 import { requireThat } from "../../common/validation.js";
 import { AgentFiles, descriptor, launch, status, cycle } from "../../storage/agent-files.js";
-import type { AgentOwner, AgentOptions, AgentStartOptions, AgentDescriptor, AgentCycle, AgentSessionReference, AgentView } from "../../model/agent.js";
+import type { AgentOwner, AgentOptions, AgentPendingRequest, AgentResponseInput, AgentStartOptions, AgentDescriptor, AgentCycle, AgentSessionReference, AgentView } from "../../model/agent.js";
 import type { AcpBackend, AcpSessionReference } from "../../model/acp.js";
-import { acpModelState, acpPermissionReply, acpReference } from "../../storage/acp-files.js";
+import { acpElicitationReply, acpModelState, acpPermissionReply, acpReference } from "../../storage/acp-files.js";
 
 export interface AgentHost {
   available(backend: AcpBackend): void;
@@ -65,8 +66,14 @@ export class AgentService {
       ...(model.resolvedModel ? { resolvedModel: model.resolvedModel } : {}),
       ...(model.thinking ? { thinking: model.thinking } : {}),
     } : undefined;
-    const pendingPermissions = alive ? this.files.pendingPermissions(d.agentId, run.generation)
-      .map(item => ({ permissionId: item.requestId, description: item.description, options: item.options })) : [];
+    const pendingRequests: AgentPendingRequest[] = alive ? [
+      ...this.files.pendingPermissions(d.agentId, run.generation)
+        .map(item => ({ requestId: item.requestId, kind: "permission" as const, description: item.description, options: item.options })),
+      ...this.files.pendingElicitations(d.agentId, run.generation)
+        .map(item => (item.mode === "form"
+          ? { requestId: item.requestId, kind: "form" as const, message: item.message, schema: item.schema ?? { type: "object", properties: {} } }
+          : { requestId: item.requestId, kind: "url" as const, message: item.message, url: item.url ?? "" })),
+    ] : [];
     return {
       ...d,
       name: run.name,
@@ -85,42 +92,77 @@ export class AgentService {
       activity: starting ? "启动" : alive ? current?.activity ?? "启动" : current?.error ?? "已停止",
       ...(current?.cycle ? { cycle: current.cycle } : {}),
       ...(current?.error ? { error: current.error } : {}),
-      ...(pendingPermissions.length ? { pendingPermissions } : {}),
+      ...(pendingRequests.length ? { pendingRequests } : {}),
     };
   }
 
-  /** Answer a permission request forwarded by the worker; omitting optionId cancels/rejects it. */
-  answerPermission(id: string, permissionId: string | undefined, optionId: string | undefined, owner: AgentOwner) {
+  /** Answer a pending permission or elicitation request forwarded by the worker. */
+  respond(id: string, input: AgentResponseInput, owner: AgentOwner) {
     const d = this.get(id, owner), run = this.files.read(id, "launch.json", launch);
-    const pending = this.alive(id) ? this.files.pendingPermissions(id, run.generation) : [];
-    if (!permissionId && pending.length > 1) {
-      throw new Error("存在多条待处理权限请求，请指定 permissionId：" + pending.map(item => item.requestId).join(", "));
+    const pending = this.view(d, owner).pendingRequests ?? [];
+    if (!input.requestId && pending.length > 1) {
+      throw new Error("存在多条待回复请求，请指定 requestId：" + pending.map(item => item.requestId).join(", "));
     }
-    const request = permissionId ? pending.find(item => item.requestId === permissionId) : pending[0];
-    requireThat(request, permissionId
-      ? "没有待处理的权限请求：" + permissionId + "；用 status 查看 pendingPermissions。"
-      : "当前没有待处理的权限请求。");
-    let resolved: string | null = null;
-    if (optionId !== undefined) {
-      const exact = request.options.find(option => option.optionId === optionId);
-      const byKind = request.options.filter(option => option.kind === optionId);
-      const pick = (...kinds: string[]) => kinds.map(kind => request.options.find(option => option.kind === kind)).find(Boolean)?.optionId;
-      if (exact) resolved = exact.optionId;
-      else if (byKind.length === 1) resolved = byKind[0]!.optionId;
-      else if (optionId === "allow") {
-        const chosen = pick("allow_once", "allow_always");
-        requireThat(chosen, "该权限请求没有可允许的选项；可选：" + request.options.map(option => option.optionId).join(", "));
-        resolved = chosen;
-      } else if (optionId === "deny" || optionId === "reject") {
-        resolved = pick("reject_once", "reject_always") ?? null;
-      } else if (optionId === "cancel") {
-        resolved = null;
+    const target = input.requestId ? pending.find(item => item.requestId === input.requestId) : pending[0];
+    requireThat(target, input.requestId
+      ? "没有待回复的请求：" + input.requestId + "；用 worker_discover 查看 pendingRequests。"
+      : "当前没有待回复的请求。");
+    if (target.kind === "permission") {
+      requireThat(input.content === undefined, "权限请求不使用 content；请用 action（accept / decline / cancel）或指定 optionId。");
+      let resolved: string | null = null;
+      if (input.action === "cancel") {
+        requireThat(input.optionId === undefined, "action 为 cancel 时不能同时指定 optionId。");
+      } else if (input.optionId !== undefined) {
+        const exact = target.options.find(option => option.optionId === input.optionId);
+        const byKind = target.options.filter(option => option.kind === input.optionId);
+        const matched = exact ?? (byKind.length === 1 ? byKind[0] : undefined);
+        requireThat(matched, "权限 optionId 无效：" + input.optionId + "；可选：" +
+          target.options.map(option => `${option.optionId}（${option.name}/${option.kind}）`).join(", "));
+        if (input.action === "accept") {
+          requireThat(!matched.kind.startsWith("reject_"), `optionId ${matched.optionId} 是拒绝选项，与 action: "accept" 冲突。`);
+        } else {
+          requireThat(!matched.kind.startsWith("allow_"), `optionId ${matched.optionId} 是允许选项，与 action: "decline" 冲突。`);
+        }
+        resolved = matched.optionId;
       } else {
-        throw new Error("权限决策无效：" + optionId + "；可用 allow / deny 或：" + request.options.map(option => `${option.optionId}（${option.name}/${option.kind}）`).join(", "));
+        const pick = (...kinds: string[]) => kinds.map(kind => target.options.find(option => option.kind === kind)).find(Boolean)?.optionId;
+        if (input.action === "accept") {
+          const chosen = pick("allow_once", "allow_always");
+          requireThat(chosen, "该权限请求没有可允许的选项；可选：" + target.options.map(option => option.optionId).join(", "));
+          resolved = chosen;
+        } else {
+          resolved = pick("reject_once", "reject_always") ?? null;
+        }
       }
+      this.files.ensureSubdirectory(id, "permissions");
+      this.files.write(id, "permissions/" + target.requestId + "-reply.json",
+        { generation: run.generation, requestId: target.requestId, optionId: resolved }, acpPermissionReply, true);
+      return this.view(d, owner);
     }
-    this.files.write(id, "permissions/" + request.requestId + "-reply.json",
-      { generation: run.generation, requestId: request.requestId, optionId: resolved }, acpPermissionReply, true);
+    if (target.kind === "form") {
+      requireThat(input.optionId === undefined, "问答/表单请求不使用 optionId；请将答案填入 content。");
+      if (input.action !== "accept") {
+        requireThat(input.content === undefined, `action 为 ${input.action} 时不能传入 content。`);
+      } else {
+        requireThat(input.content === undefined || object(input.content), "问答/表单答复的 content 必须是对象。");
+      }
+      this.files.ensureSubdirectory(id, "elicitations");
+      this.files.write(id, "elicitations/" + target.requestId + "-reply.json", {
+        generation: run.generation,
+        requestId: target.requestId,
+        action: input.action,
+        ...(input.action === "accept" ? { content: input.content ?? {} } : {}),
+      }, acpElicitationReply, true);
+      return this.view(d, owner);
+    }
+    requireThat(input.optionId === undefined, "URL 确认请求不使用 optionId。");
+    requireThat(input.content === undefined, "URL 确认请求不使用 content。");
+    this.files.ensureSubdirectory(id, "elicitations");
+    this.files.write(id, "elicitations/" + target.requestId + "-reply.json", {
+      generation: run.generation,
+      requestId: target.requestId,
+      action: input.action,
+    }, acpElicitationReply, true);
     return this.view(d, owner);
   }
 

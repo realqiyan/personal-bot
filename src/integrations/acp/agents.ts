@@ -22,7 +22,7 @@ export class AcpWorkerHost implements AgentHost {
   }
 
   available(backend: AcpBackend) {
-    requireThat(backend, "通过 pbot_worker 委派跨 Harness 专家时必须指定 backend（例如 pi、dsh、claude、antigravity、codex 或自定义 ACP 名称）。");
+    requireThat(backend, "通过 worker_create 委派跨 Harness 专家时必须指定 backend（例如 pi、dsh、claude、antigravity、codex 或自定义 ACP 名称）。");
     requireThat(process.platform === "linux" || process.platform === "darwin", "ACP worker 当前支持 Linux 和 macOS。");
     requireThat(existsSync(this.worker), "缺少 ACP worker 构建产物；请先运行 npm run build。");
   }

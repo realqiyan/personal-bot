@@ -28,9 +28,9 @@
 
 **宿主原生子代理 / 团队**：由当前宿主原生管理的同宿主子任务与多成员协作（如 Claude `Agent`/团队、Antigravity `invoke_subagent`/`/swarm`、dsh `subagent`）。Personal Bot 不拦截、不覆盖，与跨 Harness 调度互补。
 
-**跨 Harness worker（`pbot_worker`）**：由统一 stdio MCP 服务（`lib/extension/mcp.js` / `pbot mcp`）经 ACP v1 启动与管理的独立对端 Harness 会话，以 `workerId` 标识；Pi/dsh 另提供 `/pbot worker` 命令入口。
+**跨 Harness worker（`worker_*`）**：由统一 stdio MCP 服务（`lib/extension/mcp.js` / `pbot mcp`）经 ACP v1 启动与管理的独立对端 Harness 会话，以 `workerId` 标识，通过 `worker_create` / `worker_close` / `worker_request` / `worker_response` / `worker_output` / `worker_discover` 操作；Pi/dsh 另提供 `/pbot worker` 命令入口。
 
-**工作周期（cycle）**：worker 一次受管工作，以 `cycleId` 标识；结果保存为固定周期报告，通过 `pbot_worker` `wait` 或 `read` 获取。
+**工作周期（cycle）**：worker 一次受管工作，以 `cycleId` 标识；结果保存为固定周期报告，通过 `worker_output` 获取与翻页。
 
 **消息请求（request）**：以 `requestId` 标识的一条输入，按接纳、消费和完成记录状态。
 

@@ -9,11 +9,16 @@ import { resourceRoot } from "../../common/paths.js";
 const levels = ["low", "medium", "high", "xhigh", "max"];
 export interface ClaudeConfiguration {
   thinking?: string;
-  options: { plugins: { type: "local"; path: string }[]; effort?: string; settings?: { env: { CLAUDE_CODE_EFFORT_LEVEL: string } } };
+  options: { plugins?: { type: "local"; path: string }[]; effort?: string; settings?: { env: { CLAUDE_CODE_EFFORT_LEVEL: string } } };
 }
 
 /** Read the target installation's native settings without creating a model session. */
-export async function claudeOptions(command: AcpCommand, cwd: string, supplied?: string): Promise<ClaudeConfiguration> {
+export async function claudeOptions(
+  command: AcpCommand,
+  cwd: string,
+  supplied?: string,
+  includeSkills = true,
+): Promise<ClaudeConfiguration> {
   const normalized = supplied?.trim().toLowerCase().replace(/[^a-z0-9]+/g, "");
   const requested = normalized === "extrahigh" ? "xhigh" : normalized;
   const script = command.args[0];
@@ -32,7 +37,7 @@ export async function claudeOptions(command: AcpCommand, cwd: string, supplied?:
   return {
     ...(thinking ? { thinking } : {}),
     options: {
-      plugins: [{ type: "local", path: join(resourceRoot, "skills") }],
+      ...(includeSkills ? { plugins: [{ type: "local" as const, path: join(resourceRoot, "skills") }] } : {}),
       ...(effort ? { effort } : {}),
       // SDK effort alone loses to CLAUDE_CODE_EFFORT_LEVEL. A flag-tier env entry
       // applies the explicit choice to this invocation and preserves other settings.

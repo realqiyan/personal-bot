@@ -10,8 +10,11 @@ import { registerEvents } from "./extension/events.js";
 import { registerHistoryEvents } from "./extension/history.js";
 import { McpWorkerRuntime, defaultWorkerDirectory } from "./extension/mcp-workers.js";
 import { HistoryService } from "./services/history/history-service.js";
+import { workspaceFeatures } from "./services/workspace/workspace-config.js";
+import { readWorkspaceMcpConfig, resolveWorkspaceMcpServer } from "./services/workspace/workspace-mcp.js";
 import { HistoryFiles } from "./storage/history-files.js";
 import { PiHistory } from "./integrations/pi/history.js";
+import { toPiMcpConfig } from "./integrations/pi/mcp.js";
 import { acpHistorySessions } from "./storage/acp-history.js";
 
 const mcpServerName = "pbot";
@@ -22,10 +25,10 @@ export default function pbot(pi: ExtensionAPI) {
   const confirmations = new Confirmations();
   const registry = new ToolRegistry(pi);
   const mcpEntry = resolve(resourceRoot, "../lib/extension/mcp.js");
-  let mcpRegistered = false;
+  const registeredMcpServers: string[] = [];
 
   const lifecycle = new Lifecycle(
-    (root, sessionId) => {
+    (root, sessionId, configuration) => {
       const workerDir = defaultWorkerDirectory();
       const workers = new McpWorkerRuntime(workerDir, sessionId, "pi");
       const history = new HistoryService(
@@ -35,9 +38,9 @@ export default function pbot(pi: ExtensionAPI) {
         [new HistoryFiles(join(root, ".pbot/history"), "dsh"), new HistoryFiles(join(root, ".pbot/history"), "claude")],
         () => acpHistorySessions({ mcp: workerDir }),
       );
-      return new WorkspaceInstance(root, sessionId, history, workers);
+      return new WorkspaceInstance(root, sessionId, history, workers, workspaceFeatures(configuration));
     },
-    instance => {
+    async instance => {
       registry.register(mainTools(instance.history, instance));
       if (existsSync(mcpEntry)) {
         pi.registerMcpServer(mcpServerName, {
@@ -52,16 +55,29 @@ export default function pbot(pi: ExtensionAPI) {
           },
           exposure: "direct",
           timeout: 600,
-          description: "跨 Harness ACP 专家调度（pbot_worker）",
+          description: "跨代理程序委派（worker_*）与工作区统一 MCP 桥接（workspace_mcp_*）",
         });
-        mcpRegistered = true;
+        registeredMcpServers.push(mcpServerName);
+      }
+      if (instance.features.mcp) {
+        const mcpConfig = await readWorkspaceMcpConfig(instance.root);
+        instance.check();
+        if (!mcpConfig.error) {
+          for (const [name, server] of Object.entries(mcpConfig.servers)) {
+            if (server.enabled === false) continue;
+            try {
+              const resolved = resolveWorkspaceMcpServer(instance.root, name, server);
+              pi.registerMcpServer(resolved.name, toPiMcpConfig(resolved));
+              registeredMcpServers.push(resolved.name);
+            } catch { /* Keep the workspace active even if one external MCP env var is unset. */ }
+          }
+        }
       }
     },
     () => {
       registry.hide();
-      if (mcpRegistered) {
-        pi.unregisterMcpServer(mcpServerName);
-        mcpRegistered = false;
+      for (const name of registeredMcpServers.splice(0)) {
+        pi.unregisterMcpServer(name);
       }
     },
   );

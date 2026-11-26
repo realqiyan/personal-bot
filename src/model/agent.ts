@@ -1,4 +1,4 @@
-import type { AcpBackend, AcpModelSelection, AcpSessionReference, AcpStartOptions } from "./acp.js";
+import type { AcpBackend, AcpElicitationAction, AcpElicitationContent, AcpModelSelection, AcpSessionReference, AcpStartOptions } from "./acp.js";
 
 export type AgentOptions = AcpStartOptions;
 export interface AgentStartOptions extends AgentOptions { backend: AcpBackend }
@@ -26,7 +26,16 @@ export interface AgentView extends AgentDescriptor {
   backend: AcpBackend; transport: "acp"; selection?: AcpModelSelection;
   capabilities: { steer: boolean; resume: boolean; transcript: boolean };
   cycle?: AgentCycle; error?: string; owned: boolean;
-  pendingPermissions?: AgentPermissionRequest[];
+  pendingRequests?: AgentPendingRequest[];
 }
-export interface AgentPermissionRequest { permissionId: string; description: string; options: { optionId: string; name: string; kind: string }[] }
+export type AgentPendingRequest =
+  | { requestId: string; kind: "permission"; description: string; options: { optionId: string; name: string; kind: string }[] }
+  | { requestId: string; kind: "form"; message: string; schema: Record<string, unknown> }
+  | { requestId: string; kind: "url"; message: string; url: string };
+export interface AgentResponseInput {
+  requestId?: string;
+  action: AcpElicitationAction;
+  optionId?: string;
+  content?: AcpElicitationContent;
+}
 export interface AgentCompletion { agentId: string; name: string; cycle: AgentCycle; report: string }

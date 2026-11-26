@@ -10,6 +10,8 @@ export const piAcpHarness: AcpHarnessAdapter = {
   installHint: "npm install -g pi-acp",
   configureHint: "Pi 也需已安装；运行 pi 完成登录和默认模型配置。",
   exactAnswer: true,
+  nativeWorkspaceSkills: true,
+  nativeWorkspaceMcp: true,
   filterStartOptions: options => ({ ...options }),
   prepareLaunch(context) {
     const base = defaultPrepareLaunch(context);

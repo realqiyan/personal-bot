@@ -6,7 +6,7 @@
 
 - 回查或续做项目时，按用户的称呼从根 `AGENTS.md` 找到项目正文；需要更多线索时按主题或交付物名称搜索。
 - 操作后查看结果。超时、取消或断连后，先查状态再决定是否重试，避免重复执行。
-- 优先使用当前宿主的原生 CLI/MCP。接入或排障使用 `provider-connections` 技能；需要数据口径或使用限制时读取 `providers/<id>/GUIDE.md`。认证使用原生登录或凭据引用，资料中不保存凭据值。
+- 优先复用工作区已接入的 CLI/MCP：工作区共享 MCP 定义在 `.pbot/mcp.json`（可通过宿主原生工具或 `pbot` MCP 的 `workspace_mcp_discover` / `workspace_mcp_call` 调用），也可同时使用宿主原生 MCP。接入或排障使用 `provider-connections` 技能；需要数据口径或使用限制时读取 `providers/<id>/GUIDE.md`。认证使用原生登录或环境变量引用，资料中不保存凭据值。
 
 ## 资料与环境
 
@@ -21,7 +21,8 @@
 | `providers/AGENTS.md`、`providers/<id>/GUIDE.md` | 能力导航与使用手册 |
 | `scratch/` | 临时脚本、查询与计算数据、下载及运行环境 |
 | `agents/` | `coordinator.md`、`general-purpose.md` 的职责补充 |
-| 宿主原生技能目录（`pi`/`dsh`/`antigravity` 为 `.agents/skills/`，`claude` 为 `.claude/skills/`） | 工作区自有专业方法 |
+| `.agents/skills/<名称>/SKILL.md` | 工作区自有专业方法（跨程序通用；正文描述意图与通用操作，不写死单一宿主的私有工具名） |
+| `.pbot/mcp.json` | 工作区共享 MCP 服务清单（不含凭据值，凭据使用 `${ENV_VAR}` 或原生登录） |
 
 保存有后续用途的结论、方法、决策和产物，普通问答不逐轮存档；更新、归集或整理资料时使用 `project-maintenance` 技能。保留用户资料、历史记录和备份。
 

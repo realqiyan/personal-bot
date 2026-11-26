@@ -4,7 +4,7 @@ English | [简体中文](README.zh-CN.md)
 
 **A harness-agnostic personal assistant workspace and unified MCP cross-harness delegation layer.**
 
-Personal Bot brings shared workspace materials and skills to [Pi](https://pi.dev), dsh, Claude Code, Antigravity, and extensible plugin hosts, while unifying cross-harness ACP v1 delegation onto a single stdio MCP tool (`pbot_worker`). Host-native subagent and team tools remain untouched and complementary; Pi and dsh also provide `pbot_history`.
+Personal Bot brings shared workspace materials and skills to [Pi](https://pi.dev), dsh, Claude Code, Antigravity, and extensible plugin hosts, while unifying cross-harness ACP v1 delegation onto a clean 6-tool stdio MCP server (`worker_create`, `worker_close`, `worker_request`, `worker_response`, `worker_output`, `worker_discover`). Host-native subagent and team tools remain untouched and complementary; Pi and dsh also provide `pbot_history`.
 
 Quick links (Chinese): [Documentation Index](docs/README.md) · [Pi](docs/hosts/pi.md) · [dsh](docs/hosts/dsh.md) · [Claude Code](docs/hosts/claude-code.md) · [Antigravity](docs/hosts/antigravity.md) · [Cross-Harness Workers](docs/guides/cross-harness-workers.md).
 
@@ -33,7 +33,7 @@ pi install --local npm:personal-bot
 pi
 ```
 
-Run `/pbot init`. Once enabled, Pi automatically registers the `pbot` stdio MCP server (`pbot_worker`), exposes `pbot_history`, and provides `/pbot init | status | worker`. See the [Pi guide](docs/hosts/pi.md).
+Run `/pbot init`. Once enabled, Pi automatically registers the `pbot` stdio MCP server (`worker_*`), exposes `pbot_history`, and provides `/pbot init | status | worker`. See the [Pi guide](docs/hosts/pi.md).
 
 ### dsh
 
@@ -46,7 +46,7 @@ dsh plugin --profile pbot add personal-bot@latest
 dsh --profile pbot
 ```
 
-Select a workspace and run `/pbot init`. Once enabled, dsh mounts `mcp__pbot__pbot_worker` via `@deepseek-ai/dsh-mcp-client`, exposes `pbot_history`, a streamlined Workspace/History Web view, and `/pbot status | init | worker | history`. See the [dsh guide](docs/hosts/dsh.md).
+Select a workspace and run `/pbot init`. Once enabled, dsh mounts `mcp__pbot__worker_*` via `@deepseek-ai/dsh-mcp-client`, exposes `pbot_history`, a streamlined Workspace/History Web view, and `/pbot status | init | worker | history`. See the [dsh guide](docs/hosts/dsh.md).
 
 ### Claude Code
 
@@ -56,7 +56,7 @@ Requires Linux/macOS, Node.js 22.19+, and Claude Code `2.1.325+`:
 /plugin install personal-bot --marketplace realqiyan/personal-bot
 ```
 
-Run `/personal-bot:pbot init` in the workspace. Command hooks inject main-session context and gate bundled skills when disabled without intercepting native `Agent` subagents; `.mcp.json` mounts `pbot_worker`. See the [Claude Code guide](docs/hosts/claude-code.md).
+Run `/personal-bot:pbot init` in the workspace. Command hooks inject main-session context and gate bundled skills when disabled without intercepting native `Agent` subagents; `.mcp.json` mounts `worker_*`. See the [Claude Code guide](docs/hosts/claude-code.md).
 
 ### Antigravity
 
@@ -66,7 +66,7 @@ Requires Linux/macOS, Node.js 22.19+, and Antigravity CLI (`agy` `1.5+`):
 npx personal-bot@latest install-antigravity
 ```
 
-Run `/pbot init` in the workspace. Hooks inject `SessionStart` context and gate bundled skills when disabled without intercepting native `invoke_subagent` or `/swarm`; `mcp_config.json` mounts `pbot_worker`. See the [Antigravity guide](docs/hosts/antigravity.md).
+Run `/pbot init` in the workspace. Hooks inject `SessionStart` context and gate bundled skills when disabled without intercepting native `invoke_subagent` or `/swarm`; `mcp_config.json` mounts `worker_*`. See the [Antigravity guide](docs/hosts/antigravity.md).
 
 ### Other MCP hosts & custom ACP harnesses
 
@@ -94,7 +94,7 @@ Supports built-in presets (`pi`, `dsh`, `claude`, `antigravity`, `codex`) and ar
 
 ## Development
 
-Current release: **0.2.20**. Full development uses Linux/macOS and Node.js 24.9+:
+Current release: **0.3.0**. Full development uses Linux/macOS and Node.js 24.9+:
 
 ```bash
 npm ci --ignore-scripts

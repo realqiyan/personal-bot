@@ -135,3 +135,24 @@ test("plugin host registry supports registering new hosts without modifying runt
   assert.equal(started.host, "custom-ide");
   assert.equal(typeof started.injected, "string");
 });
+
+test("Antigravity skips duplicate .agents/skills injection and honors optional feature toggles", async t => {
+  const { pluginDir, workspace, hook } = await fixture(t);
+  await mkdir(join(workspace, ".pbot"), { recursive: true });
+  await mkdir(join(workspace, ".agents/skills/native-skill"), { recursive: true });
+  await writeFile(join(workspace, ".agents/skills/native-skill/SKILL.md"), "---\nname: native-skill\ndescription: Native Antigravity skill\n---\nBody\n");
+  await writeFile(join(workspace, ".pbot/config.json"), JSON.stringify({ enabled: true }));
+
+  const started = await hook("SessionStart");
+  const message = started.injectSteps[0].systemMessage.systemMessage;
+  assert.equal(message.includes("native-skill"), false);
+
+  await writeFile(join(workspace, ".pbot/config.json"), JSON.stringify({ enabled: true, features: { prompts: false, skills: false, mcp: false } }));
+  assert.deepEqual(await hook("SessionStart"), {});
+  assert.equal((await hook("PreToolUse", {
+    toolCall: { id: "t-skill", name: "read_file", args: { Path: join(pluginDir, "skills/project-maintenance/SKILL.md") } },
+  })).decision, "deny");
+  assert.deepEqual(await hook("PreToolUse", {
+    toolCall: { id: "t-pbot", name: "read_file", args: { Path: join(pluginDir, "skills/pbot/SKILL.md") } },
+  }), { decision: "allow" });
+});

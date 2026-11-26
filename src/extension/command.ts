@@ -1,22 +1,10 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { object } from "../common/json.js";
-import { requireThat } from "../common/validation.js";
 import { packageVersion } from "../common/version.js";
 import { initializeWorkspace } from "../services/workspace/workspace-preparation.js";
 import { workspaceDisabledMessage } from "../services/workspace/workspace-config.js";
 import type { Confirmations } from "../ui/confirmation.js";
 import type { Lifecycle } from "./lifecycle.js";
-
-function parseWorkerArgs(raw: string): Record<string, unknown> {
-  const trimmed = raw.trim();
-  if (!trimmed || trimmed === "status" || trimmed === "list") return { action: "status" };
-  if (trimmed === "backends") return { action: "backends" };
-  if (trimmed === "models") return { action: "models" };
-  if (trimmed.startsWith("models ")) return { action: "models", backend: trimmed.slice(7).trim() };
-  const parsed: unknown = JSON.parse(trimmed);
-  requireThat(object(parsed), 'worker 参数必须是 JSON 对象，例如：/pbot worker {"action":"backends"}');
-  return parsed;
-}
+import { parseWorkerCommand } from "./mcp-workers.js";
 
 export function registerCommand(pi: ExtensionAPI, lifecycle: Lifecycle, confirmations: Confirmations) {
   pi.registerCommand("pbot", {
@@ -74,15 +62,15 @@ export function registerCommand(pi: ExtensionAPI, lifecycle: Lifecycle, confirma
       }
       if (command === "worker") {
         try {
-          const payload = parseWorkerArgs(argument);
-          const result = await instance.workers.callTool("pbot_worker", { workspace: instance.root, ...payload });
+          const { tool, args: payload } = parseWorkerCommand(argument);
+          const result = await instance.workers.callTool(tool, { workspace: instance.root, ...payload });
           ctx.ui.notify(JSON.stringify(result, null, 2), "info");
         } catch (error) {
           ctx.ui.notify(error instanceof Error ? error.message : String(error), "error");
         }
         return;
       }
-      ctx.ui.notify('/pbot init | status | worker {"action":"start|status|backends|models|..."}', "info");
+      ctx.ui.notify('/pbot init | status | worker [overview|status|backends|models|create|request|response|output|close] [JSON]', "info");
     },
   });
 }

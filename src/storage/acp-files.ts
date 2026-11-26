@@ -2,7 +2,7 @@ import { isAbsolute } from "node:path";
 import { object } from "../common/json.js";
 import { isAcpBackend, requireThat } from "../common/validation.js";
 import { fileId } from "./file-access.js";
-import type { AcpAnswer, AcpInput, AcpPermission, AcpPermissionReply, AcpModelState, AcpProcess, AcpReport, AcpSessionReference } from "../model/acp.js";
+import type { AcpAnswer, AcpElicitation, AcpElicitationReply, AcpInput, AcpPermission, AcpPermissionReply, AcpModelState, AcpProcess, AcpReport, AcpSessionReference } from "../model/acp.js";
 
 const text = (value: unknown): value is string => typeof value === "string" && value.length > 0 && !value.includes("\0");
 export function acpReference(value: unknown): AcpSessionReference {
@@ -51,4 +51,29 @@ export function acpPermissionReply(value: unknown): AcpPermissionReply {
   acpInput(value);
   requireThat(object(value) && (value.optionId === null || text(value.optionId)), "ACP 确认答复无效。");
   return value as unknown as AcpPermissionReply;
+}
+function elicitationValue(value: unknown): boolean {
+  return typeof value === "string"
+    || (typeof value === "number" && Number.isFinite(value))
+    || typeof value === "boolean"
+    || (Array.isArray(value) && value.every(item => typeof item === "string"));
+}
+export function acpElicitation(value: unknown): AcpElicitation {
+  acpInput(value);
+  requireThat(object(value) && (value.mode === "form" || value.mode === "url") && typeof value.message === "string", "ACP 交互请求无效。");
+  if (value.mode === "form") {
+    requireThat(object(value.schema) && value.url === undefined, "ACP 表单交互请求缺少有效 schema。");
+  } else {
+    requireThat(text(value.url) && value.schema === undefined, "ACP URL 交互请求缺少有效 url。");
+  }
+  return value as unknown as AcpElicitation;
+}
+export function acpElicitationReply(value: unknown): AcpElicitationReply {
+  acpInput(value);
+  requireThat(object(value) && ["accept", "decline", "cancel"].includes(String(value.action)), "ACP 交互答复无效。");
+  if (value.content !== undefined) {
+    requireThat(value.action === "accept" && object(value.content) &&
+      Object.values(value.content).every(elicitationValue), "ACP 表单答复 content 无效。");
+  }
+  return value as unknown as AcpElicitationReply;
 }

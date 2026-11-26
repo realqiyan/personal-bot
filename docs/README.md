@@ -6,17 +6,17 @@ Personal Bot 文档按使用场景与职责分为四类，根目录 [README.zh-C
 
 | 文档 | 适用对象与内容 |
 | --- | --- |
-| [Pi 使用指南](hosts/pi.md) | `pbot setup` 安装、`/pbot init\|status\|worker`、自动挂载 MCP `pbot_worker` 与 `pbot_history` |
-| [dsh 使用指南](hosts/dsh.md) | profile 与插件管理、工作区/历史 Web 工作台、`/pbot` 聊天命令、自动挂载 MCP `pbot_worker` |
-| [Claude Code 使用指南](hosts/claude-code.md) | 原生插件安装、command hooks、技能门控、MCP `pbot_worker` 与原生 Agent/团队互补 |
-| [Antigravity 使用指南](hosts/antigravity.md) | npm 一键安装、hooks、技能门控、MCP `pbot_worker` 与原生 `invoke_subagent`/`/swarm` 互补 |
+| [Pi 使用指南](hosts/pi.md) | `pbot setup` 安装、`/pbot init\|status\|worker`、自动挂载 MCP `worker_*` 与 `pbot_history` |
+| [dsh 使用指南](hosts/dsh.md) | profile 与插件管理、工作区/历史 Web 工作台、`/pbot` 聊天命令、自动挂载 MCP `worker_*` |
+| [Claude Code 使用指南](hosts/claude-code.md) | 原生插件安装、command hooks、技能门控、MCP `worker_*` 与原生 Agent/团队互补 |
+| [Antigravity 使用指南](hosts/antigravity.md) | npm 一键安装、hooks、技能门控、MCP `worker_*` 与原生 `invoke_subagent`/`/swarm` 互补 |
 
 ## 通用使用指南（`docs/guides/`）
 
 | 文档 | 内容 |
 | --- | --- |
 | [工作区配置](guides/workspace-configuration.md) | 共用 `.pbot/config.json` 启用规则、自定义 ACP Harness（含可选 `env`）与配置生效方式 |
-| [跨 Harness 专家调度](guides/cross-harness-workers.md) | 统一 MCP 工具 `pbot_worker`、与宿主原生 subagent 互补边界、ACP 生命周期与分工偏好 |
+| [跨 Harness 专家调度](guides/cross-harness-workers.md) | 统一 MCP `worker_*` 工具集、与宿主原生 subagent 互补边界、ACP 生命周期与交互转发 |
 | [历史对话](guides/history.md) | Pi/dsh `pbot_history` 查询、分层摘要、ACP 会话排除与既有归档只读兼容 |
 | [工具与执行能力](guides/capabilities.md) | 原生 CLI/MCP、Python 计算参考（[通用](../resources/references/compute.md) / [金融](../resources/references/compute-finance.md)）与可选 Task Conductor |
 

@@ -25,5 +25,5 @@
 
 ## 本地测试与真实模型验收
 
-- `npm test` 运行全量本地测试，覆盖 `PluginHostRegistry` 与 `AcpHarnessRegistry` 动态扩展、隔离无 `node_modules` 的 Claude/Antigravity hooks 与 MCP `pbot_worker` → ACP v1 真实进程互调，以及 Pi/dsh 原生 MCP 挂载、历史与 E2E 测试。
+- `npm test` 运行全量本地测试，覆盖 `PluginHostRegistry` 与 `AcpHarnessRegistry` 动态扩展、隔离无 `node_modules` 的 Claude/Antigravity hooks 与 MCP `worker_*` → ACP v1（含权限与 `elicitation` 交互）真实进程互调，以及 Pi/dsh 原生 MCP 挂载、历史与 E2E 测试。
 - 真实模型环境下各宿主的首次上下文、技能选择与跨宿主实测调用（含 `npm run test:e2e:acp`）在明确批准且不含个人凭据的专用环境单独验收。

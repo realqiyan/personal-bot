@@ -5,13 +5,13 @@
 Personal Bot 不绑定单一宿主，所有能力按两条正交主线组织：
 
 1. **工作区与上下文层**：所有宿主共享同一份 `.pbot/config.json`、资料布局、公共约定、协调者职责与专业技能。轻插件宿主通过窄协议接口 `PluginHostAdapter` 与动态注册表 `PluginHostRegistry` 接入，共享同一套插件运行时与上下文拼装逻辑。
-2. **统一 MCP 跨 Harness 专家调度层**：所有宿主（Pi、dsh、Claude Code、Antigravity、Codex 及任意 MCP 客户端）统一通过同一份薄 stdio MCP 服务（`lib/extension/mcp.js` / `pbot mcp`）调用 **`pbot_worker`**（Pi/dsh 另提供 `/pbot worker` 命令），基于共享 `AgentService` 与可扩展 `AcpHarnessRegistry` 经标准 ACP v1 调度任意目标 Harness。
+2. **统一 MCP 跨 Harness 专家调度层**：所有宿主（Pi、dsh、Claude Code、Antigravity、Codex 及任意 MCP 客户端）统一通过同一份薄 stdio MCP 服务（`lib/extension/mcp.js` / `pbot mcp`）调用 6 个读写分离的 **`worker_*`** 工具（`worker_create`、`worker_close`、`worker_request`、`worker_response`、`worker_output`、`worker_discover`；Pi/dsh 另提供 `/pbot worker` 命令），基于共享 `AgentService` 与可扩展 `AcpHarnessRegistry` 经标准 ACP v1（含权限与 `elicitation` 交互）调度任意目标 Harness。
 
 ## 与宿主原生能力互补，不干扰原生 Subagent
 
 - 同宿主子任务、团队、会话恢复、模型配置、权限与外部 MCP 均由各自宿主负责。
 - **不拦截、不覆盖、不复制宿主原生 subagent 工具**：不注入覆盖性的静态 `general-purpose` agent，不拦截 `invoke_subagent` / `SubagentStart`，也不在 Pi/dsh 中重复维护自有原生子会话或团队调度引擎（Pi/dsh 仅保留 `pbot_history` 与极简工作区入口）。
-- 跨 Harness 分工偏好（如编码、分析、探索分别使用哪个 Harness）由用户在工作区 `AGENTS.md` 或 `agents/coordinator.md` 中约定，协调者模型按需调用 `pbot_worker`，不在代码中硬编码工作流引擎。
+- 跨 Harness 分工偏好（如编码、分析、探索分别使用哪个 Harness）由用户在工作区 `AGENTS.md` 或 `agents/coordinator.md` 中约定，协调者模型按需调用 `worker_*`，不在代码中硬编码工作流引擎。
 
 ## 可扩展、运行时不感知
 

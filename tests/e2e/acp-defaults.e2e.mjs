@@ -45,21 +45,23 @@ for (const { backend, model, thinking } of cases) test(`real ACP E2E: ${backend}
   const input = { nonce: randomUUID(), values: Array.from({ length: 5 }, () => randomInt(1, 100)) };
   await writeFile(join(root, "input.json"), JSON.stringify(input), { mode: 0o600 });
   const expected = { nonce: input.nonce, total: input.values.reduce((sum, value) => sum + value, 0) };
-  const call = args => runtime.callTool("pbot_worker", { workspace: root, ...args });
-  const created = await call({
-    action: "start",
+  const call = (tool, args = {}) => runtime.callTool(tool, { workspace: root, ...args });
+  const created = await call("worker_create", {
     backend,
     ...(model ? { model } : {}),
     ...(thinking ? { thinking } : {}),
+  });
+  const workerId = created.workerId;
+  await call("worker_request", {
+    workerId,
     message: 'Read input.json in the current directory. Sum its values and write output.json as a JSON object with the original nonce and the computed total. Work only in this directory. Reply briefly after the file is written.',
     waitMs: 0,
   });
-  const workerId = created.workerId;
   await writeFile(join(root, "context.json"), JSON.stringify({ backend, model, thinking, root, control, workerId }, null, 2), { mode: 0o600 });
   console.log(JSON.stringify({ event: "acp-e2e-started", backend, ...(model ? { model } : {}), ...(thinking ? { thinking } : {}), workspace: root, workerId }));
   let current, progress = "";
   while (!t.signal.aborted) {
-    current = await call({ action: "status", workerId });
+    current = (await call("worker_discover", { target: "workers", workerId })).workers[0];
     const marker = JSON.stringify({ state: current.state, activity: current.activity, selection: current.selection });
     if (marker !== progress) { progress = marker; console.log(JSON.stringify({ event: "acp-e2e-progress", backend, ...JSON.parse(marker) })); }
     assert.notEqual(current.state, "error", current.error);
@@ -74,8 +76,10 @@ for (const { backend, model, thinking } of cases) test(`real ACP E2E: ${backend}
   assert.equal(typeof current.selection?.thinking, "string");
   const stored = files.read(workerId, "descriptor.json", descriptor);
   assert.equal(Object.hasOwn(stored.options, "provider"), false);
-  if (model) assert.equal(stored.options.model, model);
-  else assert.equal(Object.hasOwn(stored.options, "model"), false);
+  if (model) {
+    assert.equal(stored.options.model, model);
+    assert.equal(current.selection.model, model);
+  } else assert.equal(Object.hasOwn(stored.options, "model"), false);
   if (thinking) assert.equal(stored.options.thinking, thinking);
   else assert.equal(Object.hasOwn(stored.options, "thinking"), false);
   assert.deepEqual(JSON.parse(await readFile(join(root, "output.json"), "utf8")), expected);
@@ -86,14 +90,13 @@ for (const { backend, model, thinking } of cases) test(`real ACP E2E: ${backend}
     for (const request of nativeRequests) {
       assert.equal(request.model, current.selection.resolvedModel);
       assert.equal(request.thinking, current.selection.thinking);
-      if (model) assert.ok(request.model.toLowerCase().includes(model.toLowerCase()), `${request.model} did not match ${model}`);
       if (thinking) assert.equal(request.thinking, thinking);
     }
     await writeFile(join(root, "native-requests.json"), JSON.stringify(nativeRequests, null, 2), { mode: 0o600 });
   }
   let offset = 0, report = "";
   do {
-    const page = await call({ action: "read", workerId, offset });
+    const page = await call("worker_output", { workerId, offset });
     report += page.report; offset = page.nextOffset ?? null;
   } while (offset !== null);
   assert.ok(report.trim());
@@ -105,7 +108,7 @@ for (const { backend, model, thinking } of cases) test(`real ACP E2E: ${backend}
     state: current.cycle.state, workspace: root, result: expected, reportLength: report.length,
   };
   const stoppingAt = Date.now();
-  await call({ action: "stop", workerId });
+  await call("worker_close", { workerId });
   await runtime.close();
   const stopMs = Date.now() - stoppingAt;
   await writeFile(join(root, "result.json"), JSON.stringify({ ...result, stopMs }, null, 2), { mode: 0o600 });

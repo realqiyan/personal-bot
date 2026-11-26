@@ -3,8 +3,9 @@ import { packageVersion } from "../common/version.js";
 import { requireThat } from "../common/validation.js";
 import { loadWorkspaceContext } from "../integrations/agent-resources.js";
 import type { PluginHostAdapter } from "../model/plugin-host.js";
-import { readWorkspaceConfig } from "../services/workspace/workspace-config.js";
+import { readWorkspaceConfig, workspaceFeatures } from "../services/workspace/workspace-config.js";
 import { initializeWorkspace } from "../services/workspace/workspace-preparation.js";
+import { discoverWorkspaceSkills } from "../services/workspace/workspace-skills.js";
 
 function disabledMessage(adapter: PluginHostAdapter, configuration: Awaited<ReturnType<typeof readWorkspaceConfig>>) {
   return configuration.error ?? `Personal Bot 未在此工作区启用。运行 ${adapter.initCommandHint}；配置文件：${configuration.path}`;
@@ -37,18 +38,26 @@ export async function pluginHook(adapter: PluginHostAdapter, payload: unknown): 
   if (event.kind === "ignore") return adapter.formatPass(payload);
   const root = await adapter.resolveRoot(event.cwd, event.raw);
   const configuration = await readWorkspaceConfig(root);
+  const features = workspaceFeatures(configuration);
   if (event.kind === "check-skill") {
-    if (configuration.enabled) return adapter.formatPass(payload);
-    return adapter.formatDeny(event, disabledMessage(adapter, configuration));
+    if (!configuration.enabled) return adapter.formatDeny(event, disabledMessage(adapter, configuration));
+    if (!features.skills) return adapter.formatDeny(event, `Personal Bot 工作区技能已在 ${configuration.path} 中停用（features.skills: false）。`);
+    return adapter.formatPass(payload);
   }
   if (!configuration.enabled) return adapter.formatPass(payload);
+  const workspaceSkills = features.skills && !adapter.nativeWorkspaceSkills
+    ? await discoverWorkspaceSkills(root)
+    : [];
+  if (!features.prompts && !workspaceSkills.length) return adapter.formatPass(payload);
   const context = await loadWorkspaceContext({
     host: adapter.host,
     root,
     role: event.role,
     ...(adapter.coordinatorPrompt ? { coordinatorPrompt: adapter.coordinatorPrompt } : {}),
-    includeRootAgents: !adapter.nativeRootAgents,
+    includePrompts: features.prompts,
+    includeRootAgents: features.prompts && !adapter.nativeRootAgents,
     ...(event.localRoleOnly ? { localRoleOnly: true } : {}),
+    workspaceSkills,
   });
   return adapter.formatContext(event, context);
 }

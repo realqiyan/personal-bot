@@ -4,7 +4,7 @@
 
 **连接知识、研究与行动的跨 Harness 个人助手层。**
 
-Personal Bot 为多宿主环境（[Pi](https://pi.dev)、dsh、Claude Code、Antigravity 及可扩展的其他插件宿主）提供共享工作区资料与专业方法，并通过统一的 stdio MCP 工具 **`pbot_worker`** 实现跨 Harness ACP v1 专家调度。同宿主子任务与团队完全交由宿主原生能力，两者互补互不干扰；Pi 与 dsh 另提供 `pbot_history` 历史检索。
+Personal Bot 为多宿主环境（[Pi](https://pi.dev)、dsh、Claude Code、Antigravity 及可扩展的其他插件宿主）提供共享工作区资料与专业方法，并通过统一的 stdio MCP 工具集（`worker_create`、`worker_close`、`worker_request`、`worker_response`、`worker_output`、`worker_discover`）实现跨 Harness ACP v1 专家调度。同宿主子任务与团队完全交由宿主原生能力，两者互补互不干扰；Pi 与 dsh 另提供 `pbot_history` 历史检索。
 
 快速导航：[文档总索引](docs/README.md) · [Pi](docs/hosts/pi.md) · [dsh](docs/hosts/dsh.md) · [Claude Code](docs/hosts/claude-code.md) · [Antigravity](docs/hosts/antigravity.md) · [跨 Harness 调度](docs/guides/cross-harness-workers.md)。
 
@@ -33,7 +33,7 @@ pi install --local npm:personal-bot
 pi
 ```
 
-在会话中执行 `/pbot init`。已启用后自动挂载 `pbot` MCP 服务（`pbot_worker`）与 `pbot_history`，提供 `/pbot init | status | worker`。详见 [Pi 使用指南](docs/hosts/pi.md)。
+在会话中执行 `/pbot init`。已启用后自动挂载 `pbot` MCP 服务（`worker_*`）与 `pbot_history`，提供 `/pbot init | status | worker`。详见 [Pi 使用指南](docs/hosts/pi.md)。
 
 ### dsh
 
@@ -46,7 +46,7 @@ dsh plugin --profile pbot add personal-bot@latest
 dsh --profile pbot
 ```
 
-选择工作区并执行 `/pbot init`。已启用后通过原生 `@deepseek-ai/dsh-mcp-client` 自动挂载 `mcp__pbot__pbot_worker`，并提供 Web 工作区/历史面板与 `/pbot status | init | worker | history`。详见 [dsh 使用指南](docs/hosts/dsh.md)。
+选择工作区并执行 `/pbot init`。已启用后通过原生 `@deepseek-ai/dsh-mcp-client` 自动挂载 `mcp__pbot__worker_*`，并提供 Web 工作区/历史面板与 `/pbot status | init | worker | history`。详见 [dsh 使用指南](docs/hosts/dsh.md)。
 
 ### Claude Code
 
@@ -56,7 +56,7 @@ dsh --profile pbot
 /plugin install personal-bot --marketplace realqiyan/personal-bot
 ```
 
-在工作区执行 `/personal-bot:pbot init`。插件通过标准 command hooks 注入主会话上下文并门控未启用技能，不拦截原生 `Agent`；跨 Harness 调度由内置 `.mcp.json` 挂载的 `pbot_worker` 提供。详见 [Claude Code 使用指南](docs/hosts/claude-code.md)。
+在工作区执行 `/personal-bot:pbot init`。插件通过标准 command hooks 注入主会话上下文并门控未启用技能，不拦截原生 `Agent`；跨 Harness 调度由内置 `.mcp.json` 挂载的 `worker_*` 提供。详见 [Claude Code 使用指南](docs/hosts/claude-code.md)。
 
 ### Antigravity
 
@@ -66,11 +66,11 @@ dsh --profile pbot
 npx personal-bot@latest install-antigravity
 ```
 
-在工作区执行 `/pbot init`。插件通过 `SessionStart`/`PreToolUse` hooks 注入上下文并门控未启用技能，不拦截原生 `invoke_subagent`/`/swarm`；跨 Harness 调度由内置 `mcp_config.json` 挂载的 `pbot_worker` 提供。详见 [Antigravity 使用指南](docs/hosts/antigravity.md)。
+在工作区执行 `/pbot init`。插件通过 `SessionStart`/`PreToolUse` hooks 注入上下文并门控未启用技能，不拦截原生 `invoke_subagent`/`/swarm`；跨 Harness 调度由内置 `mcp_config.json` 挂载的 `worker_*` 提供。详见 [Antigravity 使用指南](docs/hosts/antigravity.md)。
 
 ### 其他 MCP 宿主与自定义 ACP Harness
 
-在 Codex、Cursor 等任意 MCP 宿主中使用 `pbot_worker`，将 stdio MCP 服务指向：
+在 Codex、Cursor 等任意 MCP 宿主中使用 `worker_*`，将 stdio MCP 服务指向：
 
 ```bash
 npx personal-bot@latest mcp
@@ -94,7 +94,7 @@ pbot mcp
 
 ## 开发与验证
 
-当前版本 **0.2.20**。完整开发使用 Linux/macOS、Node.js 24.9+：
+当前版本 **0.3.0**。完整开发使用 Linux/macOS、Node.js 24.9+：
 
 ```bash
 npm ci --ignore-scripts

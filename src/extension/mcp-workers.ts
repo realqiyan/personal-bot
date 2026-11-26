@@ -8,10 +8,19 @@ import { isAcpBackend, requireThat } from "../common/validation.js";
 import { packageVersion } from "../common/version.js";
 import { AcpWorkerHost } from "../integrations/acp/agents.js";
 import { canonicalAcpBackend, inspectAcpBackends, knownAcpBackends } from "../integrations/acp/launch.js";
-import type { AcpCommands, AcpModelSelection } from "../model/acp.js";
+import {
+  mcpWorkerToolNames,
+  type AcpCommands,
+  type AcpElicitationAction,
+  type AcpElicitationContent,
+  type AcpModelSelection,
+  type McpWorkerToolName,
+} from "../model/acp.js";
+import { workspaceMcpToolNames, type WorkspaceMcpToolName } from "../model/workspace-mcp.js";
 import type { AgentCycle, AgentOwner, AgentView } from "../model/agent.js";
 import { AgentService } from "../services/agents/agent-service.js";
-import { readWorkspaceConfig, workspaceDisabledMessage } from "../services/workspace/workspace-config.js";
+import { readWorkspaceConfig, workspaceDisabledMessage, workspaceFeatures } from "../services/workspace/workspace-config.js";
+import { WorkspaceMcpBridge } from "./mcp-bridge.js";
 
 const protocolVersion = "2025-03-26";
 const readyTimeoutMs = 45_000;
@@ -20,25 +29,44 @@ const maxWaitMs = 600_000;
 const reportPageSize = 16_000;
 const progressIntervalMs = 5_000;
 
-const workerActions = [
-  "start", "send", "wait", "permission", "read", "status", "stop", "backends", "models",
-] as const;
+const responseActions = ["accept", "decline", "cancel"] as const;
+const discoverTargets = ["overview", "workers", "backends", "models"] as const;
+type DiscoverTarget = typeof discoverTargets[number];
 
-const allowedParams = new Set([
-  "action", "backend", "message", "model", "thinking", "workerId",
-  "decision", "waitMs", "cwd", "permissionId", "offset", "workspace",
-]);
+type AllMcpToolName = McpWorkerToolName | WorkspaceMcpToolName;
+const allMcpToolNames: readonly AllMcpToolName[] = [...mcpWorkerToolNames, ...workspaceMcpToolNames];
+
+const toolParams: Record<AllMcpToolName, ReadonlySet<string>> = {
+  worker_create: new Set(["backend", "model", "thinking", "cwd", "workspace"]),
+  worker_close: new Set(["workerId", "workspace"]),
+  worker_request: new Set(["workerId", "message", "waitMs", "workspace"]),
+  worker_response: new Set(["workerId", "action", "requestId", "optionId", "content", "waitMs", "workspace"]),
+  worker_output: new Set(["workerId", "offset", "waitMs", "workspace"]),
+  worker_discover: new Set(["target", "workerId", "backend", "model", "workspace"]),
+  workspace_mcp_discover: new Set(["server", "workspace"]),
+  workspace_mcp_call: new Set(["server", "tool", "arguments", "workspace"]),
+};
+
+const shortToolMap: Record<string, McpWorkerToolName> = {
+  create: "worker_create",
+  close: "worker_close",
+  request: "worker_request",
+  response: "worker_response",
+  output: "worker_output",
+  discover: "worker_discover",
+};
 
 export type ProgressReporter = (message: string) => void;
 
 export const mcpInstructions =
-  "pbot_worker 用于跨宿主委派其他 Harness（ACP Agent）执行任务；同宿主任务优先由当前宿主或其原生子代理直接完成。";
+  "用于跨代理程序委派任务（worker_*）与调用工作区统一注册的外部 MCP 服务（workspace_mcp_*）；未指定其他程序时，优先由当前程序或其原生子代理直接完成。\n" +
+  "跨程序委派：worker_create 创建 worker（或用 worker_discover 复用已有 worker）→ worker_request 发送任务或后续消息 → 用完可用 worker_close 关闭；后台等待、超时续等（timedOut）或长报告翻页（nextOffset）用 worker_output；返回 needsResponse 时向用户确认后用 worker_response 回复。\n" +
+  "工作区统一 MCP（.pbot/mcp.json）：先用 workspace_mcp_discover 查看已注册服务或指定服务的工具清单，再用 workspace_mcp_call 调用目标工具；可与宿主原生 MCP 同时使用。";
 
 function formatBackendItem(entry: ReturnType<typeof inspectAcpBackends>[number], defaultBackend?: string): string {
   const tags: string[] = [];
   if (entry.label) tags.push(entry.label);
-  else if (!entry.builtin) tags.push("自定义");
-  if (entry.backend === defaultBackend) tags.push("当前宿主");
+  if (entry.backend === defaultBackend) tags.push("当前");
   return tags.length ? `${entry.backend}（${tags.join("，")}）` : entry.backend;
 }
 
@@ -50,93 +78,320 @@ function summarizeBackends(commands: AcpCommands = {}, defaultBackend?: string) 
   const unavailableText = unavailable.map(item => formatBackendItem(item, defaultBackend)).join("、");
   const overview = available.length
     ? unavailable.length
-      ? `本机可用 backend：${availableText}；未检测到：${unavailableText}（详情查 backends）。`
-      : `本机可用 backend：${availableText}。`
-    : `已注册 backend：${unavailableText}（当前环境未检测到可执行文件，详情查 backends）。`;
-  const targetChoices = available.length ? availableText : unavailableText;
-  return { overview, targetChoices };
+      ? `可用 backend：${availableText}；不可用：${unavailableText}。`
+      : `可用 backend：${availableText}。`
+    : `当前无可用 backend（不可用：${unavailableText}）。`;
+  const availableIds = available.map(item => item.backend).join("、");
+  return { overview, availableIds };
 }
 
-export function buildPbotWorkerTool(commands: AcpCommands = {}, defaultBackend?: string, workspaceBound = false) {
-  const { overview, targetChoices } = summarizeBackends(commands, defaultBackend);
-  const backendDefaultHint = defaultBackend
-    ? `省略时回退当前宿主 ${defaultBackend}`
-    : "未设置默认宿主时必填";
+function workspaceProperty(workspaceBound: boolean) {
   return {
-    name: "pbot_worker",
-    description:
-      "跨宿主委派其他 Harness（ACP Agent）执行独立任务。未指定其他程序时优先用当前宿主或其原生子代理。\n" +
-      "最常用：action=\"start\" + backend + message（用户未指定模型时省略 model 与 thinking，沿用目标默认）。" +
-      "start / send / permission 默认同步等待 50s 并返回结果（传 waitMs: 0 可立即返回异步执行）；" +
-      "超时返回 timedOut 后用 wait 续等，返回 needsPermission 向用户确认后用 permission 回复，报告含 nextOffset 时用 read 翻页。" +
-      "后续追问同一 worker 用 send（已停止自动恢复），用完可 stop。\n" +
-      overview,
-    inputSchema: {
-      type: "object",
-      additionalProperties: false,
-      required: ["action"],
-      properties: {
-        action: {
-          type: "string",
-          enum: [...workerActions],
-          description:
-            "start 启动新 worker 执行任务；send 发后续消息（已停止自动恢复）；wait 续等运行中 worker；permission 回复待确认权限；read 读/翻页最新报告；status 查单个状态（省略 workerId 列全部）；stop 停止；backends 查可用目标与权限策略；models 查目标可选模型与思考力度。",
-        },
-        backend: {
-          type: "string",
-          description: `start / models 使用（${backendDefaultHint}）：目标宿主 Harness，忽略大小写并支持常见别名（如 claude-code / agy）。可用：${targetChoices}。`,
-        },
-        message: {
-          type: "string",
-          description: "start / send 必填：发给 worker 的任务或后续指令。worker 看不到当前对话，start 时写清目标、相关文件路径、约束与交付要求。",
-        },
-        model: {
-          type: "string",
-          description: "start / models 可选：仅用户指定模型时填（支持精确值、显示名、唯一简名或 provider/model，忽略大小写）；不确定合法值可用 models 查询；省略沿用目标默认。",
-        },
-        thinking: {
-          type: "string",
-          description: "start 可选：仅用户指定思考力度时填（常见值 low / medium / high / xhigh / max，忽略大小写）；省略沿用目标默认。",
-        },
-        workerId: {
-          type: "string",
-          description: "send / wait / permission / read / stop 必填，status 可选（省略列全部）：start 或 status 返回的 worker ID。",
-        },
-        decision: {
-          type: "string",
-          description: "permission 必填：\"allow\"、\"deny\"，或 pendingPermissions[].options[].optionId。",
-        },
-        waitMs: {
-          type: "integer",
-          minimum: 0,
-          maximum: maxWaitMs,
-          description: `start / send / wait / permission 可选：等待毫秒数，默认 ${defaultWaitMs}；start / send / permission 传 0 立即返回异步执行。`,
-        },
-        cwd: {
-          type: "string",
-          description: "start 可选：worker 执行子目录（相对工作区根目录或绝对路径），默认工作区根目录。",
-        },
-        permissionId: {
-          type: "string",
-          description: "permission 可选：仅同时存在多条待确认权限时传 pendingPermissions[].permissionId。",
-        },
-        offset: {
-          type: "integer",
-          minimum: 0,
-          description: "read 可选：报告字符偏移，默认 0；续读传上次 nextOffset。",
-        },
-        workspace: {
-          type: "string",
-          description: workspaceBound
-            ? "可选：工作区根目录绝对路径；已默认绑定当前工作区，通常省略。"
-            : "工作区根目录绝对路径（环境上下文中的 workspaceRoot）；当默认目录不是当前工作区时必填。",
-        },
-      },
-    },
+    type: "string",
+    description: workspaceBound
+      ? "工作区根目录绝对路径；已默认绑定当前工作区，通常省略。"
+      : "工作区根目录绝对路径（上下文提供 workspaceRoot 时传该路径）；当前未默认绑定，请显式传入。",
   };
 }
 
-export const pbotWorkerTool = buildPbotWorkerTool();
+export function buildPbotWorkerTools(commands: AcpCommands = {}, defaultBackend?: string, workspaceBound = false) {
+  const { overview, availableIds } = summarizeBackends(commands, defaultBackend);
+  const modelsBackendHint = defaultBackend
+    ? `省略时默认查 ${defaultBackend}`
+    : "必填";
+  const workspace = workspaceProperty(workspaceBound);
+
+  return [
+    {
+      name: "worker_create",
+      description:
+        "创建一个新的 worker 并返回其 workerId（仅创建，不发送任务；随后用 worker_request 派发任务）。" +
+        "未指定其他程序时优先由当前程序或其原生子代理完成。\n" +
+        overview,
+      annotations: {
+        title: "Create Worker",
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: true,
+      },
+      inputSchema: {
+        type: "object",
+        additionalProperties: false,
+        required: ["backend"],
+        properties: {
+          backend: {
+            type: "string",
+            description: "目标代理程序名称，不区分大小写，支持常见别名（如 claude-code、agy）。",
+          },
+          model: {
+            type: "string",
+            description: "仅用户明确指定模型时传入（支持模型 ID、显示名或 provider/model，不区分大小写）；不确定合法值可用 worker_discover(target=\"models\") 查询；省略则使用目标默认。",
+          },
+          thinking: {
+            type: "string",
+            description: "仅用户明确指定思考力度时传入（如 low / medium / high / xhigh / max，不区分大小写）；省略则使用目标默认。",
+          },
+          cwd: {
+            type: "string",
+            description: "worker 工作目录（相对工作区根目录或绝对路径），默认为工作区根目录。",
+          },
+          workspace,
+        },
+      },
+    },
+    {
+      name: "worker_close",
+      description:
+        "关闭指定 worker。若该 worker 支持恢复（capabilities.resume 为 true），后续仍可直接用 worker_request 继续会话。",
+      annotations: {
+        title: "Close Worker",
+        readOnlyHint: false,
+        destructiveHint: true,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+      inputSchema: {
+        type: "object",
+        additionalProperties: false,
+        required: ["workerId"],
+        properties: {
+          workerId: {
+            type: "string",
+            description: "要关闭的 worker ID（来自 worker_create 或 worker_discover）。",
+          },
+          workspace,
+        },
+      },
+    },
+    {
+      name: "worker_request",
+      description:
+        "向指定 worker 发送任务或后续消息（若已关闭且支持恢复，会自动续接会话）。" +
+        `默认最多等待 ${defaultWaitMs / 1000} 秒返回报告（waitMs 设为 0 立即返回并在后台执行）；` +
+        "若返回 timedOut 或报告含 nextOffset 用 worker_output 继续，返回 needsResponse 时向用户确认后用 worker_response 回复。",
+      annotations: {
+        title: "Send Request to Worker",
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: true,
+      },
+      inputSchema: {
+        type: "object",
+        additionalProperties: false,
+        required: ["workerId", "message"],
+        properties: {
+          workerId: {
+            type: "string",
+            description: "目标 worker ID（来自 worker_create 或 worker_discover）。",
+          },
+          message: {
+            type: "string",
+            description: "发给 worker 的任务说明或后续消息。worker 看不到当前对话历史，首次派发时请写清目标、相关文件路径、约束和交付要求。",
+          },
+          waitMs: {
+            type: "integer",
+            minimum: 0,
+            maximum: maxWaitMs,
+            description: `最多等待的毫秒数（默认 ${defaultWaitMs}）；传 0 立即返回并在后台执行。`,
+          },
+          workspace,
+        },
+      },
+    },
+    {
+      name: "worker_response",
+      description:
+        "回复 worker 返回 needsResponse: true 时的待处理请求（pendingRequests），用于权限审批（kind=\"permission\"）、表单提问（kind=\"form\"）和 URL 确认（kind=\"url\"）。" +
+        `回复前先向用户确认；回复后默认最多等待 ${defaultWaitMs / 1000} 秒返回后续结果（waitMs 设为 0 立即返回）。`,
+      annotations: {
+        title: "Respond to Worker Request",
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: true,
+      },
+      inputSchema: {
+        type: "object",
+        additionalProperties: false,
+        required: ["workerId", "action"],
+        properties: {
+          workerId: {
+            type: "string",
+            description: "存在待处理请求的 worker ID。",
+          },
+          action: {
+            type: "string",
+            enum: [...responseActions],
+            description: "accept：同意权限、提交表单或确认 URL；decline：拒绝；cancel：取消。",
+          },
+          requestId: {
+            type: "string",
+            description: "待回复的 pendingRequests[].requestId；仅一条请求时可省略，多条时必填。",
+          },
+          optionId: {
+            type: "string",
+            description: "仅 kind=\"permission\" 且 action 不为 cancel 时可用：指定 pendingRequests[].options[].optionId（省略时默认单次允许或拒绝）。",
+          },
+          content: {
+            type: "object",
+            additionalProperties: true,
+            description: "仅 kind=\"form\" 且 action=\"accept\" 时可用：按 pendingRequests[].schema.properties 填写的答案对象（字段值支持字符串、数字、布尔或字符串数组）。",
+          },
+          waitMs: {
+            type: "integer",
+            minimum: 0,
+            maximum: maxWaitMs,
+            description: `回复后最多等待的毫秒数（默认 ${defaultWaitMs}）；传 0 立即返回。`,
+          },
+          workspace,
+        },
+      },
+    },
+    {
+      name: "worker_output",
+      description:
+        "获取指定 worker 最新一轮的执行报告：仍在运行时等待其完成（也可能返回 timedOut 或 needsResponse），已结束则立即返回；报告含 nextOffset 时传入 offset 翻页续读。",
+      annotations: {
+        title: "Get Worker Output",
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+      inputSchema: {
+        type: "object",
+        additionalProperties: false,
+        required: ["workerId"],
+        properties: {
+          workerId: {
+            type: "string",
+            description: "要等待或读取报告的 worker ID。",
+          },
+          offset: {
+            type: "integer",
+            minimum: 0,
+            description: "报告字符偏移量（默认 0）；翻页续读时传上次返回的 nextOffset。",
+          },
+          waitMs: {
+            type: "integer",
+            minimum: 0,
+            maximum: maxWaitMs,
+            description: `任务仍在运行时最多等待的毫秒数（默认 ${defaultWaitMs}）；已结束或翻页时立即返回。`,
+          },
+          workspace,
+        },
+      },
+    },
+    {
+      name: "worker_discover",
+      description:
+        "查询可用 backend、当前会话已有 worker 的状态，或指定 backend 可选的模型与思考力度。" +
+        "默认（target=\"overview\"）返回可用 backend 与已有 worker；仅需确认模型或思考力度可选值时再查 target=\"models\"（耗时较长）。",
+      annotations: {
+        title: "Discover Workers, Backends & Models",
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+      inputSchema: {
+        type: "object",
+        additionalProperties: false,
+        required: [],
+        properties: {
+          target: {
+            type: "string",
+            enum: [...discoverTargets],
+            description: "查询范围，默认 \"overview\"（同时返回 backends 与 workers）；\"workers\" 查全部或单个 worker 状态；\"backends\" 查可用 backend 列表；\"models\" 查指定 backend 的可选模型与思考力度。",
+          },
+          workerId: {
+            type: "string",
+            description: "仅 target=\"workers\" 可用：指定单个 worker ID；省略时列出全部。",
+          },
+          backend: {
+            type: "string",
+            description: availableIds
+              ? `仅 target="models" 可用（${modelsBackendHint}）：目标代理程序名称，支持常见别名；可用：${availableIds}。`
+              : `仅 target="models" 可用（${modelsBackendHint}）：目标代理程序名称，支持常见别名。`,
+          },
+          model: {
+            type: "string",
+            description: "仅 target=\"models\" 可用：指定模型以查询该模型支持的思考力度选项。",
+          },
+          workspace,
+        },
+      },
+    },
+  ];
+}
+
+export function buildWorkspaceMcpTools(workspaceBound = false) {
+  const workspace = workspaceProperty(workspaceBound);
+  return [
+    {
+      name: "workspace_mcp_discover",
+      description:
+        "查看工作区 .pbot/mcp.json 中统一注册的 MCP 服务列表；传入 server 时按需连接该服务并返回其全部工具及参数 schema。",
+      annotations: {
+        title: "Discover Workspace MCP Servers & Tools",
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: true,
+      },
+      inputSchema: {
+        type: "object",
+        additionalProperties: false,
+        required: [],
+        properties: {
+          server: {
+            type: "string",
+            description: "目标 MCP 服务名（来自 .pbot/mcp.json 的键名）；省略时仅列出已注册服务摘要。",
+          },
+          workspace,
+        },
+      },
+    },
+    {
+      name: "workspace_mcp_call",
+      description:
+        "调用工作区 .pbot/mcp.json 中指定 MCP 服务的工具（首次调用按需连接并复用连接，配置变更自动热更新）。" +
+        "不确定工具名或参数 schema 时，先用 workspace_mcp_discover(server) 查询。",
+      annotations: {
+        title: "Call Workspace MCP Tool",
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: true,
+      },
+      inputSchema: {
+        type: "object",
+        additionalProperties: false,
+        required: ["server", "tool"],
+        properties: {
+          server: {
+            type: "string",
+            description: "目标 MCP 服务名（来自 .pbot/mcp.json）。",
+          },
+          tool: {
+            type: "string",
+            description: "要调用的下游 MCP 工具名称。",
+          },
+          arguments: {
+            type: "object",
+            additionalProperties: true,
+            description: "传递给下游 MCP 工具的参数对象，省略时为空对象。",
+          },
+          workspace,
+        },
+      },
+    },
+  ];
+}
+
+export const pbotWorkerTools = buildPbotWorkerTools();
 
 export function defaultWorkerDirectory(): string {
   if (process.env.PBOT_MCP_AGENT_DIR) return process.env.PBOT_MCP_AGENT_DIR;
@@ -144,11 +399,66 @@ export function defaultWorkerDirectory(): string {
   return join(homedir(), ".pbot/subagents");
 }
 
-function rejectUnknownParams(rawArgs: Record<string, unknown>) {
+function isKnownWorkerTool(name: string): name is McpWorkerToolName {
+  return (mcpWorkerToolNames as readonly string[]).includes(name);
+}
+
+function isKnownTool(name: string): name is AllMcpToolName {
+  return (allMcpToolNames as readonly string[]).includes(name);
+}
+
+/** Parse Pi/dsh `/pbot worker ...` CLI arguments into a canonical MCP tool call. */
+export function parseWorkerCommand(raw: string): { tool: McpWorkerToolName; args: Record<string, unknown> } {
+  const trimmed = raw.trim();
+  if (!trimmed || trimmed === "overview") return { tool: "worker_discover", args: { target: "overview" } };
+  if (trimmed === "status" || trimmed === "list" || trimmed === "workers") {
+    return { tool: "worker_discover", args: { target: "workers" } };
+  }
+  if (trimmed.startsWith("status ") || trimmed.startsWith("workers ")) {
+    const workerId = trimmed.slice(trimmed.indexOf(" ") + 1).trim();
+    requireThat(workerId.length > 0, "请提供 workerId。");
+    return { tool: "worker_discover", args: { target: "workers", workerId } };
+  }
+  if (trimmed === "backends") return { tool: "worker_discover", args: { target: "backends" } };
+  if (trimmed === "models") return { tool: "worker_discover", args: { target: "models" } };
+  if (trimmed.startsWith("models ")) {
+    const backend = trimmed.slice(7).trim();
+    requireThat(backend.length > 0, "请提供 backend 名称。");
+    return { tool: "worker_discover", args: { target: "models", backend } };
+  }
+  if (trimmed.startsWith("close ")) {
+    const rest = trimmed.slice(6).trim();
+    if (!rest.startsWith("{")) {
+      requireThat(rest.length > 0, "请提供要关闭的 workerId。");
+      return { tool: "worker_close", args: { workerId: rest } };
+    }
+  }
+  if (trimmed.startsWith("{")) {
+    const parsed: unknown = JSON.parse(trimmed);
+    requireThat(object(parsed), 'worker 参数必须是 JSON 对象，例如：/pbot worker create {"backend":"codex"}');
+    const rawTool = typeof parsed.tool === "string" ? parsed.tool : undefined;
+    const resolved = rawTool ? (isKnownWorkerTool(rawTool) ? rawTool : shortToolMap[rawTool]) : undefined;
+    requireThat(resolved, `JSON 形式需包含有效 tool 字段（${mcpWorkerToolNames.join(", ")}），或使用 /pbot worker <工具名> <JSON>。`);
+    const rest = Object.fromEntries(Object.entries(parsed).filter(([key]) => key !== "tool"));
+    return { tool: resolved, args: rest };
+  }
+  const match = trimmed.match(/^(\S+)(?:\s+([\s\S]*))?$/);
+  const verb = match?.[1] ?? "";
+  const rest = (match?.[2] ?? "").trim();
+  const tool = isKnownWorkerTool(verb) ? verb : shortToolMap[verb];
+  requireThat(tool, `未知 worker 命令：${verb}（支持：overview | status | backends | models | create | request | response | output | close | discover）。`);
+  if (!rest) return { tool, args: {} };
+  const parsed: unknown = JSON.parse(rest);
+  requireThat(object(parsed), `${tool} 的参数必须是 JSON 对象。`);
+  return { tool, args: parsed };
+}
+
+function rejectUnknownParams(tool: AllMcpToolName, rawArgs: Record<string, unknown>) {
+  const allowed = toolParams[tool];
   const unknown = Object.entries(rawArgs)
-    .filter(([key, value]) => value !== undefined && !allowedParams.has(key))
+    .filter(([key, value]) => value !== undefined && !allowed.has(key))
     .map(([key]) => key);
-  requireThat(unknown.length === 0, `未知参数：${unknown.join(", ")}（可用参数：${[...allowedParams].join(", ")}）。`);
+  requireThat(unknown.length === 0, `未知参数：${unknown.join(", ")}（${tool} 可用参数：${[...allowed].join(", ")}）。`);
 }
 
 function asString(args: Record<string, unknown>, key: string, required = false): string | undefined {
@@ -167,6 +477,20 @@ function asInt(args: Record<string, unknown>, key: string, min: number, max: num
   requireThat(typeof value === "number" && Number.isInteger(value) && value >= min && value <= max,
     `参数 ${key} 必须是 ${min}–${max} 的整数。`);
   return value;
+}
+
+function asContent(args: Record<string, unknown>, key: string): AcpElicitationContent | undefined {
+  const value = args[key];
+  if (value === undefined || value === null) return undefined;
+  requireThat(object(value), `参数 ${key} 必须是 JSON 对象。`);
+  for (const [field, entry] of Object.entries(value)) {
+    const valid = typeof entry === "string"
+      || (typeof entry === "number" && Number.isFinite(entry))
+      || typeof entry === "boolean"
+      || (Array.isArray(entry) && entry.every(item => typeof item === "string"));
+    requireThat(valid, `参数 ${key}.${field} 必须是字符串、数字、布尔值或字符串数组。`);
+  }
+  return value as AcpElicitationContent;
 }
 
 function presentCycle(cycle: AgentCycle) {
@@ -196,7 +520,7 @@ function presentWorker(value: AgentView & {
     activity: value.activity,
     alive: value.alive,
     ...(selection ? { selection } : {}),
-    ...(value.pendingPermissions?.length ? { pendingPermissions: value.pendingPermissions } : {}),
+    ...(value.pendingRequests?.length ? { pendingRequests: value.pendingRequests } : {}),
     ...(value.cycle ? { cycle: presentCycle(value.cycle) } : {}),
     ...(value.report !== undefined ? { report: value.report } : {}),
     ...(truncated ? { totalLength: value.totalLength, nextOffset: value.nextOffset } : {}),
@@ -206,6 +530,7 @@ function presentWorker(value: AgentView & {
 
 export class McpWorkerRuntime {
   readonly #services = new Map<string, { service: AgentService; host: AcpWorkerHost; owner: AgentOwner }>();
+  readonly #bridge = new WorkspaceMcpBridge();
   readonly #sessionId: string;
   readonly #directory: string;
   readonly #defaultBackend: string | undefined;
@@ -221,11 +546,11 @@ export class McpWorkerRuntime {
     this.#defaultBackend = defaultBackend?.trim() || undefined;
   }
 
-  private resolveBackend(rawArgs: Record<string, unknown>, commands?: AcpCommands): string {
-    const raw = asString(rawArgs, "backend") ?? this.#defaultBackend;
-    requireThat(raw, `缺少必填参数：backend（未能识别当前宿主，请指定目标程序：${knownAcpBackends(commands).join(", ")}）。`);
+  private resolveBackend(rawArgs: Record<string, unknown>, commands: AcpCommands | undefined, allowDefault: boolean): string {
+    const raw = asString(rawArgs, "backend") ?? (allowDefault ? this.#defaultBackend : undefined);
+    requireThat(raw, `缺少必填参数：backend（请指定目标程序：${knownAcpBackends(commands).join(", ")}）。`);
     const backend = canonicalAcpBackend(raw, commands);
-    requireThat(isAcpBackend(backend), "无效的 ACP backend 名称：" + raw);
+    requireThat(isAcpBackend(backend), "无效的 backend 名称：" + raw);
     return backend;
   }
 
@@ -257,19 +582,26 @@ export class McpWorkerRuntime {
     return { root, configuration, ...entry };
   }
 
-  async toolDefinition() {
+  async toolDefinitions() {
     let commands: AcpCommands | undefined;
+    let includeWorkspaceMcp = true;
     try {
       const root = await this.resolveWorkspace();
       const configuration = await readWorkspaceConfig(root);
-      if (configuration.enabled) commands = configuration.acp;
+      if (configuration.enabled) {
+        commands = configuration.acp;
+        includeWorkspaceMcp = workspaceFeatures(configuration).mcp;
+      }
     } catch { /* Fall back to registered built-in harnesses when cwd is outside an enabled workspace. */ }
     const defaultBackend = this.#defaultBackend ? canonicalAcpBackend(this.#defaultBackend, commands) : undefined;
     const workspaceBound = Boolean(process.env.CLAUDE_PROJECT_DIR || process.env.PBOT_WORKSPACE_ROOT);
-    return buildPbotWorkerTool(commands, defaultBackend, workspaceBound);
+    return [
+      ...buildPbotWorkerTools(commands, defaultBackend, workspaceBound),
+      ...(includeWorkspaceMcp ? buildWorkspaceMcpTools(workspaceBound) : []),
+    ];
   }
 
-  /** Wait until ACP handshake and model/thinking configuration finish so invalid options fail synchronously on start/resume. */
+  /** Wait until ACP handshake and model/thinking configuration finish so invalid options fail synchronously on create/resume. */
   private async waitReady(
     service: AgentService,
     owner: AgentOwner,
@@ -283,9 +615,8 @@ export class McpWorkerRuntime {
     for (;;) {
       requireThat(!this.#closed, "Personal Bot MCP 服务已关闭。");
       const current = service.status(workerId, owner);
-      if (current.selection !== undefined) return current;
       if (current.state === "error" || current.state === "stopped") {
-        throw new Error(current.error || "ACP worker 启动失败。");
+        throw new Error(current.error || "worker 启动失败。");
       }
       if (current.state === "idle" || current.state === "busy") return current;
       if (Date.now() >= deadline) return current;
@@ -308,6 +639,7 @@ export class McpWorkerRuntime {
     workerId: string,
     requestId: string | undefined,
     timeoutMs: number,
+    offset = 0,
     progress?: ProgressReporter,
   ) {
     const deadline = Date.now() + timeoutMs;
@@ -327,16 +659,17 @@ export class McpWorkerRuntime {
       const terminalWithoutCycle = !latestRequest && (current.state === "stopped" || current.state === "error" || (current.state === "idle" && !targetCycle));
       const failedBeforeCycle = Boolean(latestRequest && !targetCycle && (current.state === "stopped" || current.state === "error"));
       if (settled) {
-        const page = await service.read(workerId, owner, targetCycle.cycleId, 0, reportPageSize);
+        const page = await service.read(workerId, owner, targetCycle.cycleId, offset, reportPageSize);
         return { settled: true, ...presentWorker(page) };
       }
       if (terminalWithoutCycle || failedBeforeCycle) {
+        if (offset > 0) await service.read(workerId, owner, undefined, offset, reportPageSize);
         return { settled: true, ...presentWorker(current) };
       }
-      if (current.pendingPermissions?.length) {
+      if (current.pendingRequests?.length) {
         return {
           settled: false,
-          needsPermission: true,
+          needsResponse: true,
           ...presentWorker(current),
         };
       }
@@ -357,48 +690,45 @@ export class McpWorkerRuntime {
   }
 
   async callTool(name: string, rawArgs: unknown, progress?: ProgressReporter): Promise<unknown> {
-    requireThat(name === "pbot_worker", "未知工具：" + name);
+    requireThat(isKnownTool(name), `未知工具：${name}（可用：${allMcpToolNames.join(", ")}）。`);
     requireThat(object(rawArgs), "工具参数必须是对象。");
-    rejectUnknownParams(rawArgs);
-    const action = asString(rawArgs, "action", true)!;
+    rejectUnknownParams(name, rawArgs);
     const { root, configuration, host, service, owner } = await this.workspace(asString(rawArgs, "workspace"));
 
-    switch (action) {
-      case "backends":
-        return { backends: inspectAcpBackends(configuration.acp) };
-      case "models": {
-        const backend = this.resolveBackend(rawArgs, configuration.acp);
-        const model = asString(rawArgs, "model");
-        return await host.inspectModels(backend, root, {
-          ...(model ? { model } : {}),
-        });
+    switch (name) {
+      case "workspace_mcp_discover": {
+        requireThat(workspaceFeatures(configuration).mcp, `工作区统一 MCP 功能已在 ${configuration.path} 中停用（features.mcp: false）。`);
+        const server = asString(rawArgs, "server");
+        return this.#bridge.discover(root, server);
       }
-      case "start": {
-        const backend = this.resolveBackend(rawArgs, configuration.acp);
-        const message = asString(rawArgs, "message", true)!;
+      case "workspace_mcp_call": {
+        requireThat(workspaceFeatures(configuration).mcp, `工作区统一 MCP 功能已在 ${configuration.path} 中停用（features.mcp: false）。`);
+        const server = asString(rawArgs, "server", true)!;
+        const tool = asString(rawArgs, "tool", true)!;
+        const toolArgs = rawArgs.arguments === undefined ? {} : rawArgs.arguments;
+        requireThat(object(toolArgs), "参数 arguments 必须是 JSON 对象。");
+        return this.#bridge.call(root, server, tool, toolArgs);
+      }
+      case "worker_create": {
+        const backend = this.resolveBackend(rawArgs, configuration.acp, false);
         const model = asString(rawArgs, "model");
         const thinking = asString(rawArgs, "thinking");
         const cwd = asString(rawArgs, "cwd");
-        const waitMs = asInt(rawArgs, "waitMs", 0, maxWaitMs) ?? defaultWaitMs;
-        const startedAt = Date.now();
         const created = await service.start({
           backend,
-          message,
           ...(model ? { model } : {}),
           ...(thinking ? { thinking } : {}),
           ...(cwd ? { cwd } : {}),
         }, owner);
-        const ready = await this.waitReady(service, owner, created.agentId, waitMs > 0 ? Math.min(waitMs, readyTimeoutMs) : readyTimeoutMs, progress);
-        if (waitMs > 0 && created.requestId) {
-          const remaining = Math.max(0, waitMs - (Date.now() - startedAt));
-          return this.waitFor(service, owner, created.agentId, created.requestId, remaining, progress);
-        }
+        const ready = await this.waitReady(service, owner, created.agentId, readyTimeoutMs, progress);
         return {
           ...presentWorker(ready),
-          ...(ready.pendingPermissions?.length ? { settled: false, needsPermission: true } : {}),
+          capabilities: { resume: ready.capabilities.resume },
         };
       }
-      case "send": {
+      case "worker_close":
+        return presentWorker(service.stop(asString(rawArgs, "workerId", true)!, owner));
+      case "worker_request": {
         const workerId = asString(rawArgs, "workerId", true)!;
         const message = asString(rawArgs, "message", true)!;
         const waitMs = asInt(rawArgs, "waitMs", 0, maxWaitMs) ?? defaultWaitMs;
@@ -406,7 +736,7 @@ export class McpWorkerRuntime {
         requireThat(current.state !== "stopping", "worker 正在停止，请稍后重试。");
         if (current.alive) {
           const sent = service.send(workerId, message, "followUp", owner);
-          if (waitMs > 0) return this.waitFor(service, owner, workerId, sent.requestId, waitMs, progress);
+          if (waitMs > 0) return this.waitFor(service, owner, workerId, sent.requestId, waitMs, 0, progress);
           return presentWorker(sent);
         }
         const startedAt = Date.now();
@@ -414,41 +744,76 @@ export class McpWorkerRuntime {
         const ready = await this.waitReady(service, owner, workerId, waitMs > 0 ? Math.min(waitMs, readyTimeoutMs) : readyTimeoutMs, progress);
         if (waitMs > 0 && resumed.requestId) {
           const remaining = Math.max(0, waitMs - (Date.now() - startedAt));
-          return this.waitFor(service, owner, workerId, resumed.requestId, remaining, progress);
+          return this.waitFor(service, owner, workerId, resumed.requestId, remaining, 0, progress);
         }
         return {
           ...presentWorker(ready),
-          ...(ready.pendingPermissions?.length ? { settled: false, needsPermission: true } : {}),
+          ...(ready.pendingRequests?.length ? { settled: false, needsResponse: true } : {}),
         };
       }
-      case "wait": {
+      case "worker_response": {
         const workerId = asString(rawArgs, "workerId", true)!;
+        const rawAction = asString(rawArgs, "action", true)!;
+        requireThat((responseActions as readonly string[]).includes(rawAction),
+          `参数 action 无效：${rawAction}（可用：${responseActions.join(", ")}）。`);
+        const action = rawAction as AcpElicitationAction;
+        const requestId = asString(rawArgs, "requestId");
+        const optionId = asString(rawArgs, "optionId");
+        const content = asContent(rawArgs, "content");
         const waitMs = asInt(rawArgs, "waitMs", 0, maxWaitMs) ?? defaultWaitMs;
-        return this.waitFor(service, owner, workerId, undefined, waitMs, progress);
-      }
-      case "permission": {
-        const workerId = asString(rawArgs, "workerId", true)!;
-        const permissionId = asString(rawArgs, "permissionId");
-        const decision = asString(rawArgs, "decision", true)!;
-        const waitMs = asInt(rawArgs, "waitMs", 0, maxWaitMs) ?? defaultWaitMs;
-        const updated = service.answerPermission(workerId, permissionId, decision, owner);
-        if (waitMs > 0) return this.waitFor(service, owner, workerId, undefined, waitMs, progress);
+        const updated = service.respond(workerId, {
+          action,
+          ...(requestId ? { requestId } : {}),
+          ...(optionId ? { optionId } : {}),
+          ...(content !== undefined ? { content } : {}),
+        }, owner);
+        if (waitMs > 0) return this.waitFor(service, owner, workerId, undefined, waitMs, 0, progress);
         return presentWorker(updated);
       }
-      case "read": {
+      case "worker_output": {
         const workerId = asString(rawArgs, "workerId", true)!;
-        const offset = asInt(rawArgs, "offset", 0, 10_000_000);
-        return presentWorker(await service.read(workerId, owner, undefined, offset, reportPageSize));
+        const offset = asInt(rawArgs, "offset", 0, 10_000_000) ?? 0;
+        const waitMs = asInt(rawArgs, "waitMs", 0, maxWaitMs) ?? defaultWaitMs;
+        return this.waitFor(service, owner, workerId, undefined, waitMs, offset, progress);
       }
-      case "status": {
+      case "worker_discover": {
+        const rawTarget = asString(rawArgs, "target") ?? "overview";
+        requireThat((discoverTargets as readonly string[]).includes(rawTarget),
+          `参数 target 无效：${rawTarget}（可用：${discoverTargets.join(", ")}）。`);
+        const target = rawTarget as DiscoverTarget;
         const workerId = asString(rawArgs, "workerId");
-        if (!workerId) return { workers: service.list(owner).map(presentWorker) };
-        return presentWorker(service.status(workerId, owner));
+        const backendRaw = asString(rawArgs, "backend");
+        const model = asString(rawArgs, "model");
+        if (target !== "workers") {
+          requireThat(workerId === undefined, '参数 workerId 仅在 target="workers" 时可用。');
+        }
+        if (target !== "models") {
+          requireThat(backendRaw === undefined && model === undefined, '参数 backend / model 仅在 target="models" 时可用。');
+        }
+        if (target === "overview") {
+          return {
+            target,
+            backends: inspectAcpBackends(configuration.acp),
+            workers: service.list(owner).map(presentWorker),
+          };
+        }
+        if (target === "backends") {
+          return { target, backends: inspectAcpBackends(configuration.acp) };
+        }
+        if (target === "workers") {
+          return {
+            target,
+            workers: workerId
+              ? [presentWorker(service.status(workerId, owner))]
+              : service.list(owner).map(presentWorker),
+          };
+        }
+        const backend = this.resolveBackend(rawArgs, configuration.acp, true);
+        return {
+          target,
+          ...(await host.inspectModels(backend, root, { ...(model ? { model } : {}) })),
+        };
       }
-      case "stop":
-        return presentWorker(service.stop(asString(rawArgs, "workerId", true)!, owner));
-      default:
-        throw new Error(`未知 action：${action}（可用：${workerActions.join(", ")}）。`);
     }
   }
 
@@ -457,7 +822,10 @@ export class McpWorkerRuntime {
     this.#closed = true;
     const entries = [...this.#services.values()];
     this.#services.clear();
-    await Promise.allSettled(entries.map(({ service, owner }) => service.close(owner, preserve)));
+    await Promise.allSettled([
+      this.#bridge.close(),
+      ...entries.map(({ service, owner }) => service.close(owner, preserve)),
+    ]);
   }
 }
 
@@ -491,7 +859,7 @@ export async function handleMcpRequest(
     }
     if (message.method === "ping") return { jsonrpc: "2.0", id, result: {} };
     if (message.method === "tools/list") {
-      return { jsonrpc: "2.0", id, result: { tools: [await runtime.toolDefinition()] } };
+      return { jsonrpc: "2.0", id, result: { tools: await runtime.toolDefinitions() } };
     }
     if (message.method === "tools/call") {
       requireThat(object(message.params) && typeof message.params.name === "string", "tools/call 缺少 name。");

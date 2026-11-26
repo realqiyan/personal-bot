@@ -53,7 +53,7 @@ npm publish "./personal-bot-$VERSION.tgz" --ignore-scripts --access public --tag
 
 1. 核对公开版本：`npm view personal-bot dist-tags --json --registry=https://registry.npmjs.org`。
 2. Pi 消费检查：`node scripts/check-consumer.mjs npm:personal-bot@<version>`。
-3. dsh：在独立 profile 安装 `personal-bot@latest`，核对 `/pbot status`、Web 工作区/历史页与 `mcp__pbot__pbot_worker`。
-4. Claude Code：通过 `/plugin install personal-bot --marketplace realqiyan/personal-bot` 安装，核对版本、`/personal-bot:pbot status` 与 `pbot_worker` MCP。
-5. Antigravity：通过 `npx personal-bot@latest install-antigravity` 安装，核对 `/pbot status` 与 `pbot_worker` MCP。
+3. dsh：在独立 profile 安装 `personal-bot@latest`，核对 `/pbot status`、Web 工作区/历史页与 `mcp__pbot__worker_*`。
+4. Claude Code：通过 `/plugin install personal-bot --marketplace realqiyan/personal-bot` 安装，核对版本、`/personal-bot:pbot status` 与 `worker_*` MCP。
+5. Antigravity：通过 `npx personal-bot@latest install-antigravity` 安装，核对 `/pbot status` 与 `worker_*` MCP。
 6. 真实模型环境下各宿主首轮上下文、技能选择与跨 Harness 实测调用（含 `npm run test:e2e:acp`）在独立批准环境单独验收。

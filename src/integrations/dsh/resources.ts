@@ -8,6 +8,7 @@ import type {} from "@deepseek-ai/dsh-tools";
 import { agentText } from "../agent-resources.js";
 import { resourceRoot } from "../../common/paths.js";
 import { requireThat } from "../../common/validation.js";
+import { isMcpWorkerTool } from "../../model/acp.js";
 import type { AgentOptions } from "../../model/agent.js";
 
 export async function dshResources(
@@ -44,14 +45,15 @@ export async function dshResources(
 export function dshExpertTools(ctx: Context, agent: Agent, options: AgentOptions) {
   const names = new Set(ctx.tools.definitions(agent).map(tool => tool.name));
   const forbidden = new Set([
-    "pbot_worker", "mcp__pbot__pbot_worker", "pbot_history",
+    "pbot_history",
     "subagent", "subagent_fork", "list_subagent_models", "list_agents", "send_message", "interrupt_agent",
   ]);
   if (options.noSkills) forbidden.add("skill");
+  const isForbidden = (name: string) => forbidden.has(name) || isMcpWorkerTool(name);
   if (options.tools) {
-    for (const name of options.tools) requireThat(names.has(name) && !forbidden.has(name), "专家工具不可用：" + name);
+    for (const name of options.tools) requireThat(names.has(name) && !isForbidden(name), "专家工具不可用：" + name);
     ctx.tools.restrict({ allow: options.tools });
   }
-  const deny = [...forbidden].filter(name => names.has(name));
+  const deny = [...names].filter(isForbidden);
   if (deny.length) ctx.tools.restrict({ deny });
 }

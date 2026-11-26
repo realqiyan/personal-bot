@@ -6,8 +6,12 @@ import type { AcpModelSelection, AcpSessionReference } from "../model/acp.js";
 import { AcpAgentRun } from "../services/agents/acp-run.js";
 import { openAcp } from "../integrations/acp/connection.js";
 import { acpContent } from "../integrations/acp/input.js";
+import { toAcpMcpServers } from "../integrations/acp/mcp.js";
 import { resolveAcpHarness } from "../integrations/acp/registry.js";
 import { loadWorkspaceContext } from "../integrations/agent-resources.js";
+import { readWorkspaceConfig, workspaceFeatures } from "../services/workspace/workspace-config.js";
+import { readWorkspaceMcpConfig, resolveWorkspaceMcpServers } from "../services/workspace/workspace-mcp.js";
+import { discoverWorkspaceSkills } from "../services/workspace/workspace-skills.js";
 import { object } from "../common/json.js";
 import { resourceRoot } from "../common/paths.js";
 import { requireThat } from "../common/validation.js";
@@ -96,6 +100,8 @@ async function runWorker(args: string[]) {
     const harness = resolveAcpHarness(reference.backend);
     const exactAnswer = Boolean(harness.exactAnswer);
     const packageRoot = resolve(resourceRoot, "..");
+    const configuration = await readWorkspaceConfig(d.workspace);
+    const features = workspaceFeatures(configuration);
     const baseEnv: NodeJS.ProcessEnv = {
       ...process.env,
       PBOT_SUBAGENT_RUN_ID: id!,
@@ -104,12 +110,33 @@ async function runWorker(args: string[]) {
       ...(validating ? { PBOT_ACP_VALIDATE: "1" } : {}),
     };
     const prepared = harness.prepareLaunch
-      ? await harness.prepareLaunch({ reference, cwd: d.cwd, directory: directory!, packageRoot, options: d.options, env: baseEnv })
+      ? await harness.prepareLaunch({ reference, cwd: d.cwd, directory: directory!, packageRoot, options: d.options, env: baseEnv, features })
       : { command: { ...reference, args: [...reference.args] }, env: { ...baseEnv, ...(reference.env ?? {}) } };
 
-    const prompt = exactAnswer
-      ? undefined
-      : (await loadWorkspaceContext({ host: reference.backend, root: d.workspace, role: "general-purpose" })).text;
+    let prompt: string | undefined;
+    if (!exactAnswer) {
+      const workspaceSkills = features.skills && !harness.nativeWorkspaceSkills && !d.options.noSkills
+        ? await discoverWorkspaceSkills(d.workspace)
+        : [];
+      if (features.prompts || workspaceSkills.length > 0) {
+        prompt = (await loadWorkspaceContext({
+          host: reference.backend,
+          root: d.workspace,
+          role: "general-purpose",
+          includePrompts: features.prompts,
+          workspaceSkills,
+        })).text;
+      }
+    }
+
+    let mcpServers: ReturnType<typeof toAcpMcpServers> | undefined;
+    if (features.mcp && !harness.nativeWorkspaceMcp && !validating) {
+      const mcpConfig = await readWorkspaceMcpConfig(d.workspace);
+      if (mcpConfig.present) {
+        const resolved = resolveWorkspaceMcpServers(d.workspace, mcpConfig, prepared.env);
+        if (resolved.length) mcpServers = toAcpMcpServers(resolved);
+      }
+    }
 
     // Only publish acp-model.json after requested model/thinking options are applied so callers can detect startup readiness.
     let configured = false;
@@ -141,11 +168,29 @@ async function runWorker(args: string[]) {
             request.options.map(({ optionId, name, kind }) => ({ optionId, name, kind })), signal);
         return optionId ? { outcome: { outcome: "selected", optionId } } : { outcome: { outcome: "cancelled" } };
       },
+      async elicitation(request, signal) {
+        if (!execution) return { action: "cancel" };
+        if (request.mode === "form") {
+          const schema = "requestedSchema" in request && object(request.requestedSchema)
+            ? request.requestedSchema
+            : { type: "object", properties: {} };
+          const reply = await execution.elicitation({ mode: "form", message: request.message, schema }, signal);
+          if (reply.action === "accept") return { action: "accept", content: reply.content ?? {} };
+          return reply.action === "decline" ? { action: "decline" } : { action: "cancel" };
+        }
+        if (request.mode === "url" && "url" in request && typeof request.url === "string" && request.url.length > 0) {
+          const reply = await execution.elicitation({ mode: "url", message: request.message, url: request.url }, signal);
+          if (reply.action === "accept") return { action: "accept" };
+          return reply.action === "decline" ? { action: "decline" } : { action: "cancel" };
+        }
+        return { action: "decline" };
+      },
     }, lifetime.signal, {
       harness,
       ...(prompt ? { systemPrompt: prompt } : {}),
       ...(prepared.sessionMeta ? { sessionMeta: prepared.sessionMeta } : {}),
       ...(prepared.defaultThinking ? { defaultThinking: prepared.defaultThinking } : {}),
+      ...(mcpServers ? { mcpServers } : {}),
     });
 
     try {

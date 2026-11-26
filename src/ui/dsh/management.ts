@@ -167,7 +167,7 @@ export function showManagement(ctx: Context, parentSessionId: SessionId) {
     for (const control of tabs.values()) enabled(control, true);
     materials.hidden = false; initializeButton.textContent = "准备目录"; enabled(initializeButton, true);
     const historyState = record(snapshot.history);
-    counts.textContent = "Personal Bot 已启动 · 跨 Harness 调度通过 MCP pbot_worker 提供";
+    counts.textContent = "Personal Bot 已启动 · 跨 Harness 调度通过 MCP worker_* 提供";
     const model = object(snapshot.model) ? snapshot.model : {};
     workspaceInfo.replaceChildren(facts([
       ["状态", "已启动"],

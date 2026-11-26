@@ -80,15 +80,25 @@ export function packageChoices(catalog: PluginSpec[], installed: InstalledPackag
       selected: plugin.id === "pbot" || (first ? plugin.defaultSelected : existing.length > 0), keep: custom };
   });
 }
-export function parseSetupArgs(args: string[]): { action: "help" | "version" | "setup" | "install-antigravity" | "mcp"; workspace?: string } {
+export function parseSetupArgs(args: string[]): {
+  action: "help" | "version" | "setup" | "install-antigravity" | "mcp" | "mcp-manage";
+  workspace?: string;
+  mcpArgs?: string[];
+} {
   if (!args.length || args.length === 1 && ["--help", "-h"].includes(args[0]!)) return { action: "help" };
   if (args.length === 1 && ["--version", "-v"].includes(args[0]!)) return { action: "version" };
-  if (args[0] === "install-antigravity" || args[0] === "mcp") {
-    if (args.length === 1) return { action: args[0] };
+  if (args[0] === "install-antigravity") {
+    if (args.length === 1) return { action: "install-antigravity" };
     if (args.length === 2 && ["--help", "-h"].includes(args[1]!)) return { action: "help" };
-    throw new Error("用法：pbot " + args[0]);
+    throw new Error("用法：pbot install-antigravity");
   }
-  if (args[0] !== "setup") throw new Error("用法：pbot setup [--workspace <目录>] | pbot install-antigravity | pbot mcp");
+  if (args[0] === "mcp") {
+    if (args.length === 1) return { action: "mcp" };
+    if (args.length === 2 && ["--help", "-h"].includes(args[1]!)) return { action: "help" };
+    if (["list", "add", "remove"].includes(args[1]!)) return { action: "mcp-manage", mcpArgs: args.slice(1) };
+    throw new Error("用法：pbot mcp [list|add|remove ...]");
+  }
+  if (args[0] !== "setup") throw new Error("用法：pbot setup [--workspace <目录>] | pbot install-antigravity | pbot mcp [list|add|remove ...]");
   let workspace: string | undefined;
   for (let index = 1; index < args.length; index++) {
     const arg = args[index]!;

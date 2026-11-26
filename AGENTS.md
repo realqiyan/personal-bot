@@ -2,12 +2,12 @@
 
 ## Structure
 
-Personal Bot is a harness-agnostic workspace and unified MCP cross-harness delegation layer. It integrates with Pi, dsh Host/Web, Claude Code, Antigravity, and extensible hook-based plugin hosts, while exposing a single stdio MCP server (`pbot_worker`) for cross-harness ACP v1 delegation without interfering with host-native subagent tools.
+Personal Bot is a harness-agnostic workspace and unified MCP cross-harness delegation layer. It integrates with Pi, dsh Host/Web, Claude Code, Antigravity, and extensible hook-based plugin hosts, while exposing a single stdio MCP server (`worker_create`, `worker_close`, `worker_request`, `worker_response`, `worker_output`, `worker_discover`) for cross-harness ACP v1 delegation without interfering with host-native subagent tools.
 
 - `src/pbot.ts`: Pi assembly (workspace lifecycle, `pbot_history`, native `pi.registerMcpServer("pbot", ...)`).
-- `src/dsh.ts`: dsh Host assembly (`pbot_history`, Web workspace/history UI, `@deepseek-ai/dsh-mcp-client` mount for `pbot_worker`); `src/ui/dsh/index.ts` is the native Web entry.
+- `src/dsh.ts`: dsh Host assembly (`pbot_history`, Web workspace/history UI, `@deepseek-ai/dsh-mcp-client` mount for `worker_*`); `src/ui/dsh/index.ts` is the native Web entry.
 - `src/plugin.ts` / `src/claude.ts`: runtime-agnostic plugin-host CLI/hook entry (resolves dynamically via `PluginHostRegistry`) and backward-compatible Claude entry.
-- `src/mcp.ts`: standalone stdio MCP server entry exposing `pbot_worker` for cross-harness ACP delegation.
+- `src/mcp.ts`: standalone stdio MCP server entry exposing the 6 `worker_*` tools for cross-harness ACP delegation.
 - `src/extension/`: host lifecycles, `/pbot` commands (`init`, `status`, `worker`), `plugin-runtime.ts`, `mcp-workers.ts`, `acp-worker.ts`, `setup-cli.ts`, and ACP member entries (`pi-acp-member.ts`, `dsh/acp-member.ts`).
 - `src/integrations/`: extensible plugin-host adapters (`hosts/registry.ts`, `hosts/claude.ts`, `hosts/antigravity.ts`), extensible ACP harness adapters (`acp/registry.ts`, `acp/harnesses/*`), Pi/dsh history & resources, unified context assembly (`agent-resources.ts`), and installation adapters.
 - `src/services/`: host-neutral business rules (`agents/`, `workspace/`, `history/`, `installation/`).
@@ -49,8 +49,8 @@ Host SDKs remain optional peer dependencies, never runtime dependencies. Do not 
 
 ## Development Principles
 
-- **Two-pillar architecture**: separate (1) workspace/context integration via extensible `PluginHostRegistry` / Pi & dsh host adapters from (2) unified cross-harness delegation via the single stdio MCP tool `pbot_worker` (`lib/extension/mcp.js` / `pbot mcp`) backed by `AgentService` + extensible `AcpHarnessRegistry`.
-- **Complement, never override host-native subagents**: leave Claude `Agent`/teams, Antigravity `invoke_subagent`/`/swarm`, and dsh `subagent` completely untouched; do not ship overriding static `general-purpose` agents or intercept native subagent hooks. Pi/dsh native tools are limited to `pbot_history`, while cross-harness delegation uses unified MCP `pbot_worker` (plus `/pbot worker` commands).
+- **Two-pillar architecture**: separate (1) workspace/context integration via extensible `PluginHostRegistry` / Pi & dsh host adapters from (2) unified cross-harness delegation via the stdio MCP server (`lib/extension/mcp.js` / `pbot mcp`, exposing 6 read/write-separated `worker_*` tools) backed by `AgentService` + extensible `AcpHarnessRegistry`.
+- **Complement, never override host-native subagents**: leave Claude `Agent`/teams, Antigravity `invoke_subagent`/`/swarm`, and dsh `subagent` completely untouched; do not ship overriding static `general-purpose` agents or intercept native subagent hooks. Pi/dsh native tools are limited to `pbot_history`, while cross-harness delegation uses unified MCP `worker_*` (plus `/pbot worker` commands).
 - **Runtime-agnostic extensibility**: adding a plugin host only requires registering a `PluginHostAdapter` in `PluginHostRegistry` (and a target in `scripts/build-plugins.mjs`); adding an ACP harness only requires `.pbot/config.json` `acp` config (zero code) or registering a specialized `AcpHarnessAdapter` in `AcpHarnessRegistry` without modifying runtime code.
 - **Avoid custom UI bloat**: Pi `/pbot` stays minimal (`init`, `status`, `worker`); dsh Web UI keeps only Workspace & History views. Routing preferences live in workspace materials, not hardcoded logic.
 - **Keep it simple**: delete dead code; do not add unused abstractions, upgrade frameworks, or file-hash checks.

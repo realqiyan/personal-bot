@@ -1,9 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 import type { AgentDescriptor, AgentMessage } from "../../model/agent.js";
-import type { AcpAnswer, AcpPermission } from "../../model/acp.js";
+import type { AcpAnswer, AcpElicitationAction, AcpElicitationContent, AcpPermission } from "../../model/acp.js";
 import { AgentFiles, launch } from "../../storage/agent-files.js";
-import { acpAnswer, acpInput, acpPermission, acpPermissionReply, acpReport } from "../../storage/acp-files.js";
+import { acpAnswer, acpElicitation, acpElicitationReply, acpInput, acpPermission, acpPermissionReply, acpReport } from "../../storage/acp-files.js";
 import { AgentRun } from "./agent-run.js";
 
 export interface AcpProgress { kind: "text" | "thought" | "tool" | "activity"; text?: string; messageId?: string; activity?: string }
@@ -50,6 +50,7 @@ export class AcpAgentRun {
   }
   async permission(description: string, options: AcpPermission["options"], signal: AbortSignal): Promise<string | null> {
     const requestId = randomUUID(), request = { generation: this.generation, requestId, description, options };
+    this.files.ensureSubdirectory(this.id, "permissions");
     this.files.write(this.id, "permissions/" + requestId + ".json", request, acpPermission, true);
     this.execution.save({ state: "busy", activity: "等待确认" });
     while (!signal.aborted && !this.#stopping && this.current() && !this.files.read(this.id, "launch.json", launch).stop) {
@@ -63,6 +64,32 @@ export class AcpAgentRun {
     // Close the request so it no longer shows as pending once the turn or worker has ended.
     if (this.current()) this.files.write(this.id, "permissions/" + requestId + "-reply.json", { generation: this.generation, requestId, optionId: null }, acpPermissionReply, true);
     return null;
+  }
+  async elicitation(
+    input: { mode: "form"; message: string; schema: Record<string, unknown> } | { mode: "url"; message: string; url: string },
+    signal: AbortSignal,
+  ): Promise<{ action: AcpElicitationAction; content?: AcpElicitationContent }> {
+    const requestId = randomUUID();
+    const request = input.mode === "form"
+      ? { generation: this.generation, requestId, mode: "form" as const, message: input.message, schema: input.schema }
+      : { generation: this.generation, requestId, mode: "url" as const, message: input.message, url: input.url };
+    this.files.ensureSubdirectory(this.id, "elicitations");
+    this.files.write(this.id, "elicitations/" + requestId + ".json", request, acpElicitation, true);
+    this.execution.save({ state: "busy", activity: "等待回复" });
+    while (!signal.aborted && !this.#stopping && this.current() && !this.files.read(this.id, "launch.json", launch).stop) {
+      const reply = this.files.optional(this.id, "elicitations/" + requestId + "-reply.json", acpElicitationReply);
+      if (reply?.generation === this.generation) {
+        const label = reply.action === "accept" ? "已收到回复" : reply.action === "decline" ? "回复已拒绝" : "回复已取消";
+        this.execution.save({ state: this.#stopping ? "stopping" : "busy", activity: label });
+        return { action: reply.action, ...(reply.content ? { content: reply.content } : {}) };
+      }
+      await delay(100);
+    }
+    if (this.current()) {
+      this.files.write(this.id, "elicitations/" + requestId + "-reply.json",
+        { generation: this.generation, requestId, action: "cancel" }, acpElicitationReply, true);
+    }
+    return { action: "cancel" };
   }
   async run() {
     this.execution.recover(); this.execution.save({ state: "idle", activity: "空闲" });

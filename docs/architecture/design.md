@@ -21,7 +21,7 @@ Claude / Antigravity / 任意插件宿主 hooks、CLI 与薄 stdio MCP
 | --- | --- |
 | `src/pbot.ts` / `src/dsh.ts` | Pi 与 dsh Host 装配（工作区生命周期、历史工具、原生 MCP 挂载） |
 | `src/plugin.ts` / `src/claude.ts` | 通用插件宿主 CLI/hook 入口（查 `PluginHostRegistry`）与 Claude 兼容入口 |
-| `src/mcp.ts` | 独立 stdio MCP 服务入口，暴露统一 `pbot_worker` |
+| `src/mcp.ts` | 独立 stdio MCP 服务入口，暴露 6 个 `worker_*` 工具 |
 | `src/extension/` | 宿主生命周期、`/pbot` 命令、`plugin-runtime.ts`、`mcp-workers.ts`、`acp-worker.ts`、`setup-cli.ts`、ACP 受管成员入口 |
 | `src/integrations/` | 可扩展宿主适配器（`hosts/`）、可扩展 ACP Harness 适配器（`acp/`）、Pi/dsh 历史与资源适配、统一上下文拼装（`agent-resources.ts`）、安装器适配 |
 | `src/services/` | 宿主无关业务规则（`agents/`、`workspace/`、`history/`、`installation/`） |
@@ -39,18 +39,20 @@ Claude / Antigravity / 任意插件宿主 hooks、CLI 与薄 stdio MCP
 所有宿主读取同一工作区根目录 `.pbot/config.json`，缺失、停用或损坏时保持休眠，不向上级目录继承：
 
 - **Pi**：`session_start` 读取配置，启用后注册 `pbot_history`、通过 `pi.registerMcpServer("pbot", ...)` 挂载 `lib/extension/mcp.js`（注入 `PBOT_WORKSPACE_ROOT`、`PBOT_MCP_AGENT_DIR` 与当前 `PBOT_MCP_SESSION_ID`），并在 `before_agent_start` 刷新工作区上下文。`/pbot` 仅保留 `init`、`status` 与 `worker`（共享同一会话归属），工作区外写入触发安全确认队列。关闭或重载时自动注销 MCP 服务并清理资源。
-- **dsh**：按根 Agent 的原始 `cwd` 读取配置，启用后注册技能、上下文、工作区外写保护、`pbot_history` 与后台历史整理，并通过 `@deepseek-ai/dsh-mcp-client` 挂载同一 `lib/extension/mcp.js`（暴露 `mcp__pbot__pbot_worker`）。Web 工作台仅保留**工作区**与**历史**两页，经原生 Typert Remote（`snapshot`、`history`）查询，不增设 HTTP 服务；聊天命令为 `/pbot`、`status`、`init`、`worker`、`history`。
+- **dsh**：按根 Agent 的原始 `cwd` 读取配置，启用后注册技能、上下文、工作区外写保护、`pbot_history` 与后台历史整理，并通过 `@deepseek-ai/dsh-mcp-client` 挂载同一 `lib/extension/mcp.js`（暴露 `mcp__pbot__worker_*`）。Web 工作台仅保留**工作区**与**历史**两页，经原生 Typert Remote（`snapshot`、`history`）查询，不增设 HTTP 服务；聊天命令为 `/pbot`、`status`、`init`、`worker`、`history`。
 - **轻插件宿主（Claude Code、Antigravity 及后续扩展）**：由 `plugin-runtime.ts` 通过 `PluginHostAdapter` 处理无状态 command hook 与 `init`/`status` CLI，跨 Harness 调度由宿主挂载 `lib/extension/mcp.js` 完成。不采集历史、不设自定义面板，也不拦截宿主原生 subagent。
 
 ## 文件存储
 
 | 位置 | 内容与所有者 |
 | --- | --- |
-| `<workspace>/.pbot/config.json` | 全宿主共用的启用开关与开放 ACP Harness 配置 |
+| `<workspace>/.pbot/config.json` | 全宿主共用的启用开关、可选模块开关（`features: { prompts, skills, mcp }`）与开放 ACP Harness 配置 |
+| `<workspace>/.pbot/mcp.json` | 全宿主与 ACP worker 共享的工作区 MCP 服务清单（stdio / Streamable HTTP，支持 `${ENV_VAR}` 展开） |
+| `<workspace>/.agents/skills/<name>/SKILL.md` | 全宿主共享的工作区自有技能（原生支持目录的宿主直接发现，其余宿主与 ACP worker 按需注入元数据索引） |
 | `<workspace>/AGENTS.md`、`areas/`、`projects/`、`knowledge/`、`providers/`、`scratch/`、`agents/` | 用户工作区资料（`init` 只补缺、不覆盖） |
 | `<workspace>/.pbot/history/raw/<id>.json` | Pi/dsh 原始问答与已知分支（各自只写本来源，既有 Claude 归档只读） |
 | `<workspace>/.pbot/history/summary/<id>.json` | 派生分层摘要（可失效重建，损坏不影响原始问答查询） |
-| `~/.pbot/subagents/<id>/`（或 `PBOT_MCP_AGENT_DIR` / `PLUGIN_DATA/subagents`） | MCP `pbot_worker` 的控制记录（`descriptor.json`、`launch.json`、`acp-session.json`、`acp-process.json`、`acp-model.json`、`inbox/`、`completions/`、`reports/`） |
+| `~/.pbot/subagents/<id>/`（或 `PBOT_MCP_AGENT_DIR` / `PLUGIN_DATA/subagents`） | MCP `worker_*` 的控制记录（`descriptor.json`、`launch.json`、`acp-session.json`、`acp-process.json`、`acp-model.json`、`inbox/`、`completions/`、`reports/`、`permissions/`、`elicitations/`） |
 
 - `atomic-json` 先校验对象再写入临时文件并原子替换，拒绝符号链接、路径越界与特殊文件；短目录锁（`.control` / `.write-<host>`）串行化控制写操作。
 - 兼容线规则：发布版本遵循 `package.json` 的 `MAJOR.MINOR.PATCH`，1.0 前按次版本、之后按主版本判断控制记录兼容性，不引入自动迁移或存储版本计数器。

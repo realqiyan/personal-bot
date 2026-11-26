@@ -12,9 +12,11 @@ import type { HistoryService } from "../../services/history/history-service.js";
 import { registerDshHistoryTool } from "../../tools/history/dsh-tool.js";
 import { resourceRoot } from "../../common/paths.js";
 import { requireThat } from "../../common/validation.js";
+import { toDshMcpConfig } from "../../integrations/dsh/mcp.js";
 import { registerDshSkills } from "../../integrations/dsh/skills.js";
-import { readWorkspaceConfig, workspaceDisabledMessage } from "../../services/workspace/workspace-config.js";
-import type { WorkspaceConfiguration } from "../../model/workspace-config.js";
+import { readWorkspaceConfig, workspaceDisabledMessage, workspaceFeatures } from "../../services/workspace/workspace-config.js";
+import { readWorkspaceMcpConfig, resolveWorkspaceMcpServer } from "../../services/workspace/workspace-mcp.js";
+import type { ResolvedWorkspaceFeatures, WorkspaceConfiguration } from "../../model/workspace-config.js";
 import { initializeWorkspace } from "../../services/workspace/workspace-preparation.js";
 import { McpWorkerRuntime, defaultWorkerDirectory } from "../mcp-workers.js";
 
@@ -34,6 +36,7 @@ export class DshWorkspace {
     readonly component: AbortSignal,
     private readonly historyWork: DshHistoryWork,
     private readonly releaseHistory: () => Promise<void>,
+    readonly features: ResolvedWorkspaceFeatures = workspaceFeatures(),
   ) {
     this.history = historyWork.service;
     this.workers = new McpWorkerRuntime(defaultWorkerDirectory(), agent.id, "dsh");
@@ -49,8 +52,8 @@ export class DshWorkspace {
       name: "pbot-coordinator",
       inject: dshDependencies,
       apply: async ctx => {
-        registerDshSkills(ctx, this.agent);
-        await dshResources(ctx, this.agent, this.root, "coordinator", this.check, "history-coordinator.md");
+        if (this.features.skills) registerDshSkills(ctx, this.agent, { workspaceRoot: this.root });
+        if (this.features.prompts) await dshResources(ctx, this.agent, this.root, "coordinator", this.check, "history-coordinator.md");
         registerDshFileEvents(ctx, this.agent, this.root, false, this.check);
         registerDshHistoryTool(ctx, this.agent, this.history, this.lifetime.signal, this.check);
         registerDshHistoryEvents(ctx, this.agent, this.historyWork, this.check);
@@ -73,6 +76,23 @@ export class DshWorkspace {
             toolCallTimeoutMs: 600_000,
             failOnStartupError: false,
           }));
+        }
+        if (this.features.mcp) {
+          const mcpConfig = await readWorkspaceMcpConfig(this.root);
+          this.check();
+          if (mcpConfig.error) {
+            this.ctx.logger.warn(mcpConfig.error);
+          } else {
+            for (const [serverName, server] of Object.entries(mcpConfig.servers)) {
+              if (server.enabled === false) continue;
+              try {
+                const resolved = resolveWorkspaceMcpServer(this.root, serverName, server);
+                await ctx.plugin(McpClient, toDshMcpConfig(resolved));
+              } catch (error) {
+                this.ctx.logger.warn(error instanceof Error ? error.message : String(error));
+              }
+            }
+          }
         }
       },
     });
@@ -147,7 +167,7 @@ export class DshWorkspaces {
       const history = await this.history(root);
       let workspace: DshWorkspace | undefined;
       try {
-        workspace = new DshWorkspace(this.ctx, root, agent, this.#lifetime.signal, history.work, history.release);
+        workspace = new DshWorkspace(this.ctx, root, agent, this.#lifetime.signal, history.work, history.release, workspaceFeatures(configuration));
         const owned = workspace;
         const dispose = agent.ctx.effect(() => async () => {
           this.#parents.delete(agent); this.#configurations.delete(agent); this.#parentEffects.delete(agent); await owned.close();

@@ -3,11 +3,19 @@ import { dirname, join } from "node:path";
 import { object } from "../../common/json.js";
 import { isAcpBackend } from "../../common/validation.js";
 import { readJsonFile, writeJsonFile } from "../../storage/atomic-json.js";
-import type { WorkspaceConfig, WorkspaceConfiguration } from "../../model/workspace-config.js";
+import type { ResolvedWorkspaceFeatures, WorkspaceConfig, WorkspaceConfiguration, WorkspaceFeatures } from "../../model/workspace-config.js";
+
+const featureKeys = ["prompts", "skills", "mcp"] as const;
 
 function config(value: unknown): Record<string, unknown> {
   if (!object(value) || value.enabled !== undefined && typeof value.enabled !== "boolean") {
     throw new Error("配置必须是 JSON 对象，enabled 必须是布尔值。");
+  }
+  if (value.features !== undefined) {
+    if (!object(value.features) ||
+      Object.entries(value.features).some(([key, entry]) => !(featureKeys as readonly string[]).includes(key) || (entry !== undefined && typeof entry !== "boolean"))) {
+      throw new Error("features 必须是 JSON 对象，仅支持 prompts、skills、mcp 布尔开关。");
+    }
   }
   if (value.acp !== undefined) {
     if (!object(value.acp) || Object.keys(value.acp).some(key => !isAcpBackend(key))) {
@@ -30,6 +38,17 @@ function config(value: unknown): Record<string, unknown> {
   return value;
 }
 
+export function workspaceFeatures(configuration?: Pick<WorkspaceConfiguration, "features"> | WorkspaceFeatures): ResolvedWorkspaceFeatures {
+  const raw: WorkspaceFeatures | undefined = configuration && "features" in configuration
+    ? configuration.features
+    : configuration as WorkspaceFeatures | undefined;
+  return {
+    prompts: raw?.prompts !== false,
+    skills: raw?.skills !== false,
+    mcp: raw?.mcp !== false,
+  };
+}
+
 export function workspaceConfigPath(root: string): string {
   return join(root, ".pbot", "config.json");
 }
@@ -46,7 +65,13 @@ export async function readWorkspaceConfig(root: string): Promise<WorkspaceConfig
   try {
     const value = config(JSON.parse(content));
     const settings = value as WorkspaceConfig;
-    return { path, present: true, enabled: settings.enabled === true, ...(settings.acp ? { acp: settings.acp } : {}) };
+    return {
+      path,
+      present: true,
+      enabled: settings.enabled === true,
+      ...(settings.features ? { features: settings.features } : {}),
+      ...(settings.acp ? { acp: settings.acp } : {}),
+    };
   } catch (error) {
     return { path, present: true, enabled: false, error: `工作区配置无效 ${path}: ${String(error)}` };
   }

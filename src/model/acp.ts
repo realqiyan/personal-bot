@@ -1,3 +1,17 @@
+export const mcpWorkerToolNames = [
+  "worker_create",
+  "worker_close",
+  "worker_request",
+  "worker_response",
+  "worker_output",
+  "worker_discover",
+] as const;
+export type McpWorkerToolName = typeof mcpWorkerToolNames[number];
+export function isMcpWorkerTool(name: string): boolean {
+  const bare = name.startsWith("mcp__pbot__") ? name.slice("mcp__pbot__".length) : name;
+  return bare === "pbot_worker" || (mcpWorkerToolNames as readonly string[]).includes(bare);
+}
+
 export type AcpBackend = string;
 export interface AcpCommand {
   command: string;
@@ -47,6 +61,23 @@ export interface AcpPermission {
   options: { optionId: string; name: string; kind: string }[];
 }
 export interface AcpPermissionReply { generation: string; requestId: string; optionId: string | null }
+export type AcpElicitationAction = "accept" | "decline" | "cancel";
+export type AcpElicitationValue = string | number | boolean | string[];
+export type AcpElicitationContent = Record<string, AcpElicitationValue>;
+export interface AcpElicitation {
+  generation: string;
+  requestId: string;
+  mode: "form" | "url";
+  message: string;
+  schema?: Record<string, unknown>;
+  url?: string;
+}
+export interface AcpElicitationReply {
+  generation: string;
+  requestId: string;
+  action: AcpElicitationAction;
+  content?: AcpElicitationContent;
+}
 
 export interface AcpStartOptions {
   name?: string;
@@ -70,6 +101,7 @@ export interface AcpLaunchContext {
   readonly packageRoot: string;
   readonly options: AcpStartOptions;
   readonly env: NodeJS.ProcessEnv;
+  readonly features?: { readonly prompts: boolean; readonly skills: boolean; readonly mcp: boolean };
 }
 
 export interface AcpPreparedLaunch {
@@ -92,6 +124,8 @@ export interface AcpHarnessAdapter {
   readonly exactAnswer?: boolean;
   readonly eagerSessionId?: boolean;
   readonly requireSystemPrompt?: boolean;
+  readonly nativeWorkspaceSkills?: boolean;
+  readonly nativeWorkspaceMcp?: boolean;
   readonly customNotificationMethod?: string;
   filterStartOptions?(options: AcpStartOptions): AcpStartOptions;
   validateStartOptions?(options: AcpStartOptions): void;

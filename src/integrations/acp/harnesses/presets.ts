@@ -9,12 +9,14 @@ export const standardAcpPresets: readonly AcpHarnessAdapter[] = [
     defaultCommand: { command: "agy", args: ["acp"] },
     installHint: "安装 Google Antigravity CLI（agy）",
     configureHint: "运行 agy 完成登录与默认模型配置。",
+    nativeWorkspaceSkills: true,
   }),
   createGenericAcpHarness("codex", {
     label: "OpenAI Codex",
     aliases: ["openai-codex", "codex-cli"],
     defaultCommand: { command: "codex-acp", args: [] },
-    installHint: "npm install -g @zed-industries/codex-acp",
+    installHint: "npm install -g @agentclientprotocol/codex-acp",
     configureHint: "在 Codex 中完成登录或 API 配置。",
+    nativeWorkspaceSkills: true,
   }),
 ];
