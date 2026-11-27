@@ -1,10 +1,12 @@
 import { requireThat } from "../../common/validation.js";
-import type { SummaryDimension } from "../../model/history.js";
+import type { HistoryLayout, SummaryDimension } from "../../model/history.js";
 import { isSummaryDimension } from "../../storage/history-format.js";
+import { monthlySummaryDimension } from "./summary-dimensions/monthly.js";
 import { sessionSummaryDimension } from "./summary-dimensions/session.js";
 
 const registry = new Map<string, SummaryDimension>([
   [sessionSummaryDimension.id, sessionSummaryDimension],
+  [monthlySummaryDimension.id, monthlySummaryDimension],
 ]);
 
 /** Register a custom summary dimension (e.g. daily, decisions, topics). */
@@ -21,16 +23,22 @@ export function getSummaryDimension(id: string): SummaryDimension | undefined {
   return registry.get(id);
 }
 
-export function listSummaryDimensions(): SummaryDimension[] {
-  return [...registry.values()];
+export function listSummaryDimensions(layout?: HistoryLayout): SummaryDimension[] {
+  const all = [...registry.values()];
+  if (layout === "flat") return all.filter(dim => !dim.requiresMonthlyLayout);
+  return all;
 }
 
-export function resolveSummaryDimensions(ids?: readonly string[]): SummaryDimension[] {
-  if (!ids || ids.length === 0) return listSummaryDimensions();
+export function resolveSummaryDimensions(ids?: readonly string[], layout: HistoryLayout = "monthly"): SummaryDimension[] {
+  if (!ids || ids.length === 0) return listSummaryDimensions(layout);
   const unique = [...new Set(ids)];
   return unique.map(id => {
     const found = registry.get(id);
     requireThat(found, `未知的摘要维度：${id}（可用：${[...registry.keys()].join(", ")}）。`);
+    requireThat(
+      !found.requiresMonthlyLayout || layout === "monthly",
+      `摘要维度 ${id} 仅在年月目录布局（history.layout: "monthly"）下启用。`,
+    );
     return found;
   });
 }

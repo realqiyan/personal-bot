@@ -2,11 +2,12 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { packageVersion } from "../../../common/version.js";
 import { requireThat } from "../../../common/validation.js";
 import { createAcpHistorySummarizer } from "../../../integrations/acp/history-summary.js";
+import { migrateWorkspaceHistory } from "../../../services/history/history-migrate.js";
 import { parseHistoryCommand } from "../../../services/history/summary-command.js";
 import { listSummaryDimensions } from "../../../services/history/summary-registry.js";
 import { inspectWorkspaceSummaries, runWorkspaceSummaries } from "../../../services/history/summary-runner.js";
 import { initializeWorkspace } from "../../../services/workspace/workspace-preparation.js";
-import { readWorkspaceConfig, workspaceDisabledMessage, workspaceSummaryConfig } from "../../../services/workspace/workspace-config.js";
+import { readWorkspaceConfig, readWorkspaceHistoryLayoutSync, workspaceDisabledMessage, workspaceSummaryConfig } from "../../../services/workspace/workspace-config.js";
 import { executeHistory } from "../../../tools/history/actions.js";
 import { historyInput } from "../../../tools/history/contract.js";
 import type { Confirmations } from "../../../ui/pi/confirmation.js";
@@ -88,8 +89,14 @@ export function registerCommand(pi: ExtensionAPI, lifecycle: Lifecycle, confirma
             return;
           }
           if (parsed.kind === "list") {
-            const dims = listSummaryDimensions().map(({ id, title, description }) => ({ id, title, description }));
-            ctx.ui.notify(JSON.stringify({ dimensions: dims }, null, 2), "info");
+            const layout = readWorkspaceHistoryLayoutSync(instance.root);
+            const dims = listSummaryDimensions(layout).map(({ id, title, description }) => ({ id, title, description }));
+            ctx.ui.notify(JSON.stringify({ layout, dimensions: dims }, null, 2), "info");
+            return;
+          }
+          if (parsed.kind === "migrate") {
+            const report = migrateWorkspaceHistory(instance.root, { dryRun: parsed.dryRun });
+            ctx.ui.notify(JSON.stringify(report, null, 2), "info");
             return;
           }
           if (parsed.kind === "query") {
@@ -145,7 +152,7 @@ export function registerCommand(pi: ExtensionAPI, lifecycle: Lifecycle, confirma
         }
         return;
       }
-      ctx.ui.notify('/pbot init | status | history [summary [维度] [--force] [--backend <acp>] [--model <model>]|status|list|JSON] | worker [overview|status|backends|models|create|request|response|output|close] [JSON]', "info");
+      ctx.ui.notify('/pbot init | status | history [summary [维度] [--force] [--backend <acp>] [--model <model>]|migrate [--dry-run]|status|list|JSON] | worker [overview|status|backends|models|create|request|response|output|close] [JSON]', "info");
     },
   });
 }

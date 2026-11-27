@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { createAcpHistorySummarizer } from "../../dist/integrations/acp/history-summary.js";
 import { recordHistoryCapture } from "../../dist/services/history/history-capture.js";
 import { fingerprintExchanges, indexHistory, orderedRawExchanges } from "../../dist/services/history/history-index.js";
+import { checkHistoryMigrationNotice, migrateWorkspaceHistory } from "../../dist/services/history/history-migrate.js";
 import { readWorkspaceHistory, searchWorkspaceHistory, summaryNodeId } from "../../dist/services/history/history-query.js";
 import { parseHistoryCommand } from "../../dist/services/history/summary-command.js";
 import {
@@ -18,7 +19,7 @@ import {
   inspectWorkspaceSummaries,
   runWorkspaceSummaries,
 } from "../../dist/services/history/summary-runner.js";
-import { readWorkspaceConfig, workspaceSummaryConfig } from "../../dist/services/workspace/workspace-config.js";
+import { readWorkspaceConfig, workspaceHistoryConfig, workspaceSummaryConfig } from "../../dist/services/workspace/workspace-config.js";
 import { HistoryFiles } from "../../dist/storage/history-files.js";
 
 function exchange(index, text = `问题 ${index}\n\n回答 ${index}`, completed = true) {
@@ -50,16 +51,20 @@ test("session summary creates per-session summary, deduplicates unchanged raw, r
   const calls = [];
   const summarizer = async ({ prompt }) => {
     calls.push(prompt);
+    if (prompt.includes("月份：")) return "2026年11月汇总：完成 summary 重构与依赖检查。";
     if (prompt.includes("重构 summary")) return "摘要A：完成 summary 模块按会话重构设计。";
     return "摘要B：依赖边界检查全部通过。";
   };
 
-  // 1. Initial run creates both summaries.
+  // 1. Initial run creates both session summaries and the monthly summary.
   const first = await runWorkspaceSummaries({ root, summarizer });
+  assert.equal(first.dimensions[0].dimension, "session");
   assert.equal(first.dimensions[0].created, 2);
   assert.equal(first.dimensions[0].skipped, 0);
   assert.equal(first.dimensions[0].failed.length, 0);
-  assert.equal(calls.length, 2);
+  assert.equal(first.dimensions[1].dimension, "monthly");
+  assert.equal(first.dimensions[1].created, 1);
+  assert.equal(calls.length, 3);
 
   // 2. Re-running with unchanged RAW skips everything (0 LLM calls).
   calls.length = 0;
@@ -67,13 +72,15 @@ test("session summary creates per-session summary, deduplicates unchanged raw, r
   assert.equal(second.dimensions[0].skipped, 2);
   assert.equal(second.dimensions[0].created, 0);
   assert.equal(second.dimensions[0].incremental, 0);
+  assert.equal(second.dimensions[1].skipped, 1);
   assert.equal(calls.length, 0);
 
-  // 3. Appending a new turn to sess-a triggers rolling incremental update (sends existing summary + new turn only).
+  // 3. Appending a new turn to sess-a triggers rolling incremental update and rebuilds monthly summary.
   recordHistoryCapture(root, "pi", { kind: "input", sessionId: "sess-a", text: "补充去重和 rg 搜索", timestamp: "2026-11-27T10:05:00.000Z" });
   recordHistoryCapture(root, "pi", { kind: "answer", sessionId: "sess-a", assistantText: "已加入 SHA-256 指纹去重与 rg 预过滤。", completed: true, timestamp: "2026-11-27T10:06:00.000Z" });
 
   const midStatus = inspectWorkspaceSummaries(root);
+  assert.equal(midStatus.layout, "monthly");
   assert.equal(midStatus.dimensions[0].ready, 1);
   assert.equal(midStatus.dimensions[0].pendingIncremental, 1);
 
@@ -82,28 +89,34 @@ test("session summary creates per-session summary, deduplicates unchanged raw, r
     root,
     summarizer: async ({ prompt }) => {
       calls.push(prompt);
+      if (prompt.includes("月份：")) return "2026年11月汇总（更新）：补充去重指纹与 rg 搜索隔离。";
       return "摘要A（更新）：完成按会话重构、SHA-256 指纹去重与 rg 搜索隔离。";
     },
   });
   assert.equal(third.dimensions[0].skipped, 1);
   assert.equal(third.dimensions[0].incremental, 1);
-  assert.equal(calls.length, 1);
+  assert.equal(third.dimensions[1].rebuilt, 1);
+  assert.equal(calls.length, 2);
   assert.ok(calls[0].includes("已有摘要"));
   assert.ok(calls[0].includes("补充去重和 rg 搜索"));
   assert.ok(!calls[0].includes("OLD_BODY_SENTINEL"));
 
-  // 4. Force run rebuilds all sessions regardless of matching fingerprints.
+  // 4. Force run rebuilds all sessions and monthly summaries regardless of matching fingerprints.
   calls.length = 0;
   const forced = await runWorkspaceSummaries({ root, summarizer, force: true });
   assert.equal(forced.dimensions[0].rebuilt, 2);
   assert.equal(forced.dimensions[0].skipped, 0);
-  assert.equal(calls.length, 2);
+  assert.equal(forced.dimensions[1].rebuilt, 1);
+  assert.equal(calls.length, 3);
 
-  // Verify storage layout only uses raw/ and summaries/<dimension>/.
+  // Verify storage layout uses YYYY/MM subdirectories under raw/ and summaries/<dimension>/.
   const topDirs = (await readdir(join(root, ".pbot/history"))).sort();
   assert.deepEqual(topDirs, ["raw", "summaries"]);
-  const dimDirs = await readdir(join(root, ".pbot/history/summaries"));
-  assert.deepEqual(dimDirs, ["session"]);
+  assert.deepEqual(await readdir(join(root, ".pbot/history/raw")), ["2026"]);
+  assert.deepEqual(await readdir(join(root, ".pbot/history/raw/2026")), ["11"]);
+  const dimDirs = (await readdir(join(root, ".pbot/history/summaries"))).sort();
+  assert.deepEqual(dimDirs, ["monthly", "session"]);
+  assert.deepEqual(await readdir(join(root, ".pbot/history/summaries/monthly/2026")), ["2026-11.json"]);
 });
 
 test("custom summary dimensions can be registered, executed, and queried independently", async t => {
@@ -321,7 +334,7 @@ rl.on("line", line => {
 
   // Default model (no override): spawns 2 isolated workers with distinct PIDs and PBOT_SUBAGENT_RUN_ID set.
   const summarizerDefault = createAcpHistorySummarizer({ cwd: root, backend: "summary-test", commands });
-  const firstRun = await runWorkspaceSummaries({ root, summarizer: summarizerDefault, concurrency: 2 });
+  const firstRun = await runWorkspaceSummaries({ root, dimensions: ["session"], summarizer: summarizerDefault, concurrency: 2 });
   assert.equal(firstRun.dimensions[0].created, 2);
   assert.equal(firstRun.dimensions[0].failed.length, 0);
 
@@ -331,11 +344,11 @@ rl.on("line", line => {
   assert.ok(logs.every(entry => typeof entry.subagentRunId === "string" && entry.subagentRunId.startsWith("pbot-summary-")));
   assert.ok(logs.every(entry => entry.configuredModel === null));
   // Summary runs must not create any extra raw history files.
-  assert.equal((await readdir(join(root, ".pbot/history/raw"))).length, 2);
+  assert.equal((await readdir(join(root, ".pbot/history/raw/2026/11"))).length, 2);
 
   // Model override with --force applies set_config_option.
   const summarizerOverride = createAcpHistorySummarizer({ cwd: root, backend: "summary-test", commands, model: "fast/model" });
-  const forcedRun = await runWorkspaceSummaries({ root, summarizer: summarizerOverride, force: true, concurrency: 2 });
+  const forcedRun = await runWorkspaceSummaries({ root, dimensions: ["session"], summarizer: summarizerOverride, force: true, concurrency: 2 });
   assert.equal(forcedRun.dimensions[0].rebuilt, 2);
   const hit = searchWorkspaceHistory(root, { query: "摘要一：fast/model", dimension: "session" });
   assert.equal(hit.total, 1);
@@ -371,16 +384,19 @@ test("workspace summary config defaults to pi and validates optional overrides",
   assert.ok(invalid.error?.includes("summary.concurrency"));
 });
 
-test("parseHistoryCommand handles status, list, summary options, and JSON queries", () => {
+test("parseHistoryCommand handles status, list, migrate, summary options, and JSON queries", () => {
   assert.deepEqual(parseHistoryCommand(""), { kind: "status" });
   assert.deepEqual(parseHistoryCommand("status"), { kind: "status" });
   assert.deepEqual(parseHistoryCommand("list"), { kind: "list" });
+  assert.deepEqual(parseHistoryCommand("migrate"), { kind: "migrate", dryRun: false });
+  assert.deepEqual(parseHistoryCommand("migrate --dry-run"), { kind: "migrate", dryRun: true });
   assert.deepEqual(parseHistoryCommand("summary"), { kind: "summary", force: false });
   assert.deepEqual(
     parseHistoryCommand("summary session --force --backend dsh --model flash --thinking low"),
     { kind: "summary", dimensions: ["session"], force: true, backend: "dsh", model: "flash", thinking: "low" },
   );
   assert.deepEqual(parseHistoryCommand('{"action":"search","query":"abc"}'), { kind: "query", input: { action: "search", query: "abc" } });
+  assert.throws(() => parseHistoryCommand("migrate --unknown"));
   assert.throws(() => parseHistoryCommand("summary --unknown"));
   assert.throws(() => parseHistoryCommand("summary --backend"));
   assert.throws(() => parseHistoryCommand("invalid"));
@@ -420,16 +436,20 @@ test("checkHistorySummaryReminder triggers only when raw history >= 7 days, no s
   await runWorkspaceSummaries({ root, summarizer: async () => "摘要正文" });
   // Simulate summary updatedAt = 3 days before `now` and add a new pending raw session.
   const files = new HistoryFiles(join(root, ".pbot/history"), "pi");
-  for (const artifact of files.listSummaries("session")) {
-    files.saveSummary({ ...artifact, updatedAt: "2026-11-25T00:00:00.000Z" });
+  for (const dim of ["session", "monthly"]) {
+    for (const artifact of files.listSummaries(dim)) {
+      files.saveSummary({ ...artifact, updatedAt: "2026-11-25T00:00:00.000Z" });
+    }
   }
   recordHistoryCapture(root, "pi", { kind: "input", sessionId: "new-sess", text: "昨天的新问题", timestamp: "2026-11-27T10:00:00.000Z" });
   recordHistoryCapture(root, "pi", { kind: "answer", sessionId: "new-sess", assistantText: "昨天的新回答", completed: true, timestamp: "2026-11-27T10:01:00.000Z" });
   assert.equal(checkHistorySummaryReminder(root, { now }), undefined);
 
   // 5. Summary ran 8 days ago (>= 7 days), and there IS pending raw work -> triggers reminder.
-  for (const artifact of files.listSummaries("session")) {
-    files.saveSummary({ ...artifact, updatedAt: "2026-11-20T00:00:00.000Z" });
+  for (const dim of ["session", "monthly"]) {
+    for (const artifact of files.listSummaries(dim)) {
+      files.saveSummary({ ...artifact, updatedAt: "2026-11-20T00:00:00.000Z" });
+    }
   }
   const stale = checkHistorySummaryReminder(root, { now });
   assert.ok(stale);
@@ -440,8 +460,157 @@ test("checkHistorySummaryReminder triggers only when raw history >= 7 days, no s
 
   // 6. All sessions summarized, even if latest summary is 8 days old -> no pending work, no reminder.
   await runWorkspaceSummaries({ root, summarizer: async () => "最新摘要正文" });
-  for (const artifact of files.listSummaries("session")) {
-    files.saveSummary({ ...artifact, updatedAt: "2026-11-20T00:00:00.000Z" });
+  for (const dim of ["session", "monthly"]) {
+    for (const artifact of files.listSummaries(dim)) {
+      files.saveSummary({ ...artifact, updatedAt: "2026-11-20T00:00:00.000Z" });
+    }
   }
   assert.equal(checkHistorySummaryReminder(root, { now }), undefined);
+});
+
+test("history.layout supports monthly (default) and flat, enforces strict layout isolation, and disables monthly summaries in flat mode", async t => {
+  const root = await realpath(await mkdtemp(join(tmpdir(), "pbot-history-layout-")));
+  t.after(() => rm(root, { recursive: true, force: true }));
+
+  assert.deepEqual(workspaceHistoryConfig(undefined), { layout: "monthly" });
+
+  // Validate invalid history.layout config.
+  await mkdir(join(root, ".pbot"), { recursive: true });
+  await writeFile(join(root, ".pbot/config.json"), JSON.stringify({ enabled: true, history: { layout: "yearly" } }));
+  const badCfg = await readWorkspaceConfig(root);
+  assert.equal(badCfg.enabled, false);
+  assert.ok(badCfg.error?.includes("history.layout"));
+
+  // Switch to flat layout: writes flat, does not generate monthly summary, rejects explicit monthly dimension.
+  await writeFile(join(root, ".pbot/config.json"), JSON.stringify({ enabled: true, history: { layout: "flat" } }));
+  const flatCfg = await readWorkspaceConfig(root);
+  assert.equal(flatCfg.enabled, true);
+  assert.deepEqual(workspaceHistoryConfig(flatCfg), { layout: "flat" });
+
+  recordHistoryCapture(root, "pi", { kind: "input", sessionId: "flat-sess", text: "平铺布局会话", timestamp: "2026-10-15T08:00:00.000Z" });
+  recordHistoryCapture(root, "pi", { kind: "answer", sessionId: "flat-sess", assistantText: "平铺回答内容", completed: true, timestamp: "2026-10-15T08:01:00.000Z" });
+
+  const flatRawNames = await readdir(join(root, ".pbot/history/raw"));
+  assert.equal(flatRawNames.length, 1);
+  assert.ok(flatRawNames[0].endsWith(".json"));
+
+  const flatStatus = inspectWorkspaceSummaries(root);
+  assert.equal(flatStatus.layout, "flat");
+  assert.deepEqual(flatStatus.dimensions.map(d => d.dimension), ["session"]);
+  assert.equal(checkHistoryMigrationNotice(root), undefined);
+
+  const flatSummary = await runWorkspaceSummaries({ root, summarizer: async () => "平铺单会话摘要" });
+  assert.deepEqual(flatSummary.dimensions.map(d => d.dimension), ["session"]);
+  assert.equal(flatSummary.dimensions[0].created, 1);
+  assert.deepEqual(await readdir(join(root, ".pbot/history/summaries")), ["session"]);
+  assert.ok((await readdir(join(root, ".pbot/history/summaries/session"))).every(n => n.endsWith(".json")));
+
+  await assert.rejects(
+    runWorkspaceSummaries({ root, dimensions: ["monthly"], summarizer: async () => "unreachable" }),
+    /monthly/,
+  );
+  assert.throws(() => migrateWorkspaceHistory(root), /flat/);
+
+  // Switch config to monthly WITHOUT migrating: flat files are NOT mixed-read, and all warning channels report them.
+  const configBefore = JSON.stringify({ enabled: true, history: { layout: "monthly" } });
+  await writeFile(join(root, ".pbot/config.json"), configBefore);
+
+  assert.equal(searchWorkspaceHistory(root).total, 0);
+  const searchWarn = searchWorkspaceHistory(root).warnings;
+  assert.ok(searchWarn.some(w => w.includes("/pbot history migrate")));
+  assert.ok(checkHistoryMigrationNotice(root)?.includes("/pbot history migrate"));
+  const statusWarn = inspectWorkspaceSummaries(root).warnings;
+  assert.ok(statusWarn.some(w => w.includes("/pbot history migrate")));
+
+  // Dry-run migrate reports planned moves without touching files.
+  const dryRun = migrateWorkspaceHistory(root, { dryRun: true });
+  assert.equal(dryRun.dryRun, true);
+  assert.equal(dryRun.moved.length, 2);
+  assert.equal((await readdir(join(root, ".pbot/history/raw"))).filter(n => n.endsWith(".json")).length, 1);
+
+  // Explicit migrate moves raw + summary directly into 2026/10/ with zero duplicates and untouched config.json.
+  const migrated = migrateWorkspaceHistory(root);
+  assert.equal(migrated.dryRun, false);
+  assert.equal(migrated.moved.length, 2);
+  assert.equal(migrated.skipped.length, 0);
+  assert.equal(migrated.errors.length, 0);
+  assert.equal(await readFile(join(root, ".pbot/config.json"), "utf8"), configBefore);
+  assert.equal((await readdir(join(root, ".pbot/history/raw"))).filter(n => n.endsWith(".json")).length, 0);
+  assert.equal((await readdir(join(root, ".pbot/history/raw/2026/10"))).length, 1);
+  assert.equal((await readdir(join(root, ".pbot/history/summaries/session/2026/10"))).length, 1);
+  assert.equal(checkHistoryMigrationNotice(root), undefined);
+  assert.equal(searchWorkspaceHistory(root).total, 1);
+  assert.equal(searchWorkspaceHistory(root).warnings.length, 0);
+});
+
+test("monthly layout keeps cross-month sessions in start bucket, falls back to unknown/, and drills down monthly -> session -> exchange", async t => {
+  const root = await realpath(await mkdtemp(join(tmpdir(), "pbot-history-monthly-")));
+  t.after(() => rm(root, { recursive: true, force: true }));
+
+  // Cross-month session: starts in Oct UTC, continues in Nov UTC -> stays in 2026/10/.
+  recordHistoryCapture(root, "pi", { kind: "input", sessionId: "cross-month", text: "十月底发起跨月任务", timestamp: "2026-10-31T23:50:00.000Z" });
+  recordHistoryCapture(root, "pi", { kind: "answer", sessionId: "cross-month", assistantText: "十月初步方案。", completed: true, timestamp: "2026-10-31T23:55:00.000Z" });
+  recordHistoryCapture(root, "pi", { kind: "input", sessionId: "cross-month", text: "十一月继续推进", timestamp: "2026-11-01T00:10:00.000Z" });
+  recordHistoryCapture(root, "pi", { kind: "answer", sessionId: "cross-month", assistantText: "十一月收尾完成。", completed: true, timestamp: "2026-11-01T00:15:00.000Z" });
+
+  // Second session in Nov UTC.
+  recordHistoryCapture(root, "claude", { kind: "input", sessionId: "nov-sess", text: "十一月独立任务", timestamp: "2026-11-05T10:00:00.000Z" });
+  recordHistoryCapture(root, "claude", { kind: "answer", sessionId: "nov-sess", assistantText: "十一月任务完成。", completed: true, timestamp: "2026-11-05T10:05:00.000Z" });
+
+  // Session missing timestamps -> falls back to unknown/.
+  const files = new HistoryFiles(join(root, ".pbot/history"), "pi", "monthly");
+  const undated = indexHistory({
+    sessionId: "undated-sess",
+    name: "无时间戳会话",
+    branches: [[{ entryIds: ["u1", "a1"], text: "无时间内容", from: "", to: "", completed: true }]],
+  }, undefined, "pi");
+  files.saveRaw(undated);
+
+  assert.equal((await readdir(join(root, ".pbot/history/raw/2026/10"))).length, 1);
+  assert.equal((await readdir(join(root, ".pbot/history/raw/2026/11"))).length, 1);
+  assert.equal((await readdir(join(root, ".pbot/history/raw/unknown"))).length, 1);
+
+  const report = await runWorkspaceSummaries({
+    root,
+    summarizer: async ({ prompt }) => {
+      if (prompt.includes("月份：2026-10")) return "十月月度汇总：跨月任务在十月启动。";
+      if (prompt.includes("月份：2026-11")) return "十一月月度汇总：完成十一月独立任务。";
+      if (prompt.includes("跨月任务")) return "跨月会话摘要：十月启动、十一月收尾。";
+      if (prompt.includes("独立任务")) return "十一月会话摘要：独立任务完成。";
+      return "无时间戳会话摘要。";
+    },
+  });
+  assert.equal(report.dimensions[0].created, 3);
+  assert.equal(report.dimensions[1].dimension, "monthly");
+  assert.equal(report.dimensions[1].created, 2); // 2026-10 and 2026-11; unknown/ excluded from monthly.
+
+  // Search monthly summaries directly.
+  const monthlyList = searchWorkspaceHistory(root, { dimension: "monthly" });
+  assert.equal(monthlyList.total, 2);
+  assert.deepEqual(monthlyList.matches.map(m => m.id), ["summary:monthly:2026-11", "summary:monthly:2026-10"]);
+
+  const monthlySearch = searchWorkspaceHistory(root, { query: "十月月度汇总" });
+  assert.equal(monthlySearch.total, 1);
+  assert.equal(monthlySearch.matches[0].id, "summary:monthly:2026-10");
+  assert.deepEqual(monthlySearch.matches[0].parents, []);
+
+  // Drill down: monthly -> session summary -> exchange.
+  const octNode = readWorkspaceHistory(root, "summary:monthly:2026-10");
+  assert.equal(octNode.dimension, "monthly");
+  assert.deepEqual(octNode.parents, []);
+  assert.equal(octNode.children.length, 1);
+  assert.equal(octNode.children[0].kind, "summary");
+  assert.equal(octNode.children[0].dimension, "session");
+
+  const sessionSummaryNode = readWorkspaceHistory(root, octNode.children[0].id);
+  assert.ok(sessionSummaryNode.parents.some(p => p.id === "summary:monthly:2026-10"));
+  assert.equal(sessionSummaryNode.children.length, 2);
+  assert.equal(sessionSummaryNode.children[0].kind, "exchange");
+
+  const sessionRootNode = readWorkspaceHistory(root, sessionSummaryNode.parents.find(p => p.kind === "session").id);
+  assert.ok(sessionRootNode.parents.some(p => p.id === "summary:monthly:2026-10"));
+
+  const exchangeNode = readWorkspaceHistory(root, sessionSummaryNode.children[0].id);
+  assert.equal(exchangeNode.kind, "exchange");
+  assert.ok(exchangeNode.text.includes("十月底发起跨月任务"));
 });

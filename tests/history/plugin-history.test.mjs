@@ -137,9 +137,9 @@ test("Claude and Antigravity hooks record raw history, Pi summarizes cross-host 
   // Re-running Stop on the same transcript is idempotent.
   assert.deepEqual(await agyHook("Stop", { conversationId: "agy-conv-1", transcriptPath, terminationReason: "NO_TOOL_CALL" }), {});
 
-  const rawFiles = await readdir(join(workspace, ".pbot/history/raw"));
-  assert.equal(rawFiles.filter(name => name.startsWith("claude-")).length, 1);
-  assert.equal(rawFiles.filter(name => name.startsWith("antigravity-")).length, 1);
+  const rawFiles = await readdir(join(workspace, ".pbot/history/raw"), { recursive: true });
+  assert.equal(rawFiles.filter(name => name.includes("claude-") && name.endsWith(".json")).length, 1);
+  assert.equal(rawFiles.filter(name => name.includes("antigravity-") && name.endsWith(".json")).length, 1);
 
   // 3. Explicit summary runner discovers both Claude & Antigravity raw archives and generates session summaries.
   assert.equal(searchWorkspaceHistory(workspace, { host: "claude" }).total, 1);
@@ -155,13 +155,18 @@ test("Claude and Antigravity hooks record raw history, Pi summarizes cross-host 
 
   const runReport = await runWorkspaceSummaries({
     root: workspace,
-    summarizer: async ({ prompt }) => prompt.includes("Claude") ? "Claude 四轮汇总摘要" : "Antigravity 四轮汇总摘要",
+    summarizer: async ({ prompt }) => prompt.includes("月份：")
+      ? "跨宿主月度汇总摘要"
+      : prompt.includes("Claude") ? "Claude 四轮汇总摘要" : "Antigravity 四轮汇总摘要",
   });
   assert.equal(runReport.dimensions[0].created, 2);
   assert.equal(runReport.dimensions[0].skipped, 0);
+  assert.equal(runReport.dimensions[1].dimension, "monthly");
+  assert.equal(runReport.dimensions[1].created, 1);
   assert.equal(inspectWorkspaceSummaries(workspace).dimensions[0].ready, 2);
   assert.equal(searchWorkspaceHistory(workspace, { query: "Claude 四轮汇总摘要" }).total, 1);
   assert.equal(searchWorkspaceHistory(workspace, { query: "Antigravity 四轮汇总摘要" }).total, 1);
+  assert.equal(searchWorkspaceHistory(workspace, { query: "跨宿主月度汇总摘要", dimension: "monthly" }).total, 1);
 
   // 4. Standalone MCP server exposes read-only history_search & history_read across all hosts.
   const child = spawn(process.execPath, [join(pluginDir, "lib/extension/mcp.js")], {
@@ -192,6 +197,6 @@ test("Claude and Antigravity hooks record raw history, Pi summarizes cross-host 
   const denied = await mcp.call("history_search", { workspace });
   assert.equal(denied.isError, true);
   assert.ok(denied.text.includes("features.history"));
-  const rawAfterDisable = await readdir(join(workspace, ".pbot/history/raw"));
+  const rawAfterDisable = (await readdir(join(workspace, ".pbot/history/raw"), { recursive: true })).filter(name => name.endsWith(".json"));
   assert.equal(rawAfterDisable.length, 2);
 });

@@ -55,6 +55,7 @@ test("runWorkspaceSummaries executes tasks concurrently, isolates per-task failu
 
   const report = await runWorkspaceSummaries({
     root,
+    dimensions: ["session"],
     concurrency: 3,
     onProgress: event => progressEvents.push(event),
     summarizer: async ({ prompt }) => {

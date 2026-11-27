@@ -63,8 +63,8 @@ Claude / Antigravity / 任意插件宿主 hooks、CLI 与薄 stdio MCP
 | `<workspace>/.pbot/mcp.json` | 全宿主与 ACP worker 共享的工作区 MCP 服务清单（stdio / Streamable HTTP，支持 `${ENV_VAR}` 展开） |
 | `<workspace>/.agents/skills/<name>/SKILL.md` | 全宿主共享的工作区自有技能（原生支持目录的宿主直接发现，其余宿主与 ACP worker 按需注入元数据索引） |
 | `<workspace>/AGENTS.md`、`areas/`、`projects/`、`knowledge/`、`providers/`、`scratch/`、`agents/` | 用户工作区资料（`init` 只补缺、不覆盖） |
-| `<workspace>/.pbot/history/raw/<id>.json` | 全宿主（Pi、dsh、Claude Code、Antigravity 等）原始问答与已知分支（各自只写本宿主来源） |
-| `<workspace>/.pbot/history/summaries/<dimension>/<id>.json` | 按维度派生的摘要产物（由 `SummaryRunner` 扫描 `raw/` 按 `.write-summary-<dimension>` 锁并发生成，携带来源指纹支持去重与增量更新，可独立重建，损坏不影响原始问答查询） |
+| `<workspace>/.pbot/history/raw/[<YYYY>/<MM>/]<id>.json` | 全宿主（Pi、dsh、Claude Code、Antigravity 等）原始问答与已知分支（默认按 UTC `YYYY/MM/` 分层，可配置 `history.layout: "flat"` 切回平铺；各自只写本宿主来源） |
+| `<workspace>/.pbot/history/summaries/<dimension>/[<YYYY>/<MM>/]<id>.json` | 按维度派生的摘要产物（内置 `session` 与 `monthly` 月度汇总，由 `SummaryRunner` 按 `.write-summary-<dimension>` 锁并发生成，携带来源指纹支持去重与增量更新，可独立重建，损坏不影响原始问答查询） |
 | `~/.pbot/subagents/<id>/`（或 `PBOT_MCP_AGENT_DIR` / `PLUGIN_DATA/subagents`） | MCP `worker_*` 的控制记录（`descriptor.json`、`launch.json`、`acp-session.json`、`acp-process.json`、`acp-model.json`、`inbox/`、`completions/`、`reports/`、`permissions/`、`elicitations/`） |
 
 - `atomic-json` 先校验对象再写入临时文件并原子替换，拒绝符号链接、路径越界与特殊文件；短目录锁（`.control` / `.write-<host>`）串行化控制写操作。

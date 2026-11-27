@@ -94,13 +94,16 @@
 - 命令不经过 shell 展开；参数中的相对路径按 worker 的 `cwd` 解析。凭据与模型认证由目标宿主自行管理，不写入此文件。
 - 新建 worker 时固定解析后的可执行路径、参数与权限策略；修改 `.pbot/config.json` 后，MCP 下次 `worker_discover` / `worker_create` 调用自动读取最新 `acp` 配置。
 
-## 历史摘要执行配置（`summary`）
+## 历史目录布局与摘要配置（`history` / `summary`）
 
-可选配置 `/pbot history summary` 所使用的独立 ACP worker 后端、模型与并发度（未配置时默认 `backend: "pi"`，并使用目标 harness 当前默认模型）：
+可选配置历史存储布局及 `/pbot history summary` 所使用的独立 ACP worker 后端、模型与并发度（未配置时默认 `history.layout: "monthly"`、`summary.backend: "pi"` 并使用目标 harness 当前默认模型）：
 
 ```json
 {
   "enabled": true,
+  "history": {
+    "layout": "monthly"
+  },
   "summary": {
     "backend": "pi",
     "model": "provider/model",
@@ -110,7 +113,8 @@
 }
 ```
 
-- 每个待摘要会话独立启动一个临时 ACP worker（附带 `PBOT_SUBAGENT_RUN_ID`，绝不写回 `raw/`），完成后立即销毁。
+- `history.layout` 可选 `"monthly"`（默认，按 UTC `YYYY/MM/` 分层并启用 `monthly` 月度汇总）或 `"flat"`（平铺布局，不生成月度汇总）。已有平铺工作区可手工执行 `/pbot history migrate` 整理历史文件，不会自动修改此文件或静默迁移数据。
+- 每个待摘要项独立启动一个临时 ACP worker（附带 `PBOT_SUBAGENT_RUN_ID`，绝不写回 `raw/`），完成后立即销毁。
 - 修改后下次执行 `/pbot history summary` 直接生效，也可用命令行参数（`--backend`、`--model`、`--thinking`）临时覆盖。
 
 ## 手工修改生效方式

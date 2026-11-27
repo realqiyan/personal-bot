@@ -56,10 +56,10 @@ test("dsh records root-session raw history, keeps idle silent, and exposes /pbot
   // Emit a completed root-session turn.
   emitDshExchange(parent.session, 1, "请记录这条 dsh 对话", "已经记录完成。");
 
-  // Raw file is written immediately, and NO summary is generated automatically on idle.
-  const rawNames = await readdir(join(root, ".pbot/history/raw"));
+  // Raw file is written immediately under YYYY/MM/, and NO summary is generated automatically on idle.
+  const rawNames = (await readdir(join(root, ".pbot/history/raw"), { recursive: true })).filter(name => name.endsWith(".json"));
   assert.equal(rawNames.length, 1);
-  assert.ok(rawNames[0].startsWith("dsh-"));
+  assert.ok(rawNames[0].includes("dsh-"));
   await assert.rejects(readdir(join(root, ".pbot/history/summaries")));
 
   const signal = new AbortController().signal;
@@ -76,14 +76,24 @@ test("dsh records root-session raw history, keeps idle silent, and exposes /pbot
   assert.equal(status.dimensions[0].pendingCreate, 1);
 
   const dims = await runCmd("/pbot history list");
+  assert.equal(dims.layout, "monthly");
   assert.ok(dims.dimensions.some(d => d.id === "session"));
+  assert.ok(dims.dimensions.some(d => d.id === "monthly"));
 
-  // Explicit summary run generates the session summary.
+  const migrateEmpty = await runCmd("/pbot history migrate --dry-run");
+  assert.equal(migrateEmpty.dryRun, true);
+  assert.equal(migrateEmpty.moved.length, 0);
+
+  // Explicit summary run generates the session summary and monthly summary.
   const summaryReport = await runWorkspaceSummaries({
     root,
-    summarizer: async () => "dsh 会话摘要：验证了根会话原文采集与查询。",
+    summarizer: async ({ prompt }) => prompt.includes("月份：")
+      ? "dsh 月度汇总：本月验证了历史采集链路。"
+      : "dsh 会话摘要：验证了根会话原文采集与查询。",
   });
   assert.equal(summaryReport.dimensions[0].created, 1);
+  assert.equal(summaryReport.dimensions[1].dimension, "monthly");
+  assert.equal(summaryReport.dimensions[1].created, 1);
 
   // /pbot history JSON query searches both raw and summaries.
   const searchResult = await runCmd('/pbot history {"action":"search","query":"验证了根会话"}');

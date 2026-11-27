@@ -1,3 +1,6 @@
+import type { HistoryLayout } from "./workspace-config.js";
+
+export type { HistoryLayout };
 export type HistoryHost = string;
 
 export interface HistoryExchange {
@@ -72,6 +75,12 @@ export interface SummaryTask {
   exchanges: readonly (HistoryExchange & { id: string })[];
   existing?: SummaryArtifact;
   addedExchanges?: readonly (HistoryExchange & { id: string })[];
+  sourceSummaries?: readonly SummaryArtifact[];
+}
+
+export interface SummaryPlanOptions {
+  force?: boolean;
+  summariesByDimension?: ReadonlyMap<string, ReadonlyMap<string, SummaryArtifact>>;
 }
 
 export interface SummaryPlanResult {
@@ -83,13 +92,38 @@ export interface SummaryDimension {
   readonly id: string;
   readonly title: string;
   readonly description: string;
+  readonly requiresMonthlyLayout?: boolean;
   plan(
     raws: readonly RawHistory[],
     existing: ReadonlyMap<string, SummaryArtifact>,
-    options?: { force?: boolean },
+    options?: SummaryPlanOptions,
   ): SummaryPlanResult;
   buildRequest(task: SummaryTask): HistorySummaryRequest;
   finalize(task: SummaryTask, output: string, now: string): SummaryArtifact;
+}
+
+export interface HistoryMigrationItem {
+  kind: "raw" | "summary";
+  dimension?: string;
+  id: string;
+  from: string;
+  to: string;
+}
+
+export interface HistoryMigrationConflict {
+  kind: "raw" | "summary";
+  dimension?: string;
+  from: string;
+  to: string;
+  reason: string;
+}
+
+export interface HistoryMigrationReport {
+  layout: HistoryLayout;
+  dryRun: boolean;
+  moved: HistoryMigrationItem[];
+  skipped: HistoryMigrationConflict[];
+  errors: { path: string; error: string }[];
 }
 
 export interface SummaryDimensionStatus {

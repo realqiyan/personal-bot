@@ -2,6 +2,7 @@ import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { requireThat } from "../../common/validation.js";
 import type {
+  HistoryLayout,
   HistorySummarizer,
   HistorySummaryReminder,
   RawHistory,
@@ -12,6 +13,7 @@ import type {
   SummaryRunReport,
 } from "../../model/history.js";
 import { HistoryFiles } from "../../storage/history-files.js";
+import { readWorkspaceHistoryLayoutSync } from "../workspace/workspace-config.js";
 import { rawSessionSpan } from "./history-index.js";
 import { resolveSummaryDimensions } from "./summary-registry.js";
 
@@ -118,7 +120,8 @@ export function checkHistorySummaryReminder(
   root: string,
   options: CheckSummaryReminderOptions = {},
 ): HistorySummaryReminder | undefined {
-  const files = new HistoryFiles(join(root, ".pbot/history"), "pi");
+  const layout = readWorkspaceHistoryLayoutSync(root);
+  const files = new HistoryFiles(join(root, ".pbot/history"), "pi", layout);
   const raws = files.listRaw();
   if (!raws.length) return undefined;
 
@@ -128,23 +131,33 @@ export function checkHistorySummaryReminder(
   const oldestRawMs = oldestRawTimestamp(raws);
   if (oldestRawMs === undefined || nowMs - oldestRawMs < thresholdDays * dayMs) return undefined;
 
-  const dimensions = resolveSummaryDimensions(options.dimensions);
+  const dimensions = resolveSummaryDimensions(options.dimensions, layout);
   const seenDimensions = new Set<string>();
+  const summariesByDimension = new Map<string, Map<string, SummaryArtifact>>();
   const allSummaries: SummaryArtifact[] = [];
   let pendingCount = 0;
 
+  const loadDimension = (dimId: string) => {
+    const cached = summariesByDimension.get(dimId);
+    if (cached) return cached;
+    const list = files.listSummaries(dimId);
+    const map = new Map(list.map(item => [item.id, item]));
+    summariesByDimension.set(dimId, map);
+    return map;
+  };
+
   for (const dimension of dimensions) {
     seenDimensions.add(dimension.id);
-    const existingList = files.listSummaries(dimension.id);
-    allSummaries.push(...existingList);
-    const existing = new Map(existingList.map(item => [item.id, item]));
-    const plan = dimension.plan(raws, existing, { force: false });
+    if (dimension.id !== "session") loadDimension("session");
+    const existing = loadDimension(dimension.id);
+    allSummaries.push(...existing.values());
+    const plan = dimension.plan(raws, existing, { force: false, summariesByDimension });
     pendingCount += plan.tasks.length;
   }
 
   for (const dim of files.listDimensions()) {
     if (seenDimensions.has(dim)) continue;
-    allSummaries.push(...files.listSummaries(dim));
+    allSummaries.push(...loadDimension(dim).values());
   }
 
   return evaluateSummaryReminder(raws, allSummaries, pendingCount, options);
@@ -154,24 +167,39 @@ export function checkHistorySummaryReminder(
 export function inspectWorkspaceSummaries(
   root: string,
   options: InspectSummaryOptions = {},
-): { rawCount: number; dimensions: SummaryDimensionStatus[]; warnings: string[]; reminder?: HistorySummaryReminder } {
-  const files = new HistoryFiles(join(root, ".pbot/history"), "pi");
+): { layout: HistoryLayout; rawCount: number; dimensions: SummaryDimensionStatus[]; warnings: string[]; reminder?: HistorySummaryReminder } {
+  const layout = readWorkspaceHistoryLayoutSync(root);
+  const files = new HistoryFiles(join(root, ".pbot/history"), "pi", layout);
   const raws = files.listRaw();
   const warnings = [...files.warnings];
-  const dimensions = resolveSummaryDimensions(options.dimensions);
+  if (layout === "monthly") {
+    const flatNotice = files.detectFlatFiles().message;
+    if (flatNotice) warnings.push(flatNotice);
+  }
+  const dimensions = resolveSummaryDimensions(options.dimensions, layout);
 
   const statuses: SummaryDimensionStatus[] = [];
   const seenDimensions = new Set<string>();
+  const summariesByDimension = new Map<string, Map<string, SummaryArtifact>>();
   const allSummaries: SummaryArtifact[] = [];
   let totalPending = 0;
 
+  const loadDimension = (dimId: string) => {
+    const cached = summariesByDimension.get(dimId);
+    if (cached) return cached;
+    const list = files.listSummaries(dimId);
+    warnings.push(...files.warnings);
+    const map = new Map(list.map(item => [item.id, item]));
+    summariesByDimension.set(dimId, map);
+    return map;
+  };
+
   for (const dimension of dimensions) {
     seenDimensions.add(dimension.id);
-    const existingList = files.listSummaries(dimension.id);
-    warnings.push(...files.warnings);
-    allSummaries.push(...existingList);
-    const existing = new Map(existingList.map(item => [item.id, item]));
-    const plan = dimension.plan(raws, existing, { force: false });
+    if (dimension.id !== "session") loadDimension("session");
+    const existing = loadDimension(dimension.id);
+    allSummaries.push(...existing.values());
+    const plan = dimension.plan(raws, existing, { force: false, summariesByDimension });
     totalPending += plan.tasks.length;
 
     let pendingCreate = 0;
@@ -196,11 +224,12 @@ export function inspectWorkspaceSummaries(
 
   for (const dim of files.listDimensions()) {
     if (seenDimensions.has(dim)) continue;
-    allSummaries.push(...files.listSummaries(dim));
+    allSummaries.push(...loadDimension(dim).values());
   }
 
   const reminder = evaluateSummaryReminder(raws, allSummaries, totalPending, options);
   return {
+    layout,
     rawCount: raws.length,
     dimensions: statuses,
     warnings: [...new Set(warnings)],
@@ -229,23 +258,35 @@ export async function runWorkspaceSummaries(options: RunSummaryOptions): Promise
   signal.throwIfAborted();
 
   const concurrency = Math.max(1, Math.min(maxConcurrency, Math.floor(options.concurrency ?? defaultConcurrency)));
-  const dimensions = resolveSummaryDimensions(options.dimensions);
-  const files = new HistoryFiles(join(options.root, ".pbot/history"), "pi");
+  const layout = readWorkspaceHistoryLayoutSync(options.root);
+  const dimensions = resolveSummaryDimensions(options.dimensions, layout);
+  const files = new HistoryFiles(join(options.root, ".pbot/history"), "pi", layout);
 
   const raws = files.listRaw();
   const warnings = [...files.warnings];
+  if (layout === "monthly") {
+    const flatNotice = files.detectFlatFiles().message;
+    if (flatNotice) warnings.push(flatNotice);
+  }
+  const summariesByDimension = new Map<string, Map<string, SummaryArtifact>>();
   const reports: SummaryDimensionReport[] = [];
 
   for (const dimension of dimensions) {
     signal.throwIfAborted();
+    if (dimension.id !== "session" && !summariesByDimension.has("session")) {
+      const sessionList = files.listSummaries("session");
+      warnings.push(...files.warnings);
+      summariesByDimension.set("session", new Map(sessionList.map(item => [item.id, item])));
+    }
     const existingList = files.listSummaries(dimension.id);
     warnings.push(...files.warnings);
     const existing = new Map(existingList.map(item => [item.id, item]));
-    const plan = dimension.plan(raws, existing, { force: Boolean(options.force) });
+    summariesByDimension.set(dimension.id, existing);
+    const plan = dimension.plan(raws, existing, { force: Boolean(options.force), summariesByDimension });
 
     const report: SummaryDimensionReport = {
       dimension: dimension.id,
-      scanned: raws.length,
+      scanned: dimension.id === "monthly" ? (summariesByDimension.get("session")?.size ?? 0) : raws.length,
       skipped: plan.skipped,
       created: 0,
       incremental: 0,
@@ -273,6 +314,7 @@ export async function runWorkspaceSummaries(options: RunSummaryOptions): Promise
               signal.throwIfAborted();
               files.saveSummary(artifact);
             }, signal);
+            existing.set(artifact.id, artifact);
             if (task.mode === "create") report.created++;
             else if (task.mode === "incremental") report.incremental++;
             else report.rebuilt++;

@@ -28,11 +28,22 @@ export interface ResolvedWorkspaceSummaryConfig {
   readonly concurrency: number;
 }
 
+export type HistoryLayout = "monthly" | "flat";
+
+export interface WorkspaceHistoryConfig {
+  layout?: HistoryLayout;
+}
+
+export interface ResolvedWorkspaceHistoryConfig {
+  readonly layout: HistoryLayout;
+}
+
 export interface WorkspaceConfig {
   enabled?: boolean;
   features?: WorkspaceFeatures;
   acp?: AcpCommands;
   summary?: WorkspaceSummaryConfig;
+  history?: WorkspaceHistoryConfig;
 }
 
 export interface WorkspaceConfiguration {
@@ -43,4 +54,5 @@ export interface WorkspaceConfiguration {
   features?: WorkspaceFeatures;
   acp?: AcpCommands;
   summary?: WorkspaceSummaryConfig;
+  history?: WorkspaceHistoryConfig;
 }

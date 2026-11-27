@@ -1,19 +1,25 @@
+import { readFileSync } from "node:fs";
 import { mkdir, readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { object } from "../../common/json.js";
 import { isAcpBackend } from "../../common/validation.js";
 import { readJsonFile, writeJsonFile } from "../../storage/atomic-json.js";
 import type {
+  HistoryLayout,
   ResolvedWorkspaceFeatures,
+  ResolvedWorkspaceHistoryConfig,
   ResolvedWorkspaceSummaryConfig,
   WorkspaceConfig,
   WorkspaceConfiguration,
   WorkspaceFeatures,
+  WorkspaceHistoryConfig,
   WorkspaceSummaryConfig,
 } from "../../model/workspace-config.js";
 
 const featureKeys = ["prompts", "skills", "mcp", "history"] as const;
 const summaryKeys = ["backend", "model", "thinking", "concurrency"] as const;
+const historyKeys = ["layout"] as const;
+const historyLayouts = ["monthly", "flat"] as const;
 
 function nonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0 && !value.includes("\0");
@@ -65,6 +71,14 @@ function config(value: unknown): Record<string, unknown> {
       throw new Error("summary.concurrency 必须是 1 到 8 之间的整数。");
     }
   }
+  if (value.history !== undefined) {
+    if (!object(value.history) || Object.keys(value.history).some(key => !(historyKeys as readonly string[]).includes(key))) {
+      throw new Error("history 必须是 JSON 对象，仅支持 layout。");
+    }
+    if (value.history.layout !== undefined && !(historyLayouts as readonly string[]).includes(String(value.history.layout))) {
+      throw new Error('history.layout 必须是 "monthly" 或 "flat"。');
+    }
+  }
   return value;
 }
 
@@ -94,8 +108,31 @@ export function workspaceSummaryConfig(
   };
 }
 
+export function workspaceHistoryConfig(
+  configuration?: Pick<WorkspaceConfiguration, "history"> | WorkspaceHistoryConfig,
+): ResolvedWorkspaceHistoryConfig {
+  const raw: WorkspaceHistoryConfig | undefined = configuration && "history" in configuration
+    ? configuration.history
+    : configuration as WorkspaceHistoryConfig | undefined;
+  return {
+    layout: raw?.layout === "flat" ? "flat" : "monthly",
+  };
+}
+
 export function workspaceConfigPath(root: string): string {
   return join(root, ".pbot", "config.json");
+}
+
+/** Synchronous read of history.layout for storage and query callers; defaults to "monthly". */
+export function readWorkspaceHistoryLayoutSync(root: string): HistoryLayout {
+  const path = workspaceConfigPath(root);
+  try {
+    const content = readFileSync(path, "utf8");
+    const parsed = config(JSON.parse(content)) as WorkspaceConfig;
+    return workspaceHistoryConfig(parsed.history).layout;
+  } catch {
+    return "monthly";
+  }
 }
 
 /** Read only this workspace's configuration; parent directories never grant activation. */
@@ -117,6 +154,7 @@ export async function readWorkspaceConfig(root: string): Promise<WorkspaceConfig
       ...(settings.features ? { features: settings.features } : {}),
       ...(settings.acp ? { acp: settings.acp } : {}),
       ...(settings.summary ? { summary: settings.summary } : {}),
+      ...(settings.history ? { history: settings.history } : {}),
     };
   } catch (error) {
     return { path, present: true, enabled: false, error: `工作区配置无效 ${path}: ${String(error)}` };

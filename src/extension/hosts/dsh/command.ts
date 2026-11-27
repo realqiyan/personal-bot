@@ -3,15 +3,16 @@ import type {} from "@deepseek-ai/dsh-commands";
 import { json } from "../../../common/json.js";
 import { requireThat } from "../../../common/validation.js";
 import { createAcpHistorySummarizer } from "../../../integrations/acp/history-summary.js";
+import { migrateWorkspaceHistory } from "../../../services/history/history-migrate.js";
 import { parseHistoryCommand } from "../../../services/history/summary-command.js";
 import { listSummaryDimensions } from "../../../services/history/summary-registry.js";
 import { inspectWorkspaceSummaries, runWorkspaceSummaries } from "../../../services/history/summary-runner.js";
-import { readWorkspaceConfig, workspaceDisabledMessage, workspaceSummaryConfig } from "../../../services/workspace/workspace-config.js";
+import { readWorkspaceConfig, readWorkspaceHistoryLayoutSync, workspaceDisabledMessage, workspaceSummaryConfig } from "../../../services/workspace/workspace-config.js";
 import { dshWorkspaceStatus, type PbotManagement } from "./management.js";
 import type { DshWorkspaces } from "./workspace.js";
 import { parseWorkerCommand } from "../../mcp/workers.js";
 
-const usage = '用法：/pbot status | init | history [summary [维度] [--force] [--backend <acp>] [--model <model>] | status | list | {"action":…}] | worker [overview|status|backends|models|create|request|response|output|close] [JSON]';
+const usage = '用法：/pbot status | init | history [summary [维度] [--force] [--backend <acp>] [--model <model>] | migrate [--dry-run] | status | list | {"action":…}] | worker [overview|status|backends|models|create|request|response|output|close] [JSON]';
 
 export function registerDshCommand(ctx: Context, workspaces: DshWorkspaces, management: PbotManagement) {
   ctx.commands.register({
@@ -48,7 +49,10 @@ export function registerDshCommand(ctx: Context, workspaces: DshWorkspaces, mana
           if (parsed.kind === "status") {
             result = inspectWorkspaceSummaries(workspace.root);
           } else if (parsed.kind === "list") {
-            result = { dimensions: listSummaryDimensions().map(({ id, title, description }) => ({ id, title, description })) };
+            const layout = readWorkspaceHistoryLayoutSync(workspace.root);
+            result = { layout, dimensions: listSummaryDimensions(layout).map(({ id, title, description }) => ({ id, title, description })) };
+          } else if (parsed.kind === "migrate") {
+            result = migrateWorkspaceHistory(workspace.root, { dryRun: parsed.dryRun });
           } else if (parsed.kind === "query") {
             result = await management.history({ parentSessionId: agent.id, input: json(parsed.input) }, signal);
           } else {

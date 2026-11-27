@@ -1,7 +1,13 @@
 import { join } from "node:path";
 import { requireThat } from "../../common/validation.js";
 import type { HistoryHost, HistoryQuery, RawHistory, SummaryArtifact } from "../../model/history.js";
-import { HistoryFiles } from "../../storage/history-files.js";
+import {
+  HistoryFiles,
+  historyBucketFromTimestamp,
+  rawHistoryBucket,
+  unknownHistoryBucket,
+} from "../../storage/history-files.js";
+import { readWorkspaceHistoryLayoutSync } from "../workspace/workspace-config.js";
 import { orderedRawExchanges, rawSessionSpan, rawSessionTitle } from "./history-index.js";
 
 const summaryIdPrefix = "summary:";
@@ -147,8 +153,13 @@ export function searchWorkspaceHistory(root: string, query: HistoryQuery = {}): 
   const before = to === undefined ? Infinity : Date.parse(to);
   requireThat(!Number.isNaN(after) && !Number.isNaN(before) && after <= before, "时间范围无效，请使用 ISO 日期或时间。");
 
-  const files = new HistoryFiles(join(root, ".pbot/history"), "pi");
+  const layout = readWorkspaceHistoryLayoutSync(root);
+  const files = new HistoryFiles(join(root, ".pbot/history"), "pi", layout);
   const warnings: string[] = [];
+  if (layout === "monthly") {
+    const flatNotice = files.detectFlatFiles().message;
+    if (flatNotice) warnings.push(flatNotice);
+  }
   const matches: HistorySearchMatch[] = [];
 
   if (!needle) {
@@ -163,7 +174,7 @@ export function searchWorkspaceHistory(root: string, query: HistoryQuery = {}): 
         const brief = summaryBrief(artifact);
         matches.push({
           ...brief,
-          parents: artifact.source.rawIds,
+          parents: artifact.dimension === "monthly" ? [] : artifact.source.rawIds,
           snippet: sliceSnippet(artifact.text, ""),
         });
       }
@@ -224,7 +235,7 @@ export function searchWorkspaceHistory(root: string, query: HistoryQuery = {}): 
         if (!inTimeRange(artifact.from, artifact.to, after, before)) continue;
         matches.push({
           ...summaryBrief(artifact),
-          parents: artifact.source.rawIds,
+          parents: artifact.dimension === "monthly" ? [] : artifact.source.rawIds,
           snippet: sliceSnippet(artifact.text, needle),
         });
       }
@@ -254,6 +265,13 @@ function sliceText(text: string, offset: number, limit: number) {
   };
 }
 
+function findMonthlyParent(files: HistoryFiles, bucket: string, rawId: string): HistoryNodeBrief | undefined {
+  if (files.layout !== "monthly" || bucket === unknownHistoryBucket) return undefined;
+  const monthly = files.readSummary("monthly", bucket.replace("/", "-"));
+  if (!monthly || !monthly.source.rawIds.includes(rawId)) return undefined;
+  return summaryBrief(monthly);
+}
+
 /** O(1) read of a session root, summary artifact, or individual raw exchange. */
 export function readWorkspaceHistory(
   root: string,
@@ -263,7 +281,13 @@ export function readWorkspaceHistory(
   childrenOffset = 0,
   host?: HistoryHost,
 ): HistoryReadNode {
-  const files = new HistoryFiles(join(root, ".pbot/history"), "pi");
+  const layout = readWorkspaceHistoryLayoutSync(root);
+  const files = new HistoryFiles(join(root, ".pbot/history"), "pi", layout);
+  const baseWarnings: string[] = [];
+  if (layout === "monthly") {
+    const flatNotice = files.detectFlatFiles().message;
+    if (flatNotice) baseWarnings.push(flatNotice);
+  }
 
   // 1. Summary artifact: summary:<dimension>:<artifactId>
   const parsedSummary = parseSummaryNodeId(id);
@@ -272,19 +296,39 @@ export function readWorkspaceHistory(
     requireThat(artifact && (!host || artifact.host === host), "历史节点不存在，请重新搜索。");
     const parents: HistoryNodeBrief[] = [];
     const children: HistoryNodeBrief[] = [];
-    const wantedExchanges = new Set(artifact.source.exchangeIds);
-    for (const rawId of artifact.source.rawIds) {
-      const raw = files.readRaw(rawId);
-      if (!raw) continue;
-      parents.push(sessionBrief(raw, artifact.dimension === "session" ? artifact.text : undefined));
-      const ordered = orderedRawExchanges(raw);
-      const title = rawSessionTitle(raw);
-      for (const item of ordered) {
-        if (!wantedExchanges.size || wantedExchanges.has(item.id)) {
-          children.push(exchangeBrief(raw, item, title));
+
+    if (artifact.dimension === "monthly") {
+      // Monthly summary drills down to per-session summaries (falling back to raw session roots).
+      for (const rawId of artifact.source.rawIds) {
+        const sessionSummary = files.readSummary("session", rawId);
+        if (sessionSummary) {
+          children.push(summaryBrief(sessionSummary));
+          continue;
+        }
+        const raw = files.readRaw(rawId);
+        if (raw) children.push(sessionBrief(raw));
+      }
+    } else {
+      const wantedExchanges = new Set(artifact.source.exchangeIds);
+      for (const rawId of artifact.source.rawIds) {
+        const raw = files.readRaw(rawId);
+        if (!raw) continue;
+        parents.push(sessionBrief(raw, artifact.dimension === "session" ? artifact.text : undefined));
+        const ordered = orderedRawExchanges(raw);
+        const title = rawSessionTitle(raw);
+        for (const item of ordered) {
+          if (!wantedExchanges.size || wantedExchanges.has(item.id)) {
+            children.push(exchangeBrief(raw, item, title));
+          }
         }
       }
+      if (artifact.dimension === "session") {
+        const bucket = historyBucketFromTimestamp(artifact.from || artifact.to);
+        const monthlyParent = findMonthlyParent(files, bucket, artifact.id);
+        if (monthlyParent) parents.push(monthlyParent);
+      }
     }
+
     const pagedChildren = page(children, childrenOffset, 20);
     const sliced = sliceText(artifact.text, offset, limit);
     return {
@@ -299,7 +343,7 @@ export function readWorkspaceHistory(
         entryIds: artifact.source.exchangeIds,
         dimension: artifact.dimension,
       },
-      warnings: [...new Set(files.warnings)],
+      warnings: [...new Set([...baseWarnings, ...files.warnings])],
     };
   }
 
@@ -313,6 +357,7 @@ export function readWorkspaceHistory(
     const title = rawSessionTitle(raw);
     const parents: HistoryNodeBrief[] = [sessionBrief(raw)];
     for (const dim of files.listDimensions()) {
+      if (dim === "monthly") continue;
       const artifact = files.readSummary(dim, raw.id);
       if (artifact) parents.push(summaryBrief(artifact));
     }
@@ -328,7 +373,7 @@ export function readWorkspaceHistory(
         sessionId: raw.sessionId,
         entryIds: exchange.entryIds,
       },
-      warnings: [...new Set(files.warnings)],
+      warnings: [...new Set([...baseWarnings, ...files.warnings])],
     };
   }
 
@@ -340,11 +385,13 @@ export function readWorkspaceHistory(
   const summaryChildren: HistoryNodeBrief[] = [];
   let sessionSummaryText: string | undefined;
   for (const dim of files.listDimensions()) {
+    if (dim === "monthly") continue;
     const artifact = files.readSummary(dim, raw.id);
     if (!artifact) continue;
     if (dim === "session") sessionSummaryText = artifact.text;
     summaryChildren.push(summaryBrief(artifact));
   }
+  const monthlyParent = findMonthlyParent(files, rawHistoryBucket(raw), raw.id);
   const allChildren: HistoryNodeBrief[] = [
     ...summaryChildren,
     ...ordered.map(item => exchangeBrief(raw, item, title)),
@@ -355,7 +402,7 @@ export function readWorkspaceHistory(
   return {
     ...sessionBrief(raw, sessionSummaryText),
     ...sliced,
-    parents: [],
+    parents: monthlyParent ? [monthlyParent] : [],
     children: pagedChildren.values,
     nextChildrenOffset: pagedChildren.nextOffset,
     source: {
@@ -363,6 +410,6 @@ export function readWorkspaceHistory(
       sessionId: raw.sessionId,
       entryIds: ordered.flatMap(item => item.entryIds),
     },
-    warnings: [...new Set(files.warnings)],
+    warnings: [...new Set([...baseWarnings, ...files.warnings])],
   };
 }

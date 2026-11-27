@@ -4,11 +4,12 @@ import { requireThat } from "../../common/validation.js";
 export type ParsedHistoryCommand =
   | { kind: "status" }
   | { kind: "list" }
+  | { kind: "migrate"; dryRun: boolean }
   | { kind: "summary"; dimensions?: string[]; force: boolean; backend?: string; model?: string; thinking?: string }
   | { kind: "query"; input: Record<string, unknown> };
 
 export const historyCommandUsage =
-  '用法：/pbot history summary [维度...] [--force] [--backend <acp>] [--model <model>] [--thinking <level>] | status | list | {"action":"search"|"read",...}';
+  '用法：/pbot history summary [维度...] [--force] [--backend <acp>] [--model <model>] [--thinking <level>] | migrate [--dry-run] | status | list | {"action":"search"|"read",...}';
 
 export function parseHistoryCommand(raw: string): ParsedHistoryCommand {
   const trimmed = raw.trim();
@@ -21,6 +22,14 @@ export function parseHistoryCommand(raw: string): ParsedHistoryCommand {
   }
   const tokens = trimmed.split(/\s+/);
   const sub = tokens[0];
+  if (sub === "migrate") {
+    let dryRun = false;
+    for (const token of tokens.slice(1)) {
+      if (token === "--dry-run") dryRun = true;
+      else throw new Error(`未知参数：${token}\n${historyCommandUsage}`);
+    }
+    return { kind: "migrate", dryRun };
+  }
   if (sub === "summary") {
     let force = false;
     let backend: string | undefined;

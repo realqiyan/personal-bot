@@ -4,6 +4,7 @@ import { requireThat } from "../../common/validation.js";
 import { loadWorkspaceContext } from "../../integrations/agent-resources.js";
 import type { PluginHostAdapter } from "../../model/plugin-host.js";
 import { recordHistoryCapture } from "../../services/history/history-capture.js";
+import { checkHistoryMigrationNotice } from "../../services/history/history-migrate.js";
 import { checkHistorySummaryReminder } from "../../services/history/summary-runner.js";
 import { readWorkspaceConfig, workspaceFeatures } from "../../services/workspace/workspace-config.js";
 import { initializeWorkspace } from "../../services/workspace/workspace-preparation.js";
@@ -60,6 +61,8 @@ export async function pluginHook(adapter: PluginHostAdapter, payload: unknown): 
   const notices: string[] = [];
   if (event.isSessionStart && features.history) {
     try {
+      const migrationNotice = checkHistoryMigrationNotice(root);
+      if (migrationNotice) notices.push(migrationNotice);
       const reminder = checkHistorySummaryReminder(root);
       if (reminder) notices.push(reminder.message);
     } catch { /* Never block session start if history reminder probe fails. */ }

@@ -429,7 +429,7 @@ export function buildHistoryMcpTools(workspaceBound = false) {
           },
           dimension: {
             type: "string",
-            description: "可选范围筛选：raw 表示仅搜原文，或指定摘要维度（如 session）；省略查全部原文与维度摘要。",
+            description: "可选范围筛选：raw 表示仅搜原文，或指定摘要维度（如 monthly、session）；省略查全部原文与维度摘要。",
           },
           query: {
             type: "string",
@@ -465,7 +465,7 @@ export function buildHistoryMcpTools(workspaceBound = false) {
     {
       name: "history_read",
       description:
-        "按节点 id 读取当前工作区历史归档的正文与上下级节点（session、summary、exchange）。正文过长时用 nextOffset 续读，子节点过多时用 nextChildrenOffset 续读。",
+        "按节点 id 读取当前工作区历史归档的正文与上下级节点（monthly、session、summary、exchange），支持从月度汇总下钻至单会话摘要与原始问答。正文过长时用 nextOffset 续读，子节点过多时用 nextChildrenOffset 续读。",
       annotations: {
         title: "Read Workspace History Node",
         readOnlyHint: true,
