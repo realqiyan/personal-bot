@@ -79,68 +79,114 @@ export class HistoryFiles {
   get warnings(): readonly string[] { return this.#warnings; }
   get rawWarnings(): readonly string[] { return this.#rawWarnings; }
 
-  list(legacyRoot?: string): HistoryArchive[] {
+  private readRawWithSummaries(directory: string, name: string, layout: "private" | "shared" | "raw", filterHost?: HistoryHost, excludeHost?: HistoryHost):
+    { archive?: HistoryArchive; warning?: string } {
+    const path = join(directory, name);
+    for (;;) {
+      const before = lstatSync(path, { bigint: true });
+      const file = readJsonFile(directory, name, (value): OldFile | undefined => {
+        if (layout !== "private" && object(value) && isHistoryHost(value.host)) {
+          if (filterHost !== undefined && value.host !== filterHost) return undefined;
+          if (excludeHost !== undefined && value.host === excludeHost) return undefined;
+        }
+        return layout === "raw" ? { raw: namedRaw(value, name) } : oldFile(value, name, layout === "private" ? filterHost : undefined);
+      });
+      if (!file) return {};
+      const { raw } = file;
+      if (file.summaries) return { archive: { raw, summaries: file.summaries } };
+      const layer = layout === "raw" ? "summary" : "hierarchical";
+      let summaries: HistorySummary[] | null, warning: string | undefined;
+      try { summaries = readSummaries(this.directory, layer, raw)?.summaries ?? []; }
+      catch (error) { warning = diagnostic(join(this.directory, layer, name), error); summaries = null; }
+      // Peers take no lock. Retry if a native update replaced the raw file between reads.
+      const after = lstatSync(path, { bigint: true });
+      if (before.ino !== after.ino || before.ctimeNs !== after.ctimeNs) continue;
+      return { archive: { raw, summaries }, ...(warning ? { warning } : {}) };
+    }
+  }
+
+  private scanArchives(legacyRoot: string | undefined, filterHost: HistoryHost | undefined, excludeHost: HistoryHost | undefined): HistoryArchive[] {
     this.#warnings = []; this.#rawWarnings = [];
     const archives = new Map<string, HistoryArchive>();
     const rawWarning = (path: string, error: unknown) => {
       const message = diagnostic(path, error); this.#warnings.push(message); this.#rawWarnings.push(message);
     };
-    const scan = (directory: string, layout: "private" | "shared" | "raw") => {
+    const scan = (directory: string, layout: "private" | "shared" | "raw", host?: HistoryHost) => {
       for (const name of names(directory)) {
         const path = join(directory, name);
         try {
-          for (;;) {
-            const before = lstatSync(path, { bigint: true });
-            const file = readJsonFile(directory, name, (value): OldFile | undefined => {
-              if (layout !== "private" && object(value) && isHistoryHost(value.host) && value.host !== this.host) return undefined;
-              return layout === "raw" ? { raw: namedRaw(value, name) } : oldFile(value, name, layout === "private" ? this.host : undefined);
-            });
-            if (!file) break;
-            const { raw } = file;
-            if (file.summaries) { archives.set(raw.id, { raw, summaries: file.summaries }); break; }
-            const layer = layout === "raw" ? "summary" : "hierarchical";
-            let summaries: HistorySummary[] | null, warning: string | undefined;
-            try { summaries = readSummaries(this.directory, layer, raw)?.summaries ?? []; }
-            catch (error) { warning = diagnostic(join(this.directory, layer, name), error); summaries = null; }
-            // Peers take no lock. Retry if a native update replaced the raw file between reads.
-            const after = lstatSync(path, { bigint: true });
-            if (before.ino !== after.ino || before.ctimeNs !== after.ctimeNs) continue;
-            if (warning) this.#warnings.push(warning);
-            archives.set(raw.id, { raw, summaries }); break;
-          }
+          const { archive, warning } = this.readRawWithSummaries(directory, name, layout, host, excludeHost);
+          if (warning) this.#warnings.push(warning);
+          if (archive) archives.set(archive.raw.id, archive);
         } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") rawWarning(path, error); }
       }
     };
     // Read the destinations last: a concurrent migration publishes both files before retiring its source.
-    if (legacyRoot && this.host !== "claude") {
-      try { const directory = legacyDirectory(legacyRoot, this.host); if (directory) scan(directory, "private"); }
-      catch (error) { rawWarning(join(legacyRoot, "." + this.host, "pbot/history"), error); }
+    if (legacyRoot) {
+      const legacyHosts: HistoryHost[] = filterHost !== undefined
+        ? (filterHost === "pi" || filterHost === "dsh" ? [filterHost] : [])
+        : (["pi", "dsh"] as const).filter(host => host !== excludeHost);
+      for (const host of legacyHosts) {
+        try { const directory = legacyDirectory(legacyRoot, host); if (directory) scan(directory, "private", host); }
+        catch (error) { rawWarning(join(legacyRoot, "." + host, "pbot/history"), error); }
+      }
     }
     try {
       if (sharedDirectory(this.directory)) {
-        scan(this.directory, "shared");
+        scan(this.directory, "shared", filterHost);
         const directory = join(this.directory, "raw");
-        if (ordinaryDirectory(directory)) scan(directory, "raw");
+        if (ordinaryDirectory(directory)) scan(directory, "raw", filterHost);
       }
     } catch (error) { rawWarning(this.directory, error); }
     return [...archives.values()];
   }
 
-  /** The callback is synchronous: no SDK reads or model work can hold this source's write lock. */
-  control<T>(operation: () => T): T {
-    requireThat(this.host !== "claude", "Claude 历史归档只读。");
+  list(legacyRoot?: string): HistoryArchive[] {
+    return this.scanArchives(legacyRoot, this.host, undefined);
+  }
+
+  listAll(legacyRoot?: string, excludeHost?: HistoryHost): HistoryArchive[] {
+    return this.scanArchives(legacyRoot, undefined, excludeHost);
+  }
+
+  /** O(1) read of a single raw archive and its optional derived summaries by root ID. */
+  readArchive(id: string): HistoryArchive | undefined {
+    const name = filename(id);
+    if (!sharedDirectory(this.directory)) return undefined;
+    const rawDir = join(this.directory, "raw");
+    if (!ordinaryDirectory(rawDir)) return undefined;
+    try {
+      const { archive } = this.readRawWithSummaries(rawDir, name, "raw");
+      return archive;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+      throw error;
+    }
+  }
+
+  private withLock<T>(lockName: string, label: string, operation: () => T): T {
     ensureDirectory(this.directory);
-    const lock = join(this.directory, ".write-" + this.host);
+    const lock = join(this.directory, lockName);
     try { mkdirSync(lock, { mode: 0o700 }); }
     catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "EEXIST") throw Object.assign(new Error("历史来源写锁被占用：" + this.host), { code: "PBOT_HISTORY_BUSY" });
+      if ((error as NodeJS.ErrnoException).code === "EEXIST") throw Object.assign(new Error("历史来源写锁被占用：" + label), { code: "PBOT_HISTORY_BUSY" });
       throw error;
     }
     try { return operation(); } finally { rmdirSync(lock); }
   }
 
-  private writable(identity: HistoryIdentity) {
-    requireThat(this.host !== "claude" && identity.host === this.host, "历史归档只允许所属 Pi/dsh 来源写入。");
+  /** The callback is synchronous: no SDK reads or model work can hold this source's write lock. */
+  control<T>(operation: () => T): T {
+    return this.withLock(".write-" + this.host, this.host, operation);
+  }
+
+  /** Derived summary lock shared across hosts; always acquired after any raw source lock if both are needed. */
+  controlSummary<T>(operation: () => T): T {
+    return this.withLock(".write-summary", "summary", operation);
+  }
+
+  private writable(identity: HistoryIdentity, summaryOnly = false) {
+    requireThat(isHistoryHost(identity.host) && (summaryOnly || identity.host === this.host), "历史归档只允许所属来源写入。");
     const name = filename(identity.id);
     requireThat(!lstatSync(join(this.directory, name), { throwIfNoEntry: false }), "根 ID 已有旧历史归档：" + name);
     return name;
@@ -166,7 +212,7 @@ export class HistoryFiles {
   }
 
   saveSummaries(identity: HistoryIdentity, summaries: readonly HistorySummary[]) {
-    const name = this.writable(identity);
+    const name = this.writable(identity, true);
     requireThat(sharedDirectory(this.directory), "历史原文目录不存在：" + this.directory);
     const raw = readRaw(this.directory, name);
     matchIdentity(raw, identity);
@@ -225,7 +271,7 @@ export class HistoryFiles {
   }
 
   migrate(root: string) {
-    if (this.host === "claude") return;
+    if (this.host !== "pi" && this.host !== "dsh") return;
     const legacy = legacyDirectory(root, this.host);
     const shared = sharedDirectory(this.directory) ? names(this.directory).filter(name => {
       try { return readJsonFile(this.directory, name, value => object(value) && value.host === this.host); }

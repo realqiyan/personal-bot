@@ -4,12 +4,14 @@ export interface WorkspaceFeatures {
   prompts?: boolean;
   skills?: boolean;
   mcp?: boolean;
+  history?: boolean;
 }
 
 export interface ResolvedWorkspaceFeatures {
   readonly prompts: boolean;
   readonly skills: boolean;
   readonly mcp: boolean;
+  readonly history: boolean;
 }
 
 export interface WorkspaceConfig {

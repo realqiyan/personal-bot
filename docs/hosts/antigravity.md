@@ -41,6 +41,8 @@ node /path/to/installed/personal-bot/lib/plugin.js antigravity status
   - 同宿主子任务与多成员协作直接使用 Antigravity 原生 `invoke_subagent`（`self`、`research` 等）与 `/swarm`，Personal Bot 不注入自定义静态 agent 也不改写 `invoke_subagent` 参数；
   - 跨 Harness 调度（调用 `claude`、`codex`、`pi`、`dsh` 或自定义 ACP 目标）通过插件内置 `mcp_config.json` 挂载的 `pbot` stdio MCP 服务（`worker_*` 工具集）完成，详见[跨 Harness 专家调度](../guides/cross-harness-workers.md)。
 
+- **历史**：`Stop` hook 将主会话原始问答投影写入 `.pbot/history/raw/`（可在 `features.history: false` 关闭），并通过 `pbot` MCP 提供的 `history_search` / `history_read` 只读检索全宿主历史。
+
 ## MCP 与开发校验
 
 - 工作区共享 MCP 统一写入 `.pbot/mcp.json`（通过 `pbot mcp add|remove|list` 管理），经内置 `pbot` MCP 的 `workspace_mcp_discover` / `workspace_mcp_call` 在当前工作区按需调用；全局或需交互式 OAuth 的 MCP 使用原生 `agy mcp add|remove|list`（管理 `~/.gemini/config/mcp_config.json`），两者可同时使用。

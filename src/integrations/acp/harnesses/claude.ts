@@ -1,7 +1,7 @@
 import { object } from "../../../common/json.js";
 import { requireThat } from "../../../common/validation.js";
 import type { AcpHarnessAdapter } from "../../../model/acp.js";
-import { claudeOptions } from "../claude.js";
+import { claudeOptions } from "../claude-settings.js";
 import { defaultPrepareLaunch, filterStandardAcpOptions, validateStandardAcpOptions } from "./generic.js";
 
 export const claudeAcpHarness: AcpHarnessAdapter = {

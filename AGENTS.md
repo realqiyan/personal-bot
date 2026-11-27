@@ -8,13 +8,21 @@ Personal Bot is a harness-agnostic workspace and unified MCP cross-harness deleg
 - `src/dsh.ts`: dsh Host assembly (`pbot_history`, Web workspace/history UI, `@deepseek-ai/dsh-mcp-client` mount for `worker_*`); `src/ui/dsh/index.ts` is the native Web entry.
 - `src/plugin.ts` / `src/claude.ts`: runtime-agnostic plugin-host CLI/hook entry (resolves dynamically via `PluginHostRegistry`) and backward-compatible Claude entry.
 - `src/mcp.ts`: standalone stdio MCP server entry exposing the 6 `worker_*` tools for cross-harness ACP delegation.
-- `src/extension/`: host lifecycles, `/pbot` commands (`init`, `status`, `worker`), `plugin-runtime.ts`, `mcp-workers.ts`, `acp-worker.ts`, `setup-cli.ts`, and ACP member entries (`pi-acp-member.ts`, `dsh/acp-member.ts`).
-- `src/integrations/`: extensible plugin-host adapters (`hosts/registry.ts`, `hosts/claude.ts`, `hosts/antigravity.ts`), extensible ACP harness adapters (`acp/registry.ts`, `acp/harnesses/*`), Pi/dsh history & resources, unified context assembly (`agent-resources.ts`), and installation adapters.
+- `src/extension/`: runtime orchestration organized by domain:
+  - `hosts/`: host runtimes (`pi/*`, `dsh/*`, and shared `plugin-runtime.ts`)
+  - `mcp/`: stdio MCP server & workspace MCP bridge (`workers.ts`, `bridge.ts`)
+  - `acp/`: ACP worker child runtime & managed member bootstrap (`worker.ts`, `member.ts`)
+  - `setup/`: standalone CLI & Pi setup guard (`cli.ts`, `guard.ts`)
+- `src/integrations/`: external adapters organized by integration domain:
+  - `hosts/`: flat per-host adapter folders (`pi/*`, `dsh/*`, `claude/adapter.ts`, `antigravity/adapter.ts`) plus shared `plugin-registry.ts`
+  - `acp/`: ACP protocol & extensible harness adapters (`registry.ts`, `harnesses/*`, `claude-settings.ts`)
+  - `installation/`: installer & host environment bridges
+  - shared cross-host helpers (`agent-resources.ts`, `history-summary.ts`)
 - `src/services/`: host-neutral business rules (`agents/`, `workspace/`, `history/`, `installation/`).
 - `src/model/`: plain data types and narrow capability contracts (`plugin-host.ts`, `acp.ts`, `agent.ts`, `history.ts`, `workspace-config.ts`); no business logic or host SDK types.
 - `src/storage/`: atomic JSON, ACP worker control files, and history storage.
-- `src/tools/`: `pbot_history` contracts and Pi/dsh tool registration.
-- `src/ui/`: Pi confirmation queue, installer UI, and dsh Web workspace/history UI.
+- `src/tools/`: `pbot_history` contracts (`history/contract.ts`, `history/actions.ts`) and symmetric host registrations (`history/pi-tool.ts`, `history/dsh-tool.ts`).
+- `src/ui/`: host-specific UI under `pi/` (`confirmation.ts`) and `dsh/` (Web workspace/history UI), plus shared CLI/presentation helpers (`presentation.ts`, `setup.ts`).
 - `src/common/`: shared JSON, validation, schema, file, path, and version helpers.
 - `.claude-plugin/`, `hooks/hooks.json`, `.mcp.json`: Claude plugin discovery, command hooks (workspace context & skill gating only — never intercepts native subagents), and MCP server declaration.
 - `resources/`: model-facing prompts, roles, skills, references, and templates (strictly separate from developer docs).

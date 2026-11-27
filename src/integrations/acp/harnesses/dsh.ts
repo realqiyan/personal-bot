@@ -20,7 +20,7 @@ export const dshAcpHarness: AcpHarnessAdapter = {
     const patch = join(context.directory, "acp-dsh-patch.json");
     await writeFile(
       patch,
-      JSON.stringify([{ insert: [{ id: "pbot-acp-member", name: join(context.packageRoot, "lib/extension/dsh/acp-member.js") }] }]) + "\n",
+      JSON.stringify([{ insert: [{ id: "pbot-acp-member", name: join(context.packageRoot, "lib/extension/hosts/dsh/acp-member.js") }] }]) + "\n",
       { mode: 0o600 },
     );
     return {

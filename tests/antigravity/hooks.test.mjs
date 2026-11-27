@@ -5,8 +5,8 @@ import { access, cp, mkdir, mkdtemp, readFile, readdir, realpath, rm, writeFile 
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
-import { pluginHook, pluginCommand } from "../../dist/extension/plugin-runtime.js";
-import { pluginHosts, registerPluginHost } from "../../dist/integrations/hosts/registry.js";
+import { pluginHook, pluginCommand } from "../../dist/extension/hosts/plugin-runtime.js";
+import { pluginHosts, registerPluginHost } from "../../dist/integrations/hosts/plugin-registry.js";
 
 const exec = promisify(execFile);
 const builtBundle = resolve("lib/antigravity-plugin");
@@ -70,7 +70,7 @@ test("enabled Antigravity workspace injects SessionStart context and never inter
   assert.deepEqual(JSON.parse(await readFile(join(workspace, ".pbot/config.json"), "utf8")), {
     ...stored,
     enabled: true,
-    features: { prompts: true, skills: true, mcp: true },
+    features: { prompts: true, skills: true, mcp: true, history: true },
   });
   assert.equal(await readFile(join(workspace, "AGENTS.md"), "utf8"), "UNIQUE_NATIVE_AGENTS_MARKER\n");
   for (const directory of ["areas", "projects", "knowledge", "providers", "scratch", "agents"]) {

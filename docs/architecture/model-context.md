@@ -27,5 +27,5 @@
 
 ## ACP Worker 上下文
 
-- **受管成员（`pi`、`dsh`）**：通过 `pi-acp-member.ts` / `dsh/acp-member.ts` 加载公共约定、`general-purpose` 职责、工作区 `agents/general-purpose.md` 与 `{ host, workspaceRoot, resourceRoot }`，禁止递归调用 `worker_*` / `pbot_history`。
-- **标准 ACP v1 目标（`claude`、`antigravity`、`codex` 及自定义 Harness）**：由 `acp-worker.ts` 拼装同一上下文；若对端声明 `sessionCapabilities.systemPrompt` 则在建会话时 append，否则在首轮消息前前置一次（后续轮次不重复）。
+- **受管成员（`pi`、`dsh`）**：通过 `src/extension/hosts/pi/acp-member.ts` / `src/extension/hosts/dsh/acp-member.ts` 加载公共约定、`general-purpose` 职责、工作区 `agents/general-purpose.md` 与 `{ host, workspaceRoot, resourceRoot }`，禁止递归调用 `worker_*` / `pbot_history`。
+- **标准 ACP v1 目标（`claude`、`antigravity`、`codex` 及自定义 Harness）**：由 `src/extension/acp/worker.ts` 拼装同一上下文；若对端声明 `sessionCapabilities.systemPrompt` 则在建会话时 append，否则在首轮消息前前置一次（后续轮次不重复）。

@@ -1,8 +1,8 @@
 import { realpathSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import { requireThat } from "./common/validation.js";
-import { runPluginHost } from "./extension/plugin-runtime.js";
-import { listPluginHosts, pluginHosts } from "./integrations/hosts/registry.js";
+import { runPluginHost } from "./extension/hosts/plugin-runtime.js";
+import { listPluginHosts, pluginHosts } from "./integrations/hosts/plugin-registry.js";
 
 export async function main(args: readonly string[]): Promise<void> {
   const [host, ...rest] = args;

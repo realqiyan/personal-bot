@@ -8,6 +8,9 @@
     ],
     "UserPromptExpansion": [
       { "matcher": "personal-bot:.*", "hooks": [{ "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/lib/claude.js", "hook"], "timeout": 10 }] }
+    ],
+    "Stop": [
+      { "hooks": [{ "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/lib/claude.js", "hook"], "timeout": 10 }] }
     ]
   }
 }

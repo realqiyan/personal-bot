@@ -313,7 +313,7 @@ test("workspace MCP bridge serves stdio and Streamable HTTP servers, hot-reloads
   }));
   await writeFile(join(workerOnlyWorkspace, ".pbot/config.json"), JSON.stringify({
     enabled: true,
-    features: { prompts: false, skills: false, mcp: false },
+    features: { prompts: false, skills: false, mcp: false, history: false },
     acp: {
       "echo-http": { command: process.execPath, args: [acpBin], env: { TEST_ACP_HTTP_MCP: "1" } },
     },
@@ -470,6 +470,7 @@ test("workspace MCP bridge serves stdio and Streamable HTTP servers, hot-reloads
       PBOT_MCP_AGENT_DIR: controlDir,
       PBOT_WORKSPACE_ROOT: workspace,
       PBOT_NATIVE_WORKSPACE_MCP: "1",
+      PBOT_NATIVE_HISTORY: "1",
     },
     stdio: ["pipe", "pipe", "pipe"],
   });

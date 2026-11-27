@@ -5,7 +5,7 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { claudeOptions } from "../../dist/integrations/acp/claude.js";
+import { claudeOptions } from "../../dist/integrations/acp/claude-settings.js";
 import { query } from "@anthropic-ai/claude-agent-sdk";
 
 test("Claude native settings supply the default effort and explicit effort stays scoped to the invocation", async t => {

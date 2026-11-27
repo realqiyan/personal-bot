@@ -46,7 +46,7 @@ test("a parent workspace does not enable a nested workspace", async t => {
 
 test("explicit init enables the workspace, writes explicit features defaults, preserves other fields and refuses malformed content", async t => {
   const root = await directory(t), path = workspaceConfigPath(root);
-  const defaultFeatures = { prompts: true, skills: true, mcp: true };
+  const defaultFeatures = { prompts: true, skills: true, mcp: true, history: true };
   await Promise.all([initializeWorkspaceConfig(root), initializeWorkspaceConfig(root)]);
   assert.deepEqual(JSON.parse(await readFile(path, "utf8")), { enabled: true, features: defaultFeatures });
   await writeFile(path, '{"enabled":false,"future":{"answer":42}}');
@@ -54,7 +54,7 @@ test("explicit init enables the workspace, writes explicit features defaults, pr
   assert.deepEqual(JSON.parse(await readFile(path, "utf8")), { enabled: true, features: defaultFeatures, future: { answer: 42 } });
   await writeFile(path, '{"enabled":false,"features":{"prompts":false}}');
   await initializeWorkspaceConfig(root);
-  assert.deepEqual(JSON.parse(await readFile(path, "utf8")), { enabled: true, features: { prompts: false, skills: true, mcp: true } });
+  assert.deepEqual(JSON.parse(await readFile(path, "utf8")), { enabled: true, features: { prompts: false, skills: true, mcp: true, history: true } });
   await writeFile(path, '{"enabled":true}');
   await initializeWorkspaceConfig(root);
   assert.deepEqual(JSON.parse(await readFile(path, "utf8")), { enabled: true, features: defaultFeatures });
@@ -97,13 +97,13 @@ test("workspace acp configuration supports permission policies and built-in over
 test("workspace features toggles default to true, allow worker-only mode, and validate types", async t => {
   const root = await directory(t), path = workspaceConfigPath(root);
   await mkdir(join(root, ".pbot"));
-  assert.deepEqual(workspaceFeatures(), { prompts: true, skills: true, mcp: true });
-  await writeFile(path, JSON.stringify({ enabled: true, features: { prompts: false, skills: false, mcp: false } }));
+  assert.deepEqual(workspaceFeatures(), { prompts: true, skills: true, mcp: true, history: true });
+  await writeFile(path, JSON.stringify({ enabled: true, features: { prompts: false, skills: false, mcp: false, history: false } }));
   const parsed = await readWorkspaceConfig(root);
   assert.equal(parsed.enabled, true);
-  assert.deepEqual(workspaceFeatures(parsed), { prompts: false, skills: false, mcp: false });
+  assert.deepEqual(workspaceFeatures(parsed), { prompts: false, skills: false, mcp: false, history: false });
   await writeFile(path, JSON.stringify({ enabled: true, features: { prompts: false } }));
-  assert.deepEqual(workspaceFeatures(await readWorkspaceConfig(root)), { prompts: false, skills: true, mcp: true });
+  assert.deepEqual(workspaceFeatures(await readWorkspaceConfig(root)), { prompts: false, skills: true, mcp: true, history: true });
   for (const bad of [
     { enabled: true, features: "nope" },
     { enabled: true, features: { prompts: "yes" } },

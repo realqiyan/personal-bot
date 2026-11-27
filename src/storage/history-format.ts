@@ -10,7 +10,8 @@ const hierarchyFields = ["host", "id", "sessionId", "summaries"];
 const exchangeFields = ["id", "entryIds", "text", "from", "to", "completed"];
 const summaryFields = [...exchangeFields, "level", "children", "ready"];
 
-export const isHistoryHost = (value: unknown): value is HistoryHost => value === "pi" || value === "dsh" || value === "claude";
+const hostPattern = /^[a-z0-9][a-z0-9-]{0,63}$/;
+export const isHistoryHost = (value: unknown): value is HistoryHost => typeof value === "string" && hostPattern.test(value);
 
 function identity(value: unknown): asserts value is HistoryIdentity {
   requireThat(object(value) && isHistoryHost(value.host) && typeof value.id === "string" &&

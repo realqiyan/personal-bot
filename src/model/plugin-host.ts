@@ -1,3 +1,4 @@
+import type { HistorySession } from "./history.js";
 import type { WorkspaceSkillMeta } from "./workspace-mcp.js";
 
 export type HostId = string;
@@ -19,10 +20,32 @@ export interface WorkspaceContext {
   text: string;
 }
 
+export type HistoryCapture =
+  | {
+      kind: "input";
+      sessionId: string;
+      text: string;
+      timestamp?: string;
+    }
+  | {
+      kind: "answer";
+      sessionId: string;
+      userText?: string;
+      assistantText: string;
+      completed: boolean;
+      isContinuation?: boolean;
+      timestamp?: string;
+    }
+  | {
+      kind: "session";
+      session: HistorySession;
+    };
+
 export type HostEvent =
   | { kind: "ignore" }
   | { kind: "inject-context"; role: WorkspaceRole; localRoleOnly?: boolean; cwd: string; raw: unknown }
-  | { kind: "check-skill"; skill: string; cwd: string; raw: unknown };
+  | { kind: "check-skill"; skill: string; cwd: string; raw: unknown }
+  | { kind: "record-history"; cwd: string; raw: unknown };
 
 export interface PluginHostAdapter {
   readonly host: PluginHostId;
@@ -33,6 +56,7 @@ export interface PluginHostAdapter {
   readonly usage: string;
   resolveRoot(cwd: string, rawPayload?: unknown): Promise<string>;
   parseEvent(payload: unknown): HostEvent;
+  extractHistory?(event: Extract<HostEvent, { kind: "inject-context" | "record-history" }>): Promise<HistoryCapture | undefined>;
   formatPass(payload: unknown): Record<string, unknown>;
   formatContext(event: Extract<HostEvent, { kind: "inject-context" }>, context: WorkspaceContext): Record<string, unknown>;
   formatDeny(event: Extract<HostEvent, { kind: "check-skill" }>, reason: string): Record<string, unknown>;

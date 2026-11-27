@@ -5,7 +5,7 @@ import { mkdir, mkdtemp, readFile, realpath, writeFile } from "node:fs/promises"
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { setTimeout as delay } from "node:timers/promises";
-import { McpWorkerRuntime } from "../../dist/extension/mcp-workers.js";
+import { McpWorkerRuntime } from "../../dist/extension/mcp/workers.js";
 import { AgentFiles, descriptor } from "../../dist/storage/agent-files.js";
 import { claudeRequests } from "../helpers/claude-session.mjs";
 

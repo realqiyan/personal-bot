@@ -1,7 +1,7 @@
 import { realpathSync } from "node:fs";
 import { pathToFileURL } from "node:url";
-import { runPluginHost } from "./extension/plugin-runtime.js";
-import { claudeAdapter } from "./integrations/hosts/claude.js";
+import { runPluginHost } from "./extension/hosts/plugin-runtime.js";
+import { claudeAdapter } from "./integrations/hosts/claude/adapter.js";
 
 export function main(args: readonly string[]): Promise<void> {
   return runPluginHost(claudeAdapter, args);

@@ -6,8 +6,8 @@
     "sourceMap": false
   },
   "include": [
-    "src/extension/setup-cli.ts",
-    "src/extension/setup-guard.ts",
+    "src/extension/setup/cli.ts",
+    "src/extension/setup/guard.ts",
     "src/integrations/installation/pi-bridge.ts"
   ]
 }

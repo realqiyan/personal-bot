@@ -90,7 +90,7 @@ export function showManagement(ctx: Context, parentSessionId: SessionId) {
 
   const history = section("history", "历史"); pageTitle(history, "历史", "");
   const searchForm = form(history); searchForm.className = "pbot-search";
-  const historyQuery = field(searchForm, "关键词"), host = select(searchForm, "来源", [["", "全部"], ["pi", "Pi"], ["dsh", "dsh"], ["claude", "Claude Code"]]);
+  const historyQuery = field(searchForm, "关键词"), host = select(searchForm, "来源", [["", "全部"], ["pi", "Pi"], ["dsh", "dsh"], ["claude", "Claude Code"], ["antigravity", "Antigravity"]]);
   historyQuery.placeholder = "留空查看最近会话"; submit(searchForm, "查询", () => searchHistory());
   const dateFilters = details(history, "时间范围"), dateGrid = group(dateFilters, "pbot-grid");
   const historyFrom = field(dateGrid, "开始时间"), historyTo = field(dateGrid, "结束时间");

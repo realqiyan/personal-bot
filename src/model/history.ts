@@ -44,13 +44,7 @@ export interface HistoryRecord extends HistoryIdentity {
   name: string;
   nodes: HistoryNode[];
 }
-export type HistoryHost = "pi" | "dsh" | "claude";
-export type HistoryLocation = { host: "pi"; directory: string; file?: string } |
-  { host: "dsh"; sessionId?: string };
-export interface HistorySource {
-  readonly host: HistoryLocation["host"];
-  scan(location: HistoryLocation, signal?: AbortSignal, excluded?: ReadonlySet<string>): Promise<{ sessions: HistorySession[]; warnings: string[] }>;
-}
+export type HistoryHost = string;
 export interface HistorySummaryRequest {
   system: string;
   prompt: string;

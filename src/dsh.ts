@@ -1,9 +1,9 @@
 import type { Context } from "@deepseek-ai/cordis";
-import { registerDshCommand } from "./extension/dsh/command.js";
-import { registerDshManagement } from "./extension/dsh/management.js";
-import { DshWorkspaces, dshDependencies } from "./extension/dsh/workspace.js";
+import { registerDshCommand } from "./extension/hosts/dsh/command.js";
+import { registerDshManagement } from "./extension/hosts/dsh/management.js";
+import { DshWorkspaces, dshDependencies } from "./extension/hosts/dsh/workspace.js";
 import { requireThat } from "./common/validation.js";
-import { rootAgents } from "./integrations/dsh/root-agents.js";
+import { rootAgents } from "./integrations/hosts/dsh/root-agents.js";
 
 export const name = "personal-bot";
 export const inject = ["commands", "typert", ...dshDependencies];

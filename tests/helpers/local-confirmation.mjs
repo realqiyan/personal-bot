@@ -1,6 +1,6 @@
 import { KeybindingsManager } from "../../node_modules/@earendil-works/pi-coding-agent/dist/core/keybindings.js";
 import { loadThemeFromPath } from "../../node_modules/@earendil-works/pi-coding-agent/dist/modes/interactive/theme/theme.js";
-import { ConfirmationDialog } from "../../dist/ui/confirmation.js";
+import { ConfirmationDialog } from "../../dist/ui/pi/confirmation.js";
 
 const theme = loadThemeFromPath(new URL("../../node_modules/@earendil-works/pi-coding-agent/dist/modes/interactive/theme/dark.json", import.meta.url).pathname);
 

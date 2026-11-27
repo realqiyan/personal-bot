@@ -5,7 +5,7 @@ import { isAcpBackend } from "../../common/validation.js";
 import { readJsonFile, writeJsonFile } from "../../storage/atomic-json.js";
 import type { ResolvedWorkspaceFeatures, WorkspaceConfig, WorkspaceConfiguration, WorkspaceFeatures } from "../../model/workspace-config.js";
 
-const featureKeys = ["prompts", "skills", "mcp"] as const;
+const featureKeys = ["prompts", "skills", "mcp", "history"] as const;
 
 function config(value: unknown): Record<string, unknown> {
   if (!object(value) || value.enabled !== undefined && typeof value.enabled !== "boolean") {
@@ -14,7 +14,7 @@ function config(value: unknown): Record<string, unknown> {
   if (value.features !== undefined) {
     if (!object(value.features) ||
       Object.entries(value.features).some(([key, entry]) => !(featureKeys as readonly string[]).includes(key) || (entry !== undefined && typeof entry !== "boolean"))) {
-      throw new Error("features 必须是 JSON 对象，仅支持 prompts、skills、mcp 布尔开关。");
+      throw new Error("features 必须是 JSON 对象，仅支持 prompts、skills、mcp、history 布尔开关。");
     }
   }
   if (value.acp !== undefined) {
@@ -46,6 +46,7 @@ export function workspaceFeatures(configuration?: Pick<WorkspaceConfiguration, "
     prompts: raw?.prompts !== false,
     skills: raw?.skills !== false,
     mcp: raw?.mcp !== false,
+    history: raw?.history !== false,
   };
 }
 

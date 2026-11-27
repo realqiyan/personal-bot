@@ -15,12 +15,13 @@ Personal Bot 不绑定单一宿主，所有能力按两条正交主线组织：
 
 ## 可扩展、运行时不感知
 
-- **插件宿主扩展**：新增轻插件宿主只需实现 `PluginHostAdapter` 并注册到 `PluginHostRegistry`（及在 `scripts/build-plugins.mjs` 追加构建目标），`plugin-runtime.ts`、`src/plugin.ts` 与 `agent-resources.ts` 不感知具体宿主标识。
-- **ACP Harness 扩展**：任意标准 ACP v1 程序在 `.pbot/config.json` 的 `acp` 字段声明 `{ command, args, env? }` 即可零代码接入；需要特殊会话参数或模型解析的 Harness 实现 `AcpHarnessAdapter` 并注册到 `AcpHarnessRegistry`，`acp-worker.ts`、`connection.ts`、`launch.ts` 与 `model-selection.ts` 不包含任何特定 Harness 分支。
+- **插件宿主扩展**：新增轻插件宿主只需在 `src/integrations/hosts/<host>/adapter.ts` 实现 `PluginHostAdapter` 并注册到 `PluginHostRegistry`（及在 `scripts/build-plugins.mjs` 追加构建目标），`src/extension/hosts/plugin-runtime.ts`、`src/plugin.ts` 与 `agent-resources.ts` 不感知具体宿主标识。
+- **ACP Harness 扩展**：任意标准 ACP v1 程序在 `.pbot/config.json` 的 `acp` 字段声明 `{ command, args, env? }` 即可零代码接入；需要特殊会话参数或模型解析的 Harness 在 `src/integrations/acp/harnesses/<name>.ts` 实现 `AcpHarnessAdapter` 并注册到 `AcpHarnessRegistry`，`src/extension/acp/worker.ts`、`connection.ts`、`launch.ts` 与 `model-selection.ts` 不包含任何特定 Harness 分支。
 
-## 保持单向依赖
+## 保持单向依赖与对称目录维度
 
 - 顶层分层：`tools / extension / ui → services → storage / model`；`integrations` 只做协议适配不调用业务服务，`services` 不依赖宿主 SDK 或接入层。所有边界由 `.dependency-cruiser.cjs` 静态检查。
+- 顶层目录按单一维度组织：`src/extension/` 按运行域（`hosts/`、`mcp/`、`acp/`、`setup/`），`src/integrations/` 按外部集成域（`hosts/`、`acp/`、`installation/`）；`hosts/` 下所有具体宿主平级建目录，禁止将具体宿主与领域类别混放或将单宿主文件散落到父目录顶层（详规见[技术设计](design.md)）。
 - 资源的创建、状态变更和释放由同一责任主体管理。工具与服务绑定工作区实例，关闭后旧调用失效。
 
 ## 区分两类文档方法论

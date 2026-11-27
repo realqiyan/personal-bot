@@ -60,7 +60,7 @@ test("init preserves user configuration and materials without interfering with n
   assert.deepEqual(JSON.parse(await readFile(join(workspace, ".pbot/config.json"), "utf8")), {
     ...stored,
     enabled: true,
-    features: { prompts: true, skills: true, mcp: true },
+    features: { prompts: true, skills: true, mcp: true, history: true },
   });
   assert.equal(await readFile(join(workspace, "AGENTS.md"), "utf8"), "User workspace guidance\n");
   assert.equal(await readFile(join(workspace, "CLAUDE.md"), "utf8"), "Native user instructions\n");

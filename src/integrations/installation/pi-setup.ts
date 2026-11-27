@@ -10,7 +10,7 @@ import { findExecutable, npmGlobalBinary, SetupProcesses } from "./processes.js"
 export const piPackageName = "@earendil-works/pi-coding-agent";
 export class PiBootstrapRequired extends Error {}
 const bridge = fileURLToPath(new URL("./pi-bridge.js", import.meta.url));
-const guard = fileURLToPath(new URL("../../extension/setup-guard.js", import.meta.url));
+const guard = fileURLToPath(new URL("../../extension/setup/guard.js", import.meta.url));
 
 async function packageRoot(command: string, version: string, env: NodeJS.ProcessEnv): Promise<string> {
   const resolved = await realpath(command);

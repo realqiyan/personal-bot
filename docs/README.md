@@ -17,7 +17,7 @@ Personal Bot 文档按使用场景与职责分为四类，根目录 [README.zh-C
 | --- | --- |
 | [工作区配置](guides/workspace-configuration.md) | 共用 `.pbot/config.json` 启用规则、自定义 ACP Harness（含可选 `env`）与配置生效方式 |
 | [跨 Harness 专家调度](guides/cross-harness-workers.md) | 统一 MCP `worker_*` 工具集、与宿主原生 subagent 互补边界、ACP 生命周期与交互转发 |
-| [历史对话](guides/history.md) | Pi/dsh `pbot_history` 查询、分层摘要、ACP 会话排除与既有归档只读兼容 |
+| [历史对话](guides/history.md) | 全宿主统一事件采集、MCP `history_search`/`history_read`、Pi/dsh `pbot_history` 与跨宿主分层摘要 |
 | [工具与执行能力](guides/capabilities.md) | 原生 CLI/MCP、Python 计算参考（[通用](../resources/references/compute.md) / [金融](../resources/references/compute-finance.md)）与可选 Task Conductor |
 
 ## 架构与扩展设计（`docs/architecture/`）

@@ -158,7 +158,7 @@ test("native inspection rejects unidentified sources before planning without cha
 test("native inspection preserves standalone extensions and recognizes uninstalled npm identities", async t => {
   const f = await fixture(t), extension = join(f.temp, "local-extension.ts");
   await mkdir(join(f.workspace, ".pi"));
-  await writeFile(extension, await readFile(join(packageRoot, "src/extension/setup-guard.ts")));
+  await writeFile(extension, await readFile(join(packageRoot, "src/extension/setup/guard.ts")));
   const settings = JSON.stringify({ packages: [extension, "npm:personal-bot"] });
   await writeFile(join(f.workspace, ".pi/settings.json"), settings);
   const pi = await f.host.inspectPi(piCommand), records = await f.host.inspectPackages(pi, f.workspace);

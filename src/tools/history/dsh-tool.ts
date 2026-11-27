@@ -1,7 +1,7 @@
 import type { Context } from "@deepseek-ai/cordis";
 import type { Agent } from "@deepseek-ai/dsh-agent";
 import type { HistoryService } from "../../services/history/history-service.js";
-import { dshParameters, dshOutputSchema } from "../../integrations/dsh/schema.js";
+import { dshParameters, dshOutputSchema } from "../../integrations/hosts/dsh/schema.js";
 import { requireThat } from "../../common/validation.js";
 import { schema } from "../../common/schema.js";
 import { json } from "../../common/json.js";
@@ -16,7 +16,7 @@ export function registerDshHistoryTool(ctx: Context, agent: Agent, service: Hist
     async execute(value, exec) {
       check(); requireThat(exec.agent === agent, "历史工具不属于当前会话。");
       const signal = AbortSignal.any([exec.signal, lifetime]);
-      const result = await executeHistory(service, historyInput(value), { host: "dsh", sessionId: agent.id }, signal);
+      const result = await executeHistory(service, historyInput(value), signal);
       check(); signal.throwIfAborted(); requireThat(valid(result), "历史输出不符合契约。"); return json(result);
     },
   });

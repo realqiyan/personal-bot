@@ -8,8 +8,8 @@ import { createAgentSession, DefaultResourceLoader, ModelRuntime, SessionManager
 import { createUserMessage } from "@deepseek-ai/dsh-llm";
 import { AgentFiles } from "../../dist/storage/agent-files.js";
 import { acpInput, acpAnswer, acpReference } from "../../dist/storage/acp-files.js";
-import piMember from "../../dist/extension/pi-acp-member.js";
-import * as dshMember from "../../dist/extension/dsh/acp-member.js";
+import piMember from "../../dist/extension/hosts/pi/acp-member.js";
+import * as dshMember from "../../dist/extension/hosts/dsh/acp-member.js";
 import { packageVersion } from "../../dist/common/version.js";
 import { resourceRoot } from "../../dist/common/paths.js";
 import { dshHost } from "../helpers/dsh-host.mjs";

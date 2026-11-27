@@ -34,7 +34,7 @@ node /absolute/path/to/personal-bot/lib/claude.js status
 - **同宿主 vs 跨 Harness 互补**：
   - 同宿主任务与团队协作直接使用 Claude 原生 `Agent` 及原生团队（用户自行管理 `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`）；
   - 跨 Harness 调度（调用 `antigravity`、`codex`、`pi`、`dsh` 或自定义 ACP 目标）通过 [.mcp.json](../../.mcp.json) 自动挂载的 `pbot` stdio MCP 服务（`worker_*` 工具集）完成，详见[跨 Harness 专家调度](../guides/cross-harness-workers.md)。
-- **历史**：Claude 使用原生会话历史；既有 `.pbot/history/` 中的 Claude 归档保持只读保留。
+- **历史**：`UserPromptSubmit` 与 `Stop` hook 将主会话原始问答写入 `.pbot/history/raw/`（不含带 `agent_id` 的原生子代理，可在 `features.history: false` 关闭），并通过 `pbot` MCP 提供的 `history_search` / `history_read` 只读检索全宿主历史。
 
 ## 本地开发与校验
 

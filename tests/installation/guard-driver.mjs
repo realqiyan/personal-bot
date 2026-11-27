@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { createAgentSession, createMcpExtension, DefaultResourceLoader, ModelRuntime, SessionManager, SettingsManager } from "@earendil-works/pi-coding-agent";
-import guard from "../../dist/extension/setup-guard.js";
+import guard from "../../dist/extension/setup/guard.js";
 
 const [workspace, agentDir, source, enabled] = process.argv.slice(2);
 const settingsManager = SettingsManager.inMemory({ packages: enabled === "yes" ? [source] : [] });

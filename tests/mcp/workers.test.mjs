@@ -316,6 +316,8 @@ test("bundled MCP server exposes 6 split worker_* tools with strict schemas, ann
     "worker_discover",
     "workspace_mcp_discover",
     "workspace_mcp_call",
+    "history_search",
+    "history_read",
   ]);
 
   // Verify strict per-tool schemas and read/write MCP annotations.

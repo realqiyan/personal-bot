@@ -82,6 +82,9 @@ async function buildAntigravityPlugin({ version, repoUrl }) {
           ],
         },
       ],
+      Stop: [
+        { type: "command", command: "node ./lib/plugin.js antigravity hook", timeout: 10 },
+      ],
     },
   }, null, 2) + "\n");
 
@@ -122,7 +125,7 @@ compile(["--project", "tsconfig.claude.json"]);
 
 // 2. Bundle standalone cross-harness MCP server and ACP worker (no node_modules needed in plugin caches)
 await bundleNode("src/mcp.ts", resolve(root, "lib/extension/mcp.js"));
-await bundleNode("src/extension/acp-worker.ts", resolve(root, "lib/extension/acp-worker.js"));
+await bundleNode("src/extension/acp/worker.ts", resolve(root, "lib/extension/acp-worker.js"));
 
 const { version, repository } = JSON.parse(await readFile(resolve(root, "package.json"), "utf8"));
 const repoUrl = typeof repository === "string"

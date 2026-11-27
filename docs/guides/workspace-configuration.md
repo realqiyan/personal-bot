@@ -11,7 +11,7 @@
 | Claude Code | `/personal-bot:pbot init`（或 `lib/claude.js init`） | `/personal-bot:pbot status` |
 | Antigravity | `/pbot init`（或 `lib/plugin.js antigravity init`） | `/pbot status` |
 
-`init` 先补建资料目录（`areas/`、`projects/`、`knowledge/`、`providers/`、`scratch/`、`agents/`）和缺失的根 `AGENTS.md`，再将 `.pbot/config.json` 中的 `enabled` 设为 `true` 并显式写入 `features`（`prompts`、`skills`、`mcp`，未设置项默认 `true`），保留已有资料、宿主自有文件（如 `CLAUDE.md`）、已设置的 `features` 开关及其他未知配置字段；配置文件损坏时先报错而不覆写。
+`init` 先补建资料目录（`areas/`、`projects/`、`knowledge/`、`providers/`、`scratch/`、`agents/`）和缺失的根 `AGENTS.md`，再将 `.pbot/config.json` 中的 `enabled` 设为 `true` 并显式写入 `features`（`prompts`、`skills`、`mcp`、`history`，未设置项默认 `true`），保留已有资料、宿主自有文件（如 `CLAUDE.md`）、已设置的 `features` 开关及其他未知配置字段；配置文件损坏时先报错而不覆写。
 
 ## 启用、模块开关（`features`）与停用规则
 
@@ -21,7 +21,8 @@
   "features": {
     "prompts": true,
     "skills": true,
-    "mcp": true
+    "mcp": true,
+    "history": true
   }
 }
 ```
@@ -32,10 +33,11 @@
 | `features.prompts: false` | 关闭工作区提示词与角色上下文注入 |
 | `features.skills: false` | 关闭工作区与内置技能注册、技能门控及 `.agents/skills/` 索引注入 |
 | `features.mcp: false` | 关闭 `.pbot/mcp.json` 统一 MCP 挂载、`workspace_mcp_*` 桥接与 ACP `mcpServers` 透传 |
+| `features.history: false` | 关闭跨宿主历史归档采集、后台摘要整理及历史查询工具（`pbot_history` / `history_search` / `history_read`） |
 | 文件不存在、缺少 `enabled` 或 `enabled: false` | 保持未启用，仅保留状态与初始化入口，宿主原生能力不受影响 |
 | JSON 损坏、字段类型错误或不可读 | 保持未启用并报告具体错误，修复后重新启用 |
 
-将 `features` 三项全部设为 `false` 时，可仅使用跨 Harness `worker_*` 调度能力而不注入任何工作区提示词、技能或统一 MCP。只检查当前绑定的工作区根目录，不向父目录继承，也不自动迁移历史配置。
+将 `features` 全部设为 `false` 时，可仅使用跨 Harness `worker_*` 调度能力而不注入任何工作区提示词、技能、统一 MCP 或历史功能。只检查当前绑定的工作区根目录，不向父目录继承，也不自动迁移历史配置。
 
 ## 统一工作区 MCP 配置（`.pbot/mcp.json`）
 

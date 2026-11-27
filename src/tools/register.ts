@@ -1,7 +1,7 @@
 import type { ExtensionAPI, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import type { CallAccess } from "./access.js";
 import type { HistoryService } from "../services/history/history-service.js";
-import { historyTool } from "./history/tool.js";
+import { historyTool } from "./history/pi-tool.js";
 
 export function mainTools(history: HistoryService, access: CallAccess): ToolDefinition[] {
   return [historyTool(history, access)];

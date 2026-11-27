@@ -1,7 +1,7 @@
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import * as Acp from "@deepseek-ai/dsh-acp";
-import * as Member from "../../dist/extension/dsh/acp-member.js";
+import * as Member from "../../dist/extension/hosts/dsh/acp-member.js";
 import { dshHost } from "./dsh-host.mjs";
 
 // Real dsh ACP, Agent loop and disk storage, with no provider adapter or credentials.

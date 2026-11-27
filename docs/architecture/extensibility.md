@@ -7,12 +7,12 @@
 ```text
 src/plugin.ts (动态查表，无硬编码宿主名)
         ↓
-src/extension/plugin-runtime.ts (唯一核心逻辑：init/status/hook 引擎)
+src/extension/hosts/plugin-runtime.ts (唯一核心逻辑：init/status/hook 引擎)
    ├── src/services/workspace/*
    ├── src/integrations/agent-resources.ts (按 adapter.coordinatorPrompt 组装)
-   └── PluginHostRegistry (src/integrations/hosts/registry.ts)
-         ├── claudeAdapter       (src/integrations/hosts/claude.ts)
-         ├── antigravityAdapter  (src/integrations/hosts/antigravity.ts)
+   └── PluginHostRegistry (src/integrations/hosts/plugin-registry.ts)
+         ├── claudeAdapter       (src/integrations/hosts/claude/adapter.ts)
+         ├── antigravityAdapter  (src/integrations/hosts/antigravity/adapter.ts)
          └── <自定义宿主适配器>    (通过 registerPluginHost 动态注册)
 ```
 
@@ -38,22 +38,24 @@ src/extension/plugin-runtime.ts (唯一核心逻辑：init/status/hook 引擎)
 
 ### 接入新插件宿主的步骤
 
-1. 在 `src/integrations/hosts/<host>.ts` 实现 `PluginHostAdapter`。
-2. 在 `src/integrations/hosts/registry.ts` 注册该适配器（或由外部入口调用 `registerPluginHost(adapter)`）。
+1. 在 `src/integrations/hosts/<host>/adapter.ts` 实现 `PluginHostAdapter`（禁止引入任何宿主 SDK）。
+2. 在 `src/integrations/hosts/plugin-registry.ts` 注册该适配器（或由外部入口调用 `registerPluginHost(adapter)`）。
 3. 在 `scripts/build-plugins.mjs` 的 `pluginTargets` 中声明对应清单与构建输出（挂载共享 `lib/extension/mcp.js` 与 `lib/plugin.js <host> hook`）。
-4. 核心运行时（`plugin-runtime.ts`、`src/plugin.ts`、`agent-resources.ts`）无需任何修改。
+4. 核心运行时（`src/extension/hosts/plugin-runtime.ts`、`src/plugin.ts`、`agent-resources.ts`）无需任何修改。
+
+> 若接入的是**进程内重 SDK 宿主**（类似 Pi / dsh，而非无状态 hook 插件），则按对称目录规范放入 `src/extension/hosts/<host>/`、`src/integrations/hosts/<host>/`、`src/ui/<host>/` 与 `src/tools/<domain>/<host>-tool.ts`，并在 `.dependency-cruiser.cjs` 中补充跨宿主 SDK 隔离规则。
 
 ## 2. 可扩展 ACP Harness（`AcpHarnessRegistry`）
 
 ```text
-MCP Server (src/extension/mcp-workers.ts) -> AgentService -> AcpWorkerHost -> acp-worker.ts
-                                                                                 ↓
-                                                          AcpHarnessRegistry (src/integrations/acp/registry.ts)
-                                                            ├── genericAcpHarness (任意自定义 ACP v1 默认回退)
-                                                            ├── standardAcpPresets (antigravity, codex, ...)
-                                                            ├── piAcpHarness       (src/integrations/acp/harnesses/pi.ts)
-                                                            ├── dshAcpHarness      (src/integrations/acp/harnesses/dsh.ts)
-                                                            └── claudeAcpHarness   (src/integrations/acp/harnesses/claude.ts)
+MCP Server (src/extension/mcp/workers.ts) -> AgentService -> AcpWorkerHost -> src/extension/acp/worker.ts
+                                                                                  ↓
+                                                           AcpHarnessRegistry (src/integrations/acp/registry.ts)
+                                                             ├── genericAcpHarness (任意自定义 ACP v1 默认回退)
+                                                             ├── standardAcpPresets (antigravity, codex, ...)
+                                                             ├── piAcpHarness       (src/integrations/acp/harnesses/pi.ts)
+                                                             ├── dshAcpHarness      (src/integrations/acp/harnesses/dsh.ts)
+                                                             └── claudeAcpHarness   (src/integrations/acp/harnesses/claude.ts)
 ```
 
 ### `AcpHarnessAdapter` 契约（`src/model/acp.ts`）
@@ -68,11 +70,11 @@ MCP Server (src/extension/mcp-workers.ts) -> AgentService -> AcpWorkerHost -> ac
 ### 两种零侵入扩展方式
 
 1. **用户级零代码接入**：在工作区 `.pbot/config.json` 的 `acp` 字段声明任意 `{ "command", "args", "env?" }`。`resolveAcpHarness(id)` 自动回退到 `createGenericAcpHarness(id)`：支持标准 ACP v1 协议、自动按对端 `sessionCapabilities.systemPrompt` 决定 append 还是首轮前置工作区上下文，并按流式 `agent_message_chunk` 收集最终报告。
-2. **开发者级特化适配**：新增 `src/integrations/acp/harnesses/<name>.ts` 实现 `AcpHarnessAdapter` 并调用 `registerAcpHarness` 注册。`acp-worker.ts`、`connection.ts`、`launch.ts`、`model-selection.ts` 与 `mcp-workers.ts` 均零修改。
+2. **开发者级特化适配**：新增 `src/integrations/acp/harnesses/<name>.ts` 实现 `AcpHarnessAdapter` 并调用 `registerAcpHarness` 注册。`src/extension/acp/worker.ts`、`connection.ts`、`launch.ts`、`model-selection.ts` 与 `src/extension/mcp/workers.ts` 均零修改。
 
-## 3. 薄 stdio MCP 桥接（`worker_*`）
+## 3. 薄 stdio MCP 桥接（`worker_*`、`workspace_mcp_*`、`history_*`）
 
-- `src/extension/mcp-workers.ts` 与 `src/mcp.ts` 使用 Node 内置模块实现 JSON-RPC 2.0 stdio MCP 服务（不依赖 `@modelcontextprotocol/sdk`），直接封装 `AgentService` + `AcpWorkerHost`。
+- `src/extension/mcp/workers.ts` 与 `src/mcp.ts` 使用 Node 内置模块实现 JSON-RPC 2.0 stdio MCP 服务（不依赖 `@modelcontextprotocol/sdk`），封装 `AgentService` + `AcpWorkerHost`、`WorkspaceMcpBridge`（`src/extension/mcp/bridge.ts`）与只读跨宿主历史查询。
 - 每次调用动态读取工作区 `.pbot/config.json` 并刷新 `acp` 映射，新增自定义 Harness 即改即生效。
 - 支持 `PBOT_MCP_SESSION_ID` 与 `PBOT_MCP_AGENT_DIR`，使 Pi/dsh 的 `/pbot worker` 命令与自动挂载的 MCP 进程共享同一会话归属。
 - `lib/extension/mcp.js` 与 `lib/extension/acp-worker.js` 通过 `esbuild` 独立打包，确保插件缓存目录在无 `node_modules` 环境下稳定运行。
