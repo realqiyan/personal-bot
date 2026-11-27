@@ -44,13 +44,20 @@ test("a parent workspace does not enable a nested workspace", async t => {
   assert.deepEqual(await readdir(child), []);
 });
 
-test("explicit init enables the workspace, preserves other fields and refuses malformed content", async t => {
+test("explicit init enables the workspace, writes explicit features defaults, preserves other fields and refuses malformed content", async t => {
   const root = await directory(t), path = workspaceConfigPath(root);
+  const defaultFeatures = { prompts: true, skills: true, mcp: true };
   await Promise.all([initializeWorkspaceConfig(root), initializeWorkspaceConfig(root)]);
-  assert.deepEqual(JSON.parse(await readFile(path, "utf8")), { enabled: true });
+  assert.deepEqual(JSON.parse(await readFile(path, "utf8")), { enabled: true, features: defaultFeatures });
   await writeFile(path, '{"enabled":false,"future":{"answer":42}}');
   await initializeWorkspaceConfig(root);
-  assert.deepEqual(JSON.parse(await readFile(path, "utf8")), { enabled: true, future: { answer: 42 } });
+  assert.deepEqual(JSON.parse(await readFile(path, "utf8")), { enabled: true, features: defaultFeatures, future: { answer: 42 } });
+  await writeFile(path, '{"enabled":false,"features":{"prompts":false}}');
+  await initializeWorkspaceConfig(root);
+  assert.deepEqual(JSON.parse(await readFile(path, "utf8")), { enabled: true, features: { prompts: false, skills: true, mcp: true } });
+  await writeFile(path, '{"enabled":true}');
+  await initializeWorkspaceConfig(root);
+  assert.deepEqual(JSON.parse(await readFile(path, "utf8")), { enabled: true, features: defaultFeatures });
   const invalid = "unreadable user configuration";
   await writeFile(path, invalid);
   await assert.rejects(initializeWorkspaceConfig(root));

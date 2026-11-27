@@ -67,7 +67,11 @@ test("enabled Antigravity workspace injects SessionStart context and never inter
   await writeFile(join(workspace, "AGENTS.md"), "UNIQUE_NATIVE_AGENTS_MARKER\n");
   const initialized = await run(["init"]);
   assert.equal(initialized.configuration.enabled, true);
-  assert.deepEqual(JSON.parse(await readFile(join(workspace, ".pbot/config.json"), "utf8")), { ...stored, enabled: true });
+  assert.deepEqual(JSON.parse(await readFile(join(workspace, ".pbot/config.json"), "utf8")), {
+    ...stored,
+    enabled: true,
+    features: { prompts: true, skills: true, mcp: true },
+  });
   assert.equal(await readFile(join(workspace, "AGENTS.md"), "utf8"), "UNIQUE_NATIVE_AGENTS_MARKER\n");
   for (const directory of ["areas", "projects", "knowledge", "providers", "scratch", "agents"]) {
     await access(join(workspace, directory));

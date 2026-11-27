@@ -11,7 +11,7 @@
 | Claude Code | `/personal-bot:pbot init`（或 `lib/claude.js init`） | `/personal-bot:pbot status` |
 | Antigravity | `/pbot init`（或 `lib/plugin.js antigravity init`） | `/pbot status` |
 
-`init` 先补建资料目录（`areas/`、`projects/`、`knowledge/`、`providers/`、`scratch/`、`agents/`）和缺失的根 `AGENTS.md`，再将 `.pbot/config.json` 中的 `enabled` 设为 `true`，保留已有资料、宿主自有文件（如 `CLAUDE.md`）及其他未知配置字段；配置文件损坏时先报错而不覆写。
+`init` 先补建资料目录（`areas/`、`projects/`、`knowledge/`、`providers/`、`scratch/`、`agents/`）和缺失的根 `AGENTS.md`，再将 `.pbot/config.json` 中的 `enabled` 设为 `true` 并显式写入 `features`（`prompts`、`skills`、`mcp`，未设置项默认 `true`），保留已有资料、宿主自有文件（如 `CLAUDE.md`）、已设置的 `features` 开关及其他未知配置字段；配置文件损坏时先报错而不覆写。
 
 ## 启用、模块开关（`features`）与停用规则
 

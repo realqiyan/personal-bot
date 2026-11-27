@@ -28,7 +28,10 @@ test("E2E: an unconfigured workspace stays inactive until native init starts it"
   const after = await pi.inspect();
   assert.ok(after.tools.includes("pbot_history"));
   assert.ok(after.skills.includes("provider-connections"));
-  assert.deepEqual(await readJson(join(workspace.root, ".pbot/config.json")), { enabled: true });
+  assert.deepEqual(await readJson(join(workspace.root, ".pbot/config.json")), {
+    enabled: true,
+    features: { prompts: true, skills: true, mcp: true },
+  });
   assert.equal(await readFile(join(workspace.root, "AGENTS.md"), "utf8"), original);
   assert.equal((await pi.driver("context")).environment.workspaceRoot, workspace.root);
   assert.equal(pi.records.some(record => record.type === "agent_start"), false);

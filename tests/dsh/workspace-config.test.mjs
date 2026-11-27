@@ -73,7 +73,10 @@ test("one dsh profile applies workspace opt-in independently, mounts split MCP w
       assert.ok(host.ctx.tools.definitions(sibling.agent).some(tool => tool.name === mcpTool), mcpTool);
     }
     assert.equal((await status(handles[2].agent)).enabled, false);
-    assert.deepEqual(JSON.parse(await readFile(workspaceConfigPath(other), "utf8")), { enabled: true });
+    assert.deepEqual(JSON.parse(await readFile(workspaceConfigPath(other), "utf8")), {
+      enabled: true,
+      features: { prompts: true, skills: true, mcp: true },
+    });
     await assert.rejects(host.ctx.commands.execute(handles[3].agent, "/pbot init", [], signal));
     assert.equal(await readFile(workspaceConfigPath(invalid), "utf8"), '{"enabled":"true"}');
     await writeFile(workspaceConfigPath(onebase), '{"enabled":false}');

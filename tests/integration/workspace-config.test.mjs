@@ -29,7 +29,10 @@ test("Pi init starts a missing workspace and discovers methods only after activa
   const { root, session, loader, errors } = await host(t, { workspaceEnabled: false, noContextFiles: false });
   assert.deepEqual(pbotSkills(session._baseSystemPromptOptions), []);
   await session.prompt("/pbot init");
-  assert.deepEqual(JSON.parse(await readFile(workspaceConfigPath(root), "utf8")), { enabled: true });
+  assert.deepEqual(JSON.parse(await readFile(workspaceConfigPath(root), "utf8")), {
+    enabled: true,
+    features: { prompts: true, skills: true, mcp: true },
+  });
   assert.ok(session.getAllTools().some(tool => tool.name === "pbot_history"));
   assert.ok(pbotSkills(session._baseSystemPromptOptions).length > 0);
   assert.ok(loader.getAgentsFiles().agentsFiles.some(file => file.path === join(root, "AGENTS.md")));

@@ -94,7 +94,7 @@ pbot mcp
 
 ## 开发与验证
 
-当前版本 **0.3.0**。完整开发使用 Linux/macOS、Node.js 24.9+：
+当前版本 **0.3.1**。完整开发使用 Linux/macOS、Node.js 24.9+：
 
 ```bash
 npm ci --ignore-scripts

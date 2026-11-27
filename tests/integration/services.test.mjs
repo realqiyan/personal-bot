@@ -66,5 +66,8 @@ test("workspace close invalidates access without changing user documents", async
   assert.equal(signal.aborted, true);
   assert.throws(() => f.instance.check());
   assert.equal(await readFile(join(f.root, "AGENTS.md"), "utf8"), "User instructions");
-  assert.deepEqual(JSON.parse(await readFile(join(f.root, ".pbot/config.json"), "utf8")), { enabled: true });
+  assert.deepEqual(JSON.parse(await readFile(join(f.root, ".pbot/config.json"), "utf8")), {
+    enabled: true,
+    features: { prompts: true, skills: true, mcp: true },
+  });
 });

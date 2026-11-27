@@ -6,12 +6,12 @@
   "plugins": [
     {
       "name": "personal-bot",
-      "version": "0.3.0",
+      "version": "0.3.1",
       "description": "Workspace materials, skills, and cross-harness MCP worker delegation.",
       "source": {
         "source": "npm",
         "package": "personal-bot",
-        "version": "0.3.0"
+        "version": "0.3.1"
       }
     }
   ]

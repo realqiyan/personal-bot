@@ -81,11 +81,13 @@ export async function readWorkspaceConfig(root: string): Promise<WorkspaceConfig
 export async function initializeWorkspaceConfig(root: string): Promise<void> {
   const current = await readWorkspaceConfig(root);
   if (current.error) throw new Error(current.error);
-  if (current.enabled) return;
+  const hasExplicitFeatures = featureKeys.every(key => typeof current.features?.[key] === "boolean");
+  if (current.enabled && hasExplicitFeatures) return;
   const directory = dirname(current.path);
   await mkdir(directory, { recursive: true });
   const value = current.present ? readJsonFile(directory, "config.json", config) : {};
-  const written = writeJsonFile(directory, "config.json", { ...value, enabled: true }, config, !current.present);
+  const features = workspaceFeatures((value as WorkspaceConfig).features);
+  const written = writeJsonFile(directory, "config.json", { ...value, enabled: true, features }, config, !current.present);
   if (!written) await initializeWorkspaceConfig(root);
 }
 

@@ -57,7 +57,11 @@ test("init preserves user configuration and materials without interfering with n
   const result = await run(["init"]);
   assert.equal(result.configuration.enabled, true);
   assert.equal(result.workspaceRoot, workspace);
-  assert.deepEqual(JSON.parse(await readFile(join(workspace, ".pbot/config.json"), "utf8")), { ...stored, enabled: true });
+  assert.deepEqual(JSON.parse(await readFile(join(workspace, ".pbot/config.json"), "utf8")), {
+    ...stored,
+    enabled: true,
+    features: { prompts: true, skills: true, mcp: true },
+  });
   assert.equal(await readFile(join(workspace, "AGENTS.md"), "utf8"), "User workspace guidance\n");
   assert.equal(await readFile(join(workspace, "CLAUDE.md"), "utf8"), "Native user instructions\n");
   for (const directory of ["areas", "projects", "knowledge", "providers", "scratch", "agents"]) await access(join(workspace, directory));
