@@ -61,7 +61,7 @@ dsh plugin --profile pbot add /absolute/path/to/personal-bot-<version>.tgz
 
 已启用主会话中，模型工具包括：
 - **dsh 原生 `subagent` / `subagent_fork`**：同宿主轻量委派，Personal Bot 不拦截也不覆盖。
-- **MCP 工具 `mcp__pbot__worker_*` 与 `mcp__pbot__workspace_mcp_*`**：通过 `@deepseek-ai/dsh-mcp-client` 自动挂载 `lib/extension/mcp.js`，暴露跨 Harness 专家调度与工作区 `.pbot/mcp.json` 桥接工具；启用 `features.mcp`（默认）时同时将 `.pbot/mcp.json` 中的服务通过原生 `@deepseek-ai/dsh-mcp-client` 挂载到当前工作区会话（两者可与 dsh profile 原生 MCP 同时使用）。
+- **MCP 工具 `mcp__pbot__worker_*`**：通过 `@deepseek-ai/dsh-mcp-client` 自动挂载 `lib/extension/mcp.js`，暴露跨 Harness 专家调度工具；启用 `features.mcp`（默认）时直接将 `.pbot/mcp.json` 中的服务通过原生 `@deepseek-ai/dsh-mcp-client` 挂载到当前工作区会话（不再重复暴露 `workspace_mcp_*` 桥接工具；与 dsh profile 原生 MCP 单点归属、不重复注册）。
 - **原生工具 `pbot_history`**：跨来源搜索与读取历史问答及摘要，详见[历史对话](../guides/history.md)。
 
 主会话通过原生 `write`/`edit`/`apply_patch` 修改工作区外文件时触发一次原生批准。Web 工作台只读查询通过原生 Typert Remote（`snapshot`、`history`）完成，不启动额外 HTTP 服务。

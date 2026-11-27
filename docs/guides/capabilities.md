@@ -7,8 +7,8 @@ Personal Bot 复用各宿主的原生 CLI、MCP、认证与权限体系，不额
 | 内容 | 所有者 |
 | --- | --- |
 | CLI 参数、校验、认证 | 原生命令与 profile |
-| 工作区共享 MCP（stdio / HTTP + 环境变量） | 工作区 `.pbot/mcp.json`（全宿主经 `workspace_mcp_*` 桥接，Pi/dsh 同步原生挂载，ACP worker 自动透传） |
-| 宿主原生 MCP（含交互式浏览器 OAuth 或全局服务） | 当前宿主的原生 MCP（可与 `.pbot/mcp.json` 同时使用） |
+| 工作区共享 MCP（stdio / HTTP + 环境变量） | 工作区 `.pbot/mcp.json`（Pi/dsh 直接原生挂载；其余宿主经 `workspace_mcp_*` 桥接，二选一不重复暴露；ACP worker 自动透传） |
+| 宿主原生 MCP（全局工具、原生插件/通知、交互式 OAuth 或独占本地资源） | 当前宿主的原生 MCP（与 `.pbot/mcp.json` 单点归属、互不重复注册） |
 | 工作区共享技能 | 工作区 `.agents/skills/<name>/SKILL.md`（Pi/dsh/Antigravity/Codex 原生发现；Claude Code 与通用 ACP worker 自动注入元数据索引） |
 | 数据口径、项目约定与使用经验 | 工作区 `providers/<id>/GUIDE.md` |
 | 跨 Harness 专家委派 | 统一 stdio MCP 服务（`worker_*` 工具集） |
@@ -17,7 +17,7 @@ Personal Bot 复用各宿主的原生 CLI、MCP、认证与权限体系，不额
 
 ## 外部 CLI 与 MCP
 
-- **工作区共享 MCP（推荐，跨宿主通用）**：使用 `pbot mcp add|remove|list` 维护 `.pbot/mcp.json`，凭据用 `${ENV_VAR}` 引用。所有宿主均可通过 `workspace_mcp_discover` / `workspace_mcp_call` 直接调用（修改即生效），Pi/dsh 同步原生挂载，ACP worker 自动继承。
+- **工作区共享 MCP（跨宿主业务工具）**：使用 `pbot mcp add|remove|list` 维护 `.pbot/mcp.json`，凭据用 `${ENV_VAR}` 引用。Pi/dsh 启用 `features.mcp`（默认）时直接原生挂载（不再重复暴露 `workspace_mcp_*`）；其余宿主通过 `workspace_mcp_discover` / `workspace_mcp_call` 动态调用（修改即生效），ACP worker 自动继承。
 - **宿主原生 MCP（交互式 OAuth 或全局服务）**：
   - **Pi**：项目级外部 MCP 使用 `pi mcp add --local <server> ...`（写入 `.pi/mcp.json`），`/mcp` 查看来源与状态。
   - **dsh**：使用原生 `@deepseek-ai/dsh-mcp-client` 与 profile 配置管理外部 MCP。

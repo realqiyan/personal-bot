@@ -44,6 +44,6 @@ pi
 
 ## 原生 MCP、统一 MCP 与技能
 
-- 工作区共享 MCP 统一写入 `.pbot/mcp.json`（`pbot mcp add|remove|list`），Pi 启用 `features.mcp`（默认）时自动通过 `pi.registerMcpServer` 原生挂载，同时也可通过 `workspace_mcp_discover` / `workspace_mcp_call` 调用；需交互式 OAuth 或宿主私有的 MCP 仍可用 `pi mcp add --local <server> ...`（写入 `.pi/mcp.json`）并与之并存，用 `/mcp` 查看状态。
+- 工作区共享 MCP 统一写入 `.pbot/mcp.json`（`pbot mcp add|remove|list`），Pi 启用 `features.mcp`（默认）时自动通过 `pi.registerMcpServer` 直接原生挂载（不再重复暴露 `workspace_mcp_*` 桥接工具）；全局工具、需交互式 OAuth 或宿主私有的 MCP 仍可用 `pi mcp add [--local] <server> ...`（写入 `~/.pi/agent/mcp.json` 或 `.pi/mcp.json`）并与之单点归属、互不重复注册，用 `/mcp` 查看状态。
 - 工作区自有技能统一放在 `.agents/skills/<name>/SKILL.md`；包内技能遵守 Pi 原生 `--no-skills`、包级过滤及 `.pbot/config.json` 的 `features.skills`。
 - 修改工作区外文件时，Pi 通过安全确认队列提示人工确认。

@@ -52,10 +52,11 @@ export default function pbot(pi: ExtensionAPI) {
             PBOT_WORKSPACE_ROOT: instance.root,
             PBOT_MCP_AGENT_DIR: defaultWorkerDirectory(),
             PBOT_MCP_SESSION_ID: instance.sessionId,
+            PBOT_NATIVE_WORKSPACE_MCP: "1",
           },
           exposure: "direct",
           timeout: 600,
-          description: "跨代理程序委派（worker_*）与工作区统一 MCP 桥接（workspace_mcp_*）",
+          description: "跨代理程序委派（worker_*）",
         });
         registeredMcpServers.push(mcpServerName);
       }

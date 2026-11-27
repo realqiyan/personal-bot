@@ -461,6 +461,28 @@ test("workspace MCP bridge serves stdio and Streamable HTTP servers, hot-reloads
   const boundTools = (await bound.request("tools/list")).result.tools.map(tool => tool.name);
   assert.deepEqual(boundTools, ["worker_create", "worker_close", "worker_request", "worker_response", "worker_output", "worker_discover"]);
 
+  // Native-mount host (PBOT_NATIVE_WORKSPACE_MCP=1, e.g. Pi/dsh) omits workspace_mcp_* and rejects bridge calls even when features.mcp is true.
+  const nativeChild = spawn(process.execPath, [join(pluginDir, "lib/extension/mcp.js")], {
+    cwd: pluginDir,
+    env: {
+      PATH: process.env.PATH,
+      HOME: join(root, "home"),
+      PBOT_MCP_AGENT_DIR: controlDir,
+      PBOT_WORKSPACE_ROOT: workspace,
+      PBOT_NATIVE_WORKSPACE_MCP: "1",
+    },
+    stdio: ["pipe", "pipe", "pipe"],
+  });
+  const nativeMcp = new McpClient(nativeChild);
+  t.after(() => nativeMcp.close());
+  const nativeInit = await nativeMcp.request("initialize", { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "test", version: "1.0.0" } });
+  assert.equal(nativeInit.result.instructions.includes("workspace_mcp_"), false);
+  const nativeTools = (await nativeMcp.request("tools/list")).result.tools.map(tool => tool.name);
+  assert.deepEqual(nativeTools, ["worker_create", "worker_close", "worker_request", "worker_response", "worker_output", "worker_discover"]);
+  const rejectedNativeCall = await nativeMcp.call("workspace_mcp_discover", { workspace });
+  assert.equal(rejectedNativeCall.isError, true);
+  assert.ok(rejectedNativeCall.text.includes("原生挂载"));
+
   // 8. CLI `pbot mcp add|list|remove` manages `.pbot/mcp.json`.
   const cliWorkspace = join(root, "cli-ws");
   await mkdir(cliWorkspace, { recursive: true });

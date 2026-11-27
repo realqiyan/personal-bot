@@ -59,9 +59,9 @@
 }
 ```
 
-可用 `pbot mcp list|add|remove` 管理该文件。启用 `features.mcp`（默认）后：
-- 所有宿主均可通过 `pbot` MCP 提供的 `workspace_mcp_discover` / `workspace_mcp_call` 动态发现并调用（修改 `.pbot/mcp.json` 即改即生效），并可与宿主原生 MCP 同时使用；
-- Pi 与 dsh 同时通过原生 API 动态挂载这些服务；
+可用 `pbot mcp list|add|remove` 管理该文件。启用 `features.mcp`（默认）后，原生挂载与桥接工具二选一，避免同一服务重复暴露：
+- Pi 与 dsh 直接通过原生 API 挂载 `.pbot/mcp.json` 中的服务（不再暴露 `workspace_mcp_*` 桥接工具）；
+- 轻插件宿主（Claude Code、Antigravity）及其他 MCP 宿主通过 `pbot` MCP 提供的 `workspace_mcp_discover` / `workspace_mcp_call` 动态发现并调用（修改 `.pbot/mcp.json` 即改即生效）；
 - 跨 Harness ACP worker 自动通过 ACP v1 `mcpServers`（或 Pi/dsh 受管成员原生挂载）获得同一组服务。
 
 ## ACP Harness 配置（`acp`）

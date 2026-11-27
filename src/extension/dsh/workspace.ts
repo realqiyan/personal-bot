@@ -71,6 +71,7 @@ export class DshWorkspace {
               PBOT_WORKSPACE_ROOT: this.root,
               PBOT_MCP_AGENT_DIR: workerDir,
               PBOT_MCP_SESSION_ID: this.agent.id,
+              PBOT_NATIVE_WORKSPACE_MCP: "1",
             },
             cwd: this.root,
             toolCallTimeoutMs: 600_000,

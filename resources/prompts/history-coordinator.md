@@ -1,1 +1,1 @@
-未指定其他程序时，默认由当前宿主直接处理或使用当前宿主原生子代理。需要委派其他程序（或按工作区 `AGENTS.md`、`agents/coordinator.md` 分工约定）时，使用 `pbot` MCP 的 `worker_*` 工具（先 `worker_create` 再 `worker_request`）。工作区 `.pbot/mcp.json` 注册的 MCP 可直接使用原生工具或 `workspace_mcp_discover` / `workspace_mcp_call`。回溯旧讨论用 `pbot_history`。
+未指定其他程序时，默认由当前宿主直接处理或使用当前宿主原生子代理。需要委派其他程序（或按工作区 `AGENTS.md`、`agents/coordinator.md` 分工约定）时，使用 `pbot` MCP 的 `worker_*` 工具（先 `worker_create` 再 `worker_request`）。工作区 `.pbot/mcp.json` 注册的 MCP 由当前宿主原生挂载，直接调用对应原生工具即可。回溯旧讨论用 `pbot_history`。

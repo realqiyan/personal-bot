@@ -16,8 +16,6 @@ const expectedMcpTools = [
   "mcp__pbot__worker_response",
   "mcp__pbot__worker_output",
   "mcp__pbot__worker_discover",
-  "mcp__pbot__workspace_mcp_discover",
-  "mcp__pbot__workspace_mcp_call",
 ];
 
 test("one dsh profile applies workspace opt-in independently, mounts split MCP worker_* tools, and leaves native subagents intact", async () => {
@@ -104,7 +102,7 @@ test("one dsh profile applies workspace opt-in independently, mounts split MCP w
   }
 });
 
-test("dsh mounts .pbot/mcp.json natively alongside mcp-bridge and honors worker-only features toggles", async () => {
+test("dsh mounts .pbot/mcp.json natively without duplicate workspace_mcp_* bridge tools and honors worker-only features toggles", async () => {
   const root = await realpath(await mkdtemp(join(tmpdir(), "pbot-dsh-mcp-features-")));
   const saved = { HOME: process.env.HOME, XDG_DATA_HOME: process.env.XDG_DATA_HOME, DSH_HOME: process.env.DSH_HOME };
   Object.assign(process.env, { HOME: join(root, "user"), XDG_DATA_HOME: join(root, "user/data"), DSH_HOME: join(root, "home") });
@@ -158,11 +156,11 @@ process.stdin.on("data", c => {
     const fullHandle = await create(fullWs);
     const workerOnlyHandle = await create(workerOnlyWs);
 
-    // Full workspace: BOTH native `.pbot/mcp.json` tool AND `mcp-bridge` tools coexist.
+    // Full workspace: `.pbot/mcp.json` is mounted natively ONLY; `workspace_mcp_*` bridge tools are suppressed to avoid duplication.
     const fullTools = host.ctx.tools.definitions(fullHandle.agent).map(tool => tool.name);
     assert.ok(fullTools.includes("mcp__mini__ping_tool"));
-    assert.ok(fullTools.includes("mcp__pbot__workspace_mcp_discover"));
-    assert.ok(fullTools.includes("mcp__pbot__workspace_mcp_call"));
+    assert.equal(fullTools.includes("mcp__pbot__workspace_mcp_discover"), false);
+    assert.equal(fullTools.includes("mcp__pbot__workspace_mcp_call"), false);
     assert.ok(fullTools.includes("mcp__pbot__worker_create"));
 
     // Worker-only workspace: NO prompts, NO pbot skills, NO native mini MCP, NO workspace_mcp_*; ONLY worker_* stays active.
