@@ -21,6 +21,7 @@ function formatHistoryStatusLine(root: string): string[] {
   });
   return [
     `历史    原始会话 ${status.rawCount}` + (parts.length ? ` · ${parts.join("，")}` : ""),
+    ...(status.reminder ? [`提示    ${status.reminder.message}`] : []),
     ...status.warnings,
   ];
 }

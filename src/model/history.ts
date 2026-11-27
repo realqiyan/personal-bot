@@ -103,6 +103,17 @@ export interface SummaryDimensionStatus {
   pendingRebuild: number;
 }
 
+export interface HistorySummaryReminder {
+  rawCount: number;
+  pendingCount: number;
+  oldestRawAt: string;
+  latestSummaryAt?: string;
+  rawAgeDays: number;
+  daysSinceLastSummary?: number;
+  thresholdDays: number;
+  message: string;
+}
+
 export interface SummaryRunProgress {
   dimension: string;
   completed: number;

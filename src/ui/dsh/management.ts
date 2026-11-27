@@ -177,16 +177,22 @@ export function showManagement(ctx: Context, parentSessionId: SessionId) {
           return `${text(dim.dimension)} ${text(dim.ready ?? 0)}/${text(dim.total ?? 0)}${pending ? `（待处理 ${pending}）` : ""}`;
         }).join("，")
         : "");
+    const historyReminder = historyState && object(historyState.reminder) && typeof historyState.reminder.message === "string"
+      ? historyState.reminder.message
+      : "";
     counts.textContent = "Personal Bot 已启动 · 跨 Harness 调度通过 MCP worker_* 提供";
     const model = object(snapshot.model) ? snapshot.model : {};
-    workspaceInfo.replaceChildren(facts([
-      ["状态", "已启动"],
-      ["工作区", snapshot.workspaceRoot],
-      ["配置文件", record(snapshot.configuration).path],
-      ["模型", model.model || "尚未选择"],
-      ["Provider", model.provider || "—"],
-      ["历史", historySummaryText],
-    ]));
+    workspaceInfo.replaceChildren(
+      facts([
+        ["状态", "已启动"],
+        ["工作区", snapshot.workspaceRoot],
+        ["配置文件", record(snapshot.configuration).path],
+        ["模型", model.model || "尚未选择"],
+        ["Provider", model.provider || "—"],
+        ["历史", historySummaryText],
+      ]),
+      ...(historyReminder ? [note(historyReminder)] : []),
+    );
     statusBody.textContent = JSON.stringify(snapshot, null, 2);
   }
 

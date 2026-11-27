@@ -7,6 +7,8 @@ import { join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { pluginHook, pluginCommand } from "../../dist/extension/hosts/plugin-runtime.js";
 import { pluginHosts, registerPluginHost } from "../../dist/integrations/hosts/plugin-registry.js";
+import { recordHistoryCapture } from "../../dist/services/history/history-capture.js";
+import { runWorkspaceSummaries } from "../../dist/services/history/summary-runner.js";
 
 const exec = promisify(execFile);
 const builtBundle = resolve("lib/antigravity-plugin");
@@ -160,4 +162,25 @@ test("Antigravity skips duplicate .agents/skills injection and honors optional f
   assert.deepEqual(await hook("PreToolUse", {
     toolCall: { id: "t-pbot", name: "read_file", args: { Path: join(pluginDir, "skills/pbot/SKILL.md") } },
   }), { decision: "allow" });
+});
+
+test("Antigravity SessionStart injects a summary reminder when raw history is 7+ days old and unsummarized", async t => {
+  const { workspace, hook } = await fixture(t);
+  await mkdir(join(workspace, ".pbot"), { recursive: true });
+  await writeFile(join(workspace, ".pbot/config.json"), JSON.stringify({ enabled: true }));
+
+  const tenDaysAgo = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString();
+  recordHistoryCapture(workspace, "antigravity", { kind: "input", sessionId: "agy-old-1", text: "十天前的对话", timestamp: tenDaysAgo });
+  recordHistoryCapture(workspace, "antigravity", { kind: "answer", sessionId: "agy-old-1", assistantText: "十天前的答复", completed: true, timestamp: tenDaysAgo });
+
+  const started = await hook("SessionStart");
+  const message = started.injectSteps[0].systemMessage.systemMessage;
+  assert.ok(message.includes("/pbot history summary"));
+  const environment = JSON.parse(message.slice(message.lastIndexOf("\n\n") + 2));
+  assert.equal(environment.host, "antigravity");
+
+  await runWorkspaceSummaries({ root: workspace, summarizer: async () => "已完成摘要。" });
+  const afterSummary = await hook("SessionStart");
+  const cleanMessage = afterSummary.injectSteps[0].systemMessage.systemMessage;
+  assert.equal(cleanMessage.includes("/pbot history summary"), false);
 });

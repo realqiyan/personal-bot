@@ -13,7 +13,11 @@ import {
   registerSummaryDimension,
   unregisterSummaryDimension,
 } from "../../dist/services/history/summary-registry.js";
-import { inspectWorkspaceSummaries, runWorkspaceSummaries } from "../../dist/services/history/summary-runner.js";
+import {
+  checkHistorySummaryReminder,
+  inspectWorkspaceSummaries,
+  runWorkspaceSummaries,
+} from "../../dist/services/history/summary-runner.js";
 import { readWorkspaceConfig, workspaceSummaryConfig } from "../../dist/services/workspace/workspace-config.js";
 import { HistoryFiles } from "../../dist/storage/history-files.js";
 
@@ -380,4 +384,64 @@ test("parseHistoryCommand handles status, list, summary options, and JSON querie
   assert.throws(() => parseHistoryCommand("summary --unknown"));
   assert.throws(() => parseHistoryCommand("summary --backend"));
   assert.throws(() => parseHistoryCommand("invalid"));
+});
+
+test("checkHistorySummaryReminder triggers only when raw history >= 7 days, no summary ran in 7 days, and pending work exists", async t => {
+  const root = await realpath(await mkdtemp(join(tmpdir(), "pbot-summary-reminder-")));
+  t.after(() => rm(root, { recursive: true, force: true }));
+
+  const now = new Date("2026-11-28T00:00:00.000Z");
+
+  // 1. No raw files -> no reminder.
+  assert.equal(checkHistorySummaryReminder(root, { now }), undefined);
+
+  // 2. Raw history exists for 6 days (< 7 days) -> no reminder.
+  recordHistoryCapture(root, "pi", { kind: "input", sessionId: "recent-sess", text: "六天前的问题", timestamp: "2026-11-22T00:00:01.000Z" });
+  recordHistoryCapture(root, "pi", { kind: "answer", sessionId: "recent-sess", assistantText: "六天前的回答", completed: true, timestamp: "2026-11-22T00:05:00.000Z" });
+  assert.equal(checkHistorySummaryReminder(root, { now }), undefined);
+
+  // 3. Raw history exists for 10 days (>= 7 days) and summary never ran -> triggers reminder.
+  recordHistoryCapture(root, "pi", { kind: "input", sessionId: "old-sess", text: "十天前的问题", timestamp: "2026-11-18T00:00:00.000Z" });
+  recordHistoryCapture(root, "pi", { kind: "answer", sessionId: "old-sess", assistantText: "十天前的回答", completed: true, timestamp: "2026-11-18T00:05:00.000Z" });
+  const neverRun = checkHistorySummaryReminder(root, { now });
+  assert.ok(neverRun);
+  assert.equal(neverRun.rawCount, 2);
+  assert.equal(neverRun.pendingCount, 2);
+  assert.equal(neverRun.rawAgeDays, 10);
+  assert.equal(neverRun.latestSummaryAt, undefined);
+  assert.equal(neverRun.daysSinceLastSummary, undefined);
+  assert.equal(neverRun.thresholdDays, 7);
+  assert.ok(neverRun.message.includes("/pbot history summary"));
+
+  const inspected = inspectWorkspaceSummaries(root, { now });
+  assert.deepEqual(inspected.reminder, neverRun);
+
+  // 4. Summary ran recently (< 7 days ago) -> no reminder even when new raw turns are pending.
+  await runWorkspaceSummaries({ root, summarizer: async () => "摘要正文" });
+  // Simulate summary updatedAt = 3 days before `now` and add a new pending raw session.
+  const files = new HistoryFiles(join(root, ".pbot/history"), "pi");
+  for (const artifact of files.listSummaries("session")) {
+    files.saveSummary({ ...artifact, updatedAt: "2026-11-25T00:00:00.000Z" });
+  }
+  recordHistoryCapture(root, "pi", { kind: "input", sessionId: "new-sess", text: "昨天的新问题", timestamp: "2026-11-27T10:00:00.000Z" });
+  recordHistoryCapture(root, "pi", { kind: "answer", sessionId: "new-sess", assistantText: "昨天的新回答", completed: true, timestamp: "2026-11-27T10:01:00.000Z" });
+  assert.equal(checkHistorySummaryReminder(root, { now }), undefined);
+
+  // 5. Summary ran 8 days ago (>= 7 days), and there IS pending raw work -> triggers reminder.
+  for (const artifact of files.listSummaries("session")) {
+    files.saveSummary({ ...artifact, updatedAt: "2026-11-20T00:00:00.000Z" });
+  }
+  const stale = checkHistorySummaryReminder(root, { now });
+  assert.ok(stale);
+  assert.equal(stale.pendingCount, 1);
+  assert.equal(stale.rawAgeDays, 10);
+  assert.equal(stale.daysSinceLastSummary, 8);
+  assert.equal(stale.latestSummaryAt, "2026-11-20T00:00:00.000Z");
+
+  // 6. All sessions summarized, even if latest summary is 8 days old -> no pending work, no reminder.
+  await runWorkspaceSummaries({ root, summarizer: async () => "最新摘要正文" });
+  for (const artifact of files.listSummaries("session")) {
+    files.saveSummary({ ...artifact, updatedAt: "2026-11-20T00:00:00.000Z" });
+  }
+  assert.equal(checkHistorySummaryReminder(root, { now }), undefined);
 });

@@ -3,18 +3,24 @@ import { setTimeout as delay } from "node:timers/promises";
 import { requireThat } from "../../common/validation.js";
 import type {
   HistorySummarizer,
+  HistorySummaryReminder,
+  RawHistory,
+  SummaryArtifact,
   SummaryDimensionReport,
   SummaryDimensionStatus,
   SummaryRunProgress,
   SummaryRunReport,
 } from "../../model/history.js";
 import { HistoryFiles } from "../../storage/history-files.js";
+import { rawSessionSpan } from "./history-index.js";
 import { resolveSummaryDimensions } from "./summary-registry.js";
 
 const defaultConcurrency = 3;
 const maxConcurrency = 8;
 const lockRetryAttempts = 5;
 const lockRetryDelayMs = 40;
+export const defaultSummaryReminderDays = 7;
+const dayMs = 24 * 60 * 60 * 1000;
 
 async function withSummaryLockRetry<T>(
   files: HistoryFiles,
@@ -39,24 +45,134 @@ async function withSummaryLockRetry<T>(
 
 export interface InspectSummaryOptions {
   dimensions?: readonly string[];
+  thresholdDays?: number;
+  now?: Date;
+}
+
+export interface CheckSummaryReminderOptions {
+  dimensions?: readonly string[];
+  thresholdDays?: number;
+  now?: Date;
+}
+
+function oldestRawTimestamp(raws: readonly RawHistory[]): number | undefined {
+  let oldest: number | undefined;
+  for (const raw of raws) {
+    if (!raw.exchanges.length) continue;
+    const { from } = rawSessionSpan(raw.exchanges);
+    if (!from) continue;
+    const parsed = Date.parse(from);
+    if (Number.isNaN(parsed)) continue;
+    if (oldest === undefined || parsed < oldest) oldest = parsed;
+  }
+  return oldest;
+}
+
+function latestSummaryTimestamp(artifacts: Iterable<SummaryArtifact>): number | undefined {
+  let latest: number | undefined;
+  for (const artifact of artifacts) {
+    const parsed = Date.parse(artifact.updatedAt);
+    if (Number.isNaN(parsed)) continue;
+    if (latest === undefined || parsed > latest) latest = parsed;
+  }
+  return latest;
+}
+
+function evaluateSummaryReminder(
+  raws: readonly RawHistory[],
+  allSummaries: readonly SummaryArtifact[],
+  pendingCount: number,
+  options: { thresholdDays?: number; now?: Date } = {},
+): HistorySummaryReminder | undefined {
+  if (!raws.length || pendingCount <= 0) return undefined;
+  const thresholdDays = options.thresholdDays ?? defaultSummaryReminderDays;
+  requireThat(Number.isFinite(thresholdDays) && thresholdDays > 0, "历史摘要提醒天数必须大于 0。");
+  const thresholdMs = thresholdDays * dayMs;
+  const nowMs = (options.now ?? new Date()).getTime();
+  const oldestRawMs = oldestRawTimestamp(raws);
+  if (oldestRawMs === undefined || nowMs - oldestRawMs < thresholdMs) return undefined;
+
+  const latestSummaryMs = latestSummaryTimestamp(allSummaries);
+  if (latestSummaryMs !== undefined && nowMs - latestSummaryMs < thresholdMs) return undefined;
+
+  const rawAgeDays = Math.floor((nowMs - oldestRawMs) / dayMs);
+  const daysSinceLastSummary = latestSummaryMs === undefined ? undefined : Math.floor((nowMs - latestSummaryMs) / dayMs);
+  const message = daysSinceLastSummary === undefined
+    ? `历史原文已累计 ${rawAgeDays} 天（待摘要 ${pendingCount} 项），尚未触发过摘要整理；可运行 /pbot history summary 生成摘要。`
+    : `历史原文已累计 ${rawAgeDays} 天，且已 ${daysSinceLastSummary} 天未触发摘要整理（待摘要 ${pendingCount} 项）；可运行 /pbot history summary 更新摘要。`;
+
+  return {
+    rawCount: raws.length,
+    pendingCount,
+    oldestRawAt: new Date(oldestRawMs).toISOString(),
+    ...(latestSummaryMs !== undefined ? { latestSummaryAt: new Date(latestSummaryMs).toISOString() } : {}),
+    rawAgeDays,
+    ...(daysSinceLastSummary !== undefined ? { daysSinceLastSummary } : {}),
+    thresholdDays,
+    message,
+  };
+}
+
+/** Read-only startup probe: reminds when raw history has existed >= thresholdDays and no summary ran within thresholdDays. */
+export function checkHistorySummaryReminder(
+  root: string,
+  options: CheckSummaryReminderOptions = {},
+): HistorySummaryReminder | undefined {
+  const files = new HistoryFiles(join(root, ".pbot/history"), "pi");
+  const raws = files.listRaw();
+  if (!raws.length) return undefined;
+
+  const thresholdDays = options.thresholdDays ?? defaultSummaryReminderDays;
+  requireThat(Number.isFinite(thresholdDays) && thresholdDays > 0, "历史摘要提醒天数必须大于 0。");
+  const nowMs = (options.now ?? new Date()).getTime();
+  const oldestRawMs = oldestRawTimestamp(raws);
+  if (oldestRawMs === undefined || nowMs - oldestRawMs < thresholdDays * dayMs) return undefined;
+
+  const dimensions = resolveSummaryDimensions(options.dimensions);
+  const seenDimensions = new Set<string>();
+  const allSummaries: SummaryArtifact[] = [];
+  let pendingCount = 0;
+
+  for (const dimension of dimensions) {
+    seenDimensions.add(dimension.id);
+    const existingList = files.listSummaries(dimension.id);
+    allSummaries.push(...existingList);
+    const existing = new Map(existingList.map(item => [item.id, item]));
+    const plan = dimension.plan(raws, existing, { force: false });
+    pendingCount += plan.tasks.length;
+  }
+
+  for (const dim of files.listDimensions()) {
+    if (seenDimensions.has(dim)) continue;
+    allSummaries.push(...files.listSummaries(dim));
+  }
+
+  return evaluateSummaryReminder(raws, allSummaries, pendingCount, options);
 }
 
 /** Read-only inspection of raw archives vs derived summaries across requested dimensions. */
 export function inspectWorkspaceSummaries(
   root: string,
   options: InspectSummaryOptions = {},
-): { rawCount: number; dimensions: SummaryDimensionStatus[]; warnings: string[] } {
+): { rawCount: number; dimensions: SummaryDimensionStatus[]; warnings: string[]; reminder?: HistorySummaryReminder } {
   const files = new HistoryFiles(join(root, ".pbot/history"), "pi");
   const raws = files.listRaw();
   const warnings = [...files.warnings];
   const dimensions = resolveSummaryDimensions(options.dimensions);
 
   const statuses: SummaryDimensionStatus[] = [];
+  const seenDimensions = new Set<string>();
+  const allSummaries: SummaryArtifact[] = [];
+  let totalPending = 0;
+
   for (const dimension of dimensions) {
+    seenDimensions.add(dimension.id);
     const existingList = files.listSummaries(dimension.id);
     warnings.push(...files.warnings);
+    allSummaries.push(...existingList);
     const existing = new Map(existingList.map(item => [item.id, item]));
     const plan = dimension.plan(raws, existing, { force: false });
+    totalPending += plan.tasks.length;
 
     let pendingCreate = 0;
     let pendingIncremental = 0;
@@ -78,7 +194,18 @@ export function inspectWorkspaceSummaries(
     });
   }
 
-  return { rawCount: raws.length, dimensions: statuses, warnings: [...new Set(warnings)] };
+  for (const dim of files.listDimensions()) {
+    if (seenDimensions.has(dim)) continue;
+    allSummaries.push(...files.listSummaries(dim));
+  }
+
+  const reminder = evaluateSummaryReminder(raws, allSummaries, totalPending, options);
+  return {
+    rawCount: raws.length,
+    dimensions: statuses,
+    warnings: [...new Set(warnings)],
+    ...(reminder ? { reminder } : {}),
+  };
 }
 
 export interface RunSummaryOptions {

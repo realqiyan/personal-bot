@@ -43,7 +43,7 @@ export type HistoryCapture =
 
 export type HostEvent =
   | { kind: "ignore" }
-  | { kind: "inject-context"; role: WorkspaceRole; localRoleOnly?: boolean; cwd: string; raw: unknown }
+  | { kind: "inject-context"; role: WorkspaceRole; localRoleOnly?: boolean; isSessionStart?: boolean; cwd: string; raw: unknown }
   | { kind: "check-skill"; skill: string; cwd: string; raw: unknown }
   | { kind: "record-history"; cwd: string; raw: unknown };
 

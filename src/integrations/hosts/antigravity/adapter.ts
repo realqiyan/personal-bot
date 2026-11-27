@@ -111,7 +111,7 @@ export const antigravityAdapter: PluginHostAdapter = {
     const cwd = typeof value.cwd === "string" && value.cwd ? value.cwd : workspaceFromPayload("", value);
     requireThat(cwd, "Antigravity hook 缺少工作目录。");
     if (event === "SessionStart") {
-      return { kind: "inject-context", role: "coordinator", cwd, raw: value };
+      return { kind: "inject-context", role: "coordinator", isSessionStart: true, cwd, raw: value };
     }
     if (event === "Stop") {
       return { kind: "record-history", cwd, raw: value };

@@ -49,6 +49,7 @@ export async function loadWorkspaceContext(options: {
   includeRootAgents?: boolean;
   localRoleOnly?: boolean;
   workspaceSkills?: readonly WorkspaceSkillMeta[];
+  notices?: readonly string[];
 }): Promise<WorkspaceContext> {
   const {
     host,
@@ -59,6 +60,7 @@ export async function loadWorkspaceContext(options: {
     includeRootAgents = false,
     localRoleOnly = false,
     workspaceSkills = [],
+    notices = [],
   } = options;
   const [workspace, roleText, rootAgents] = includePrompts
     ? await Promise.all([
@@ -68,12 +70,16 @@ export async function loadWorkspaceContext(options: {
     ])
     : ["", "", ""];
   const skillsSection = formatWorkspaceSkills(workspaceSkills);
+  const noticesSection = notices.length
+    ? "## 启动提示\n\n" + notices.map(item => `- ${item}`).join("\n")
+    : "";
   const environment = { host, workspaceRoot: root, resourceRoot };
   const text = [
     workspace,
     roleText,
     rootAgents,
     skillsSection,
+    noticesSection,
     "## 环境\n\n" + JSON.stringify(environment),
   ].filter(Boolean).join("\n\n");
   return { workspace, role: roleText, rootAgents, workspaceSkills: [...workspaceSkills], environment, text };

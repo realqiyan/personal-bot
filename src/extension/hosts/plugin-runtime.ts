@@ -4,6 +4,7 @@ import { requireThat } from "../../common/validation.js";
 import { loadWorkspaceContext } from "../../integrations/agent-resources.js";
 import type { PluginHostAdapter } from "../../model/plugin-host.js";
 import { recordHistoryCapture } from "../../services/history/history-capture.js";
+import { checkHistorySummaryReminder } from "../../services/history/summary-runner.js";
 import { readWorkspaceConfig, workspaceFeatures } from "../../services/workspace/workspace-config.js";
 import { initializeWorkspace } from "../../services/workspace/workspace-preparation.js";
 import { discoverWorkspaceSkills } from "../../services/workspace/workspace-skills.js";
@@ -56,7 +57,14 @@ export async function pluginHook(adapter: PluginHostAdapter, payload: unknown): 
   const workspaceSkills = features.skills && !adapter.nativeWorkspaceSkills
     ? await discoverWorkspaceSkills(root)
     : [];
-  if (!features.prompts && !workspaceSkills.length) return adapter.formatPass(payload);
+  const notices: string[] = [];
+  if (event.isSessionStart && features.history) {
+    try {
+      const reminder = checkHistorySummaryReminder(root);
+      if (reminder) notices.push(reminder.message);
+    } catch { /* Never block session start if history reminder probe fails. */ }
+  }
+  if (!features.prompts && !workspaceSkills.length && !notices.length) return adapter.formatPass(payload);
   const context = await loadWorkspaceContext({
     host: adapter.host,
     root,
@@ -66,6 +74,7 @@ export async function pluginHook(adapter: PluginHostAdapter, payload: unknown): 
     includeRootAgents: features.prompts && !adapter.nativeRootAgents,
     ...(event.localRoleOnly ? { localRoleOnly: true } : {}),
     workspaceSkills,
+    notices,
   });
   return adapter.formatContext(event, context);
 }

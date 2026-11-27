@@ -17,6 +17,7 @@ import { readWorkspaceConfig, workspaceDisabledMessage, workspaceFeatures } from
 import { readWorkspaceMcpConfig, resolveWorkspaceMcpServer } from "../../../services/workspace/workspace-mcp.js";
 import type { ResolvedWorkspaceFeatures, WorkspaceConfiguration } from "../../../model/workspace-config.js";
 import { initializeWorkspace } from "../../../services/workspace/workspace-preparation.js";
+import { checkHistorySummaryReminder } from "../../../services/history/summary-runner.js";
 import { McpWorkerRuntime, defaultWorkerDirectory } from "../../mcp/workers.js";
 
 export const dshDependencies = ["agents", "sessions", "sessionPersistence", "sessionQuery", "llm", "tools", "systemPrompt", "skills", "fs", "workingDirectory", "approval"];
@@ -53,6 +54,10 @@ export class DshWorkspace {
         if (this.features.history) {
           registerDshHistoryTool(ctx, this.agent, this.root, this.lifetime.signal, this.check);
           registerDshHistoryEvents(ctx, this.agent, this.root);
+          try {
+            const reminder = checkHistorySummaryReminder(this.root);
+            if (reminder) this.ctx.logger.info(reminder.message);
+          } catch { /* Never block workspace startup if history reminder probe fails. */ }
         }
         if (existsSync(mcpEntry)) {
           await ctx.plugin(McpClient, McpClient.Config({

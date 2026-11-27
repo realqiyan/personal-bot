@@ -6,6 +6,7 @@
 - **独立 Worker 摘要生成**：通过 Pi / dsh 的 `/pbot history summary` 命令主动扫描 `.pbot/history/raw/`，为每个待摘要会话启动一个**独立的临时 ACP worker**（默认 `backend: "pi"`，使用 Pi 当前默认模型；带 `PBOT_SUBAGENT_RUN_ID` 隔离，绝不写回 `raw/`，不挂载工作区 MCP/技能，跑完即销毁）。可在 `.pbot/config.json` 的 `summary` 字段或命令行参数中切换 `backend`、`model`、`thinking` 与 `concurrency`。
 - **独立只读搜索**：Pi 与 dsh 提供原生 `pbot_history` 工具（dsh 另提供 Web 工作台“历史”页与 `/pbot history {"action":...}` 命令）；Claude Code、Antigravity 与其他插件宿主通过 `pbot` MCP 提供的 `history_search` / `history_read` 检索全部宿主的原始问答与各维度摘要。
 - **开关控制**：在 `.pbot/config.json` 中设置 `features.history: false` 可关闭当前工作区的历史采集、摘要生成与查询入口（默认 `true`）。
+- **启动摘要提醒**：会话启动时自动探测 `.pbot/history/raw/`；当原始历史已存在满 7 天、存在待整理会话且最近 7 天未触发过摘要生成时，给出一次性轻量提示，建议运行 `/pbot history summary`。
 
 ## 命令接口（Pi 与 dsh 对称）
 
