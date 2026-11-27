@@ -1,6 +1,6 @@
 {
   "name": "personal-bot",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "Workspace materials, skills, and cross-harness MCP worker delegation.",
   "skills": [
     "./resources/skills",

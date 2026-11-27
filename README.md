@@ -94,7 +94,7 @@ Supports built-in presets (`pi`, `dsh`, `claude`, `antigravity`, `codex`) and ar
 
 ## Development
 
-Current release: **0.3.1**. Full development uses Linux/macOS and Node.js 24.9+:
+Current release: **0.3.2**. Full development uses Linux/macOS and Node.js 24.9+:
 
 ```bash
 npm ci --ignore-scripts
