@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { resolve } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { resourceRoot } from "./common/paths.js";
 import { Confirmations } from "./ui/pi/confirmation.js";
@@ -9,10 +9,8 @@ import { registerCommand } from "./extension/hosts/pi/command.js";
 import { registerEvents } from "./extension/hosts/pi/events.js";
 import { registerHistoryEvents } from "./extension/hosts/pi/history.js";
 import { McpWorkerRuntime, defaultWorkerDirectory } from "./extension/mcp/workers.js";
-import { HistoryService } from "./services/history/history-service.js";
 import { workspaceFeatures } from "./services/workspace/workspace-config.js";
 import { readWorkspaceMcpConfig, resolveWorkspaceMcpServer } from "./services/workspace/workspace-mcp.js";
-import { HistoryFiles } from "./storage/history-files.js";
 import { toPiMcpConfig } from "./integrations/hosts/pi/mcp.js";
 
 const mcpServerName = "pbot";
@@ -29,11 +27,10 @@ export default function pbot(pi: ExtensionAPI) {
     (root, sessionId, configuration) => {
       const workerDir = defaultWorkerDirectory();
       const workers = new McpWorkerRuntime(workerDir, sessionId, "pi");
-      const history = new HistoryService(root, new HistoryFiles(join(root, ".pbot/history"), "pi"));
-      return new WorkspaceInstance(root, sessionId, history, workers, workspaceFeatures(configuration));
+      return new WorkspaceInstance(root, sessionId, workers, workspaceFeatures(configuration));
     },
     async instance => {
-      if (instance.features.history) registry.register(mainTools(instance.history, instance));
+      if (instance.features.history) registry.register(mainTools(instance.root, instance));
       if (existsSync(mcpEntry)) {
         pi.registerMcpServer(mcpServerName, {
           type: "stdio",

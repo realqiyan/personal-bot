@@ -5,8 +5,8 @@ import { cp, mkdir, mkdtemp, readdir, realpath, rm, writeFile } from "node:fs/pr
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
-import { HistoryService } from "../../dist/services/history/history-service.js";
-import { HistoryFiles } from "../../dist/storage/history-files.js";
+import { searchWorkspaceHistory } from "../../dist/services/history/history-query.js";
+import { inspectWorkspaceSummaries, runWorkspaceSummaries } from "../../dist/services/history/summary-runner.js";
 
 const exec = promisify(execFile);
 const claudeEntry = resolve("dist/claude.js");
@@ -141,24 +141,27 @@ test("Claude and Antigravity hooks record raw history, Pi summarizes cross-host 
   assert.equal(rawFiles.filter(name => name.startsWith("claude-")).length, 1);
   assert.equal(rawFiles.filter(name => name.startsWith("antigravity-")).length, 1);
 
-  // 3. Pi HistoryService dynamically discovers both Claude & Antigravity archives and summarizes them when idle.
-  const piService = new HistoryService(workspace, new HistoryFiles(join(workspace, ".pbot/history"), "pi"));
-  t.after(() => piService.close());
-  await piService.refresh();
-  assert.equal(piService.search({ host: "claude" }).total, 1);
-  assert.equal(piService.search({ host: "antigravity" }).total, 1);
-  assert.equal(piService.search({ query: "Claude 续跑最终答复 4" }).total, 1);
-  assert.equal(piService.search({ query: "Antigravity 完整答复 4" }).total, 1);
-  assert.equal(piService.search({ query: "不应记录" }).total, 0);
-  assert.equal(piService.search({ query: "中间思考调用工具" }).total, 0);
-  assert.equal(piService.status.pending, 2);
+  // 3. Explicit summary runner discovers both Claude & Antigravity raw archives and generates session summaries.
+  assert.equal(searchWorkspaceHistory(workspace, { host: "claude" }).total, 1);
+  assert.equal(searchWorkspaceHistory(workspace, { host: "antigravity" }).total, 1);
+  assert.equal(searchWorkspaceHistory(workspace, { query: "Claude 续跑最终答复 4" }).total, 1);
+  assert.equal(searchWorkspaceHistory(workspace, { query: "Antigravity 完整答复 4" }).total, 1);
+  assert.equal(searchWorkspaceHistory(workspace, { query: "不应记录" }).total, 0);
+  assert.equal(searchWorkspaceHistory(workspace, { query: "中间思考调用工具" }).total, 0);
 
-  await piService.organize(async ({ prompt }) => {
-    return prompt.includes("Claude") ? "Claude 四轮汇总摘要" : "Antigravity 四轮汇总摘要";
-  }, new AbortController().signal);
-  assert.equal(piService.status.pending, 0);
-  assert.equal(piService.search({ query: "Claude 四轮汇总摘要" }).total, 1);
-  assert.equal(piService.search({ query: "Antigravity 四轮汇总摘要" }).total, 1);
+  const beforeStatus = inspectWorkspaceSummaries(workspace);
+  assert.equal(beforeStatus.rawCount, 2);
+  assert.equal(beforeStatus.dimensions[0].pendingCreate, 2);
+
+  const runReport = await runWorkspaceSummaries({
+    root: workspace,
+    summarizer: async ({ prompt }) => prompt.includes("Claude") ? "Claude 四轮汇总摘要" : "Antigravity 四轮汇总摘要",
+  });
+  assert.equal(runReport.dimensions[0].created, 2);
+  assert.equal(runReport.dimensions[0].skipped, 0);
+  assert.equal(inspectWorkspaceSummaries(workspace).dimensions[0].ready, 2);
+  assert.equal(searchWorkspaceHistory(workspace, { query: "Claude 四轮汇总摘要" }).total, 1);
+  assert.equal(searchWorkspaceHistory(workspace, { query: "Antigravity 四轮汇总摘要" }).total, 1);
 
   // 4. Standalone MCP server exposes read-only history_search & history_read across all hosts.
   const child = spawn(process.execPath, [join(pluginDir, "lib/extension/mcp.js")], {

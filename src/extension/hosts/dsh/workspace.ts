@@ -7,8 +7,7 @@ import * as McpClient from "@deepseek-ai/dsh-mcp-client";
 import { rootAgents } from "../../../integrations/hosts/dsh/root-agents.js";
 import { dshResources } from "../../../integrations/hosts/dsh/resources.js";
 import { registerDshFileEvents } from "./files.js";
-import { DshHistoryWork, registerDshHistoryEvents } from "./history.js";
-import type { HistoryService } from "../../../services/history/history-service.js";
+import { registerDshHistoryEvents } from "./history.js";
 import { registerDshHistoryTool } from "../../../tools/history/dsh-tool.js";
 import { resourceRoot } from "../../../common/paths.js";
 import { requireThat } from "../../../common/validation.js";
@@ -24,7 +23,6 @@ export const dshDependencies = ["agents", "sessions", "sessionPersistence", "ses
 
 export class DshWorkspace {
   readonly lifetime = new AbortController();
-  readonly history: HistoryService;
   readonly workers: McpWorkerRuntime;
   #scope: { dispose(): Promise<void> } | undefined;
   #closing: Promise<void> | undefined;
@@ -34,11 +32,8 @@ export class DshWorkspace {
     readonly root: string,
     readonly agent: Agent,
     readonly component: AbortSignal,
-    private readonly historyWork: DshHistoryWork,
-    private readonly releaseHistory: () => Promise<void>,
     readonly features: ResolvedWorkspaceFeatures = workspaceFeatures(),
   ) {
-    this.history = historyWork.service;
     this.workers = new McpWorkerRuntime(defaultWorkerDirectory(), agent.id, "dsh");
   }
 
@@ -56,8 +51,8 @@ export class DshWorkspace {
         if (this.features.prompts) await dshResources(ctx, this.agent, this.root, "coordinator", this.check, "history-coordinator.md");
         registerDshFileEvents(ctx, this.agent, this.root, false, this.check);
         if (this.features.history) {
-          registerDshHistoryTool(ctx, this.agent, this.history, this.lifetime.signal, this.check);
-          registerDshHistoryEvents(ctx, this.agent, this.historyWork, this.check);
+          registerDshHistoryTool(ctx, this.agent, this.root, this.lifetime.signal, this.check);
+          registerDshHistoryEvents(ctx, this.agent, this.root);
         }
         if (existsSync(mcpEntry)) {
           await ctx.plugin(McpClient, McpClient.Config({
@@ -110,7 +105,6 @@ export class DshWorkspace {
       const errors: unknown[] = [];
       try { await this.workers.close(); } catch (error) { errors.push(error); }
       try { await this.#scope?.dispose(); } catch (error) { errors.push(error); }
-      try { await this.releaseHistory(); } catch (error) { errors.push(error); }
       if (errors.length) throw new AggregateError(errors, "dsh 工作区关闭失败；请核对执行资源。");
     })();
     return this.#closing;
@@ -122,32 +116,9 @@ export class DshWorkspaces {
   readonly #initializing = new Map<string, Promise<void>>();
   readonly #configurations = new Map<Agent, { root: string; configuration: WorkspaceConfiguration }>();
   readonly #parentEffects = new Map<Agent, () => Promise<void>>();
-  readonly #histories = new Map<string, { work: DshHistoryWork; users: number }>();
   readonly #lifetime = new AbortController();
   #closing: Promise<void> | undefined;
   constructor(readonly ctx: Context) {}
-
-  private async history(root: string): Promise<{ work: DshHistoryWork; release(): Promise<void> }> {
-    this.#lifetime.signal.throwIfAborted();
-    let entry = this.#histories.get(root);
-    if (entry && entry.users === 0) {
-      await entry.work.close(); this.#lifetime.signal.throwIfAborted();
-      if (this.#histories.get(root) === entry) this.#histories.delete(root);
-      return this.history(root);
-    }
-    if (!entry) { entry = { work: new DshHistoryWork(this.ctx, root), users: 0 }; this.#histories.set(root, entry); }
-    const owned = entry; owned.users++;
-    let released = false;
-    return {
-      work: owned.work,
-      release: async () => {
-        if (released) return; released = true;
-        if (--owned.users === 0) {
-          try { await owned.work.close(); } finally { if (this.#histories.get(root) === owned) this.#histories.delete(root); }
-        }
-      },
-    };
-  }
 
   async open(agent: Agent) {
     this.#lifetime.signal.throwIfAborted();
@@ -168,10 +139,9 @@ export class DshWorkspaces {
         this.#parentEffects.set(agent, dispose);
         return undefined;
       }
-      const history = await this.history(root);
       let workspace: DshWorkspace | undefined;
       try {
-        workspace = new DshWorkspace(this.ctx, root, agent, this.#lifetime.signal, history.work, history.release, workspaceFeatures(configuration));
+        workspace = new DshWorkspace(this.ctx, root, agent, this.#lifetime.signal, workspaceFeatures(configuration));
         const owned = workspace;
         const dispose = agent.ctx.effect(() => async () => {
           this.#parents.delete(agent); this.#configurations.delete(agent); this.#parentEffects.delete(agent); await owned.close();
@@ -182,7 +152,7 @@ export class DshWorkspaces {
       } catch (error) {
         try {
           const dispose = this.#parentEffects.get(agent);
-          if (dispose) await dispose(); else if (workspace) await workspace.close(); else await history.release();
+          if (dispose) await dispose(); else if (workspace) await workspace.close();
         } catch (cleanup) { throw new AggregateError([error, cleanup], "dsh 工作区装配与清理均未完成。"); }
         throw error;
       }
@@ -244,10 +214,9 @@ export class DshWorkspaces {
         const opened = await Promise.allSettled(this.#parents.values());
         const closed = await Promise.allSettled(opened.flatMap(value => value.status === "fulfilled" && value.value ? [value.value.close()] : []));
         const effects = await Promise.allSettled([...this.#parentEffects.values()].map(dispose => dispose()));
-        const histories = await Promise.allSettled([...this.#histories.values()].map(value => value.work.close()));
-        const errors = [...new Set([...closed, ...effects, ...histories].flatMap(value => value.status === "rejected" ? [value.reason] : []))];
+        const errors = [...new Set([...closed, ...effects].flatMap(value => value.status === "rejected" ? [value.reason] : []))];
         if (errors.length) throw new AggregateError(errors, "部分 dsh 工作区未能完成关闭。");
-      } finally { this.#parents.clear(); this.#configurations.clear(); this.#parentEffects.clear(); this.#histories.clear(); }
+      } finally { this.#parents.clear(); this.#configurations.clear(); this.#parentEffects.clear(); }
     })();
     return this.#closing;
   }

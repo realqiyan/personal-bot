@@ -19,10 +19,9 @@ import {
 import { workspaceMcpToolNames, type WorkspaceMcpToolName } from "../../model/workspace-mcp.js";
 import type { AgentCycle, AgentOwner, AgentView } from "../../model/agent.js";
 import { AgentService } from "../../services/agents/agent-service.js";
-import { queryWorkspaceHistory } from "../../services/history/history-service.js";
+import { readWorkspaceHistory, searchWorkspaceHistory } from "../../services/history/history-query.js";
 import { readWorkspaceConfig, workspaceDisabledMessage, workspaceFeatures } from "../../services/workspace/workspace-config.js";
-import { HistoryFiles } from "../../storage/history-files.js";
-import { isHistoryHost } from "../../storage/history-format.js";
+import { isHistoryHost, isSummaryDimension } from "../../storage/history-format.js";
 import { WorkspaceMcpBridge } from "./bridge.js";
 
 const protocolVersion = "2025-03-26";
@@ -50,7 +49,7 @@ const toolParams: Record<AllMcpToolName, ReadonlySet<string>> = {
   worker_discover: new Set(["target", "workerId", "backend", "model", "workspace"]),
   workspace_mcp_discover: new Set(["server", "workspace"]),
   workspace_mcp_call: new Set(["server", "tool", "arguments", "workspace"]),
-  history_search: new Set(["host", "query", "sessionId", "from", "to", "offset", "limit", "workspace"]),
+  history_search: new Set(["host", "dimension", "query", "sessionId", "from", "to", "offset", "limit", "workspace"]),
   history_read: new Set(["id", "host", "offset", "limit", "childrenOffset", "workspace"]),
 };
 
@@ -428,9 +427,13 @@ export function buildHistoryMcpTools(workspaceBound = false) {
             type: "string",
             description: "可选来源筛选（如 pi、dsh、claude、antigravity）；省略查全部宿主。",
           },
+          dimension: {
+            type: "string",
+            description: "可选范围筛选：raw 表示仅搜原文，或指定摘要维度（如 session）；省略查全部原文与维度摘要。",
+          },
           query: {
             type: "string",
-            description: "不区分大小写的连续关键词；省略时列出各会话。",
+            description: "不区分大小写的连续关键词；省略时列出各会话（或指定维度摘要）。",
           },
           sessionId: {
             type: "string",
@@ -849,15 +852,17 @@ export class McpWorkerRuntime {
         requireThat(workspaceFeatures(configuration).history, `工作区历史功能已在 ${configuration.path} 中停用（features.history: false）。`);
         const hostFilter = asString(rawArgs, "host");
         if (hostFilter !== undefined) requireThat(isHistoryHost(hostFilter), "无效的 host 来源：" + hostFilter);
+        const dimension = asString(rawArgs, "dimension");
+        if (dimension !== undefined) requireThat(isSummaryDimension(dimension), "无效的 dimension：" + dimension);
         const query = asString(rawArgs, "query");
         const sessionId = asString(rawArgs, "sessionId");
         const from = asString(rawArgs, "from");
         const to = asString(rawArgs, "to");
         const offset = asInt(rawArgs, "offset", 0, 10_000_000) ?? 0;
         const limit = asInt(rawArgs, "limit", 1, 50) ?? 20;
-        const reader = queryWorkspaceHistory(new HistoryFiles(join(root, ".pbot/history"), "pi"));
-        return reader.search({
+        return searchWorkspaceHistory(root, {
           ...(hostFilter ? { host: hostFilter } : {}),
+          ...(dimension ? { dimension } : {}),
           ...(query ? { query } : {}),
           ...(sessionId ? { sessionId } : {}),
           ...(from ? { from } : {}),
@@ -875,8 +880,7 @@ export class McpWorkerRuntime {
         const offset = asInt(rawArgs, "offset", 0, 10_000_000) ?? 0;
         const limit = asInt(rawArgs, "limit", 1, 24000) ?? 12000;
         const childrenOffset = asInt(rawArgs, "childrenOffset", 0, 10_000_000) ?? 0;
-        const reader = queryWorkspaceHistory(new HistoryFiles(join(root, ".pbot/history"), "pi"));
-        return { node: reader.read(id, offset, limit, childrenOffset, hostFilter) };
+        return { node: readWorkspaceHistory(root, id, offset, limit, childrenOffset, hostFilter) };
       }
       case "worker_create": {
         const backend = this.resolveBackend(rawArgs, configuration.acp, false);

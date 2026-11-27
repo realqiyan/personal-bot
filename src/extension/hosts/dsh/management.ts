@@ -8,6 +8,7 @@ import { json, type Json } from "../../../common/json.js";
 import { requireThat } from "../../../common/validation.js";
 import { schema } from "../../../common/schema.js";
 import { packageVersion } from "../../../common/version.js";
+import { inspectWorkspaceSummaries } from "../../../services/history/summary-runner.js";
 import { historyInput } from "../../../tools/history/contract.js";
 import { executeHistory } from "../../../tools/history/actions.js";
 import { pbotReadRemote } from "../../../ui/dsh/remote.js";
@@ -26,7 +27,7 @@ export function dshStatus(workspace: DshWorkspace): Json {
     workspaceRoot: workspace.root,
     sessionId: workspace.agent.id,
     model: workspace.agent.model.current() ?? null,
-    history: workspace.history.status,
+    history: workspace.features.history ? inspectWorkspaceSummaries(workspace.root) : null,
   });
 }
 
@@ -79,7 +80,8 @@ export class PbotManagement extends TypertRemoteService {
   @Remote
   async history(request: Json, signal: AbortSignal): Promise<Json> {
     const current = await this.workspace(request, signal), { workspace, input } = current;
-    const result = await executeHistory(workspace.history, historyInput(input), current.signal);
+    requireThat(workspace.features.history, "当前工作区已停用历史功能（features.history: false）。");
+    const result = executeHistory(workspace.root, historyInput(input), current.signal);
     workspace.check(); current.signal.throwIfAborted(); return json(result);
   }
 }

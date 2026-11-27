@@ -2,7 +2,6 @@ import { realpath } from "node:fs/promises";
 import { requireThat } from "../../../common/validation.js";
 import { authorizeMutation } from "../../../services/workspace/workspace-files.js";
 import type { CallAccess } from "../../../tools/access.js";
-import type { HistoryService } from "../../../services/history/history-service.js";
 import { readWorkspaceConfig, workspaceDisabledMessage, workspaceFeatures } from "../../../services/workspace/workspace-config.js";
 import type { ResolvedWorkspaceFeatures, WorkspaceConfiguration } from "../../../model/workspace-config.js";
 import type { McpWorkerRuntime } from "../../mcp/workers.js";
@@ -15,7 +14,6 @@ export class WorkspaceInstance implements CallAccess {
   constructor(
     readonly root: string,
     readonly sessionId: string,
-    readonly history: HistoryService,
     readonly workers: McpWorkerRuntime,
     readonly features: ResolvedWorkspaceFeatures = workspaceFeatures(),
   ) {}
@@ -45,9 +43,7 @@ export class WorkspaceInstance implements CallAccess {
     this.#controller.abort();
     this.#work.abort();
     this.#closing = (async () => {
-      const results = await Promise.allSettled([this.workers.close(preserveWorkers), this.history.close()]);
-      const errors = results.filter(result => result.status === "rejected").map(result => result.reason);
-      if (errors.length) throw new AggregateError(errors, "工作区关闭失败。");
+      await this.workers.close(preserveWorkers);
     })();
     return this.#closing;
   }

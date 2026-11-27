@@ -23,7 +23,7 @@ Claude / Antigravity / 任意插件宿主 hooks、CLI 与薄 stdio MCP
 | `src/plugin.ts` / `src/claude.ts` | 通用插件宿主 CLI/hook 入口（查 `PluginHostRegistry`）与 Claude 兼容入口 |
 | `src/mcp.ts` | 独立 stdio MCP 服务入口，暴露 6 个 `worker_*` 工具 |
 | `src/extension/` | 按运行域划分的运行时编排：`hosts/`（`pi/`、`dsh/` 与共享 `plugin-runtime.ts`）、`mcp/`（`workers.ts`、`bridge.ts`）、`acp/`（`worker.ts`、`member.ts`）、`setup/`（`cli.ts`、`guard.ts`） |
-| `src/integrations/` | 按外部集成域划分的适配器：`hosts/`（各宿主平级目录 `pi/`、`dsh/`、`claude/`、`antigravity/` 及 `plugin-registry.ts`）、`acp/`（协议与 `harnesses/`）、`installation/`（安装桥接），以及跨宿主辅助（`agent-resources.ts`、`history-summary.ts`） |
+| `src/integrations/` | 按外部集成域划分的适配器：`hosts/`（各宿主平级目录 `pi/`、`dsh/`、`claude/`、`antigravity/` 及 `plugin-registry.ts`）、`acp/`（协议、`harnesses/` 与独立摘要执行器 `history-summary.ts`）、`installation/`（安装桥接），以及跨宿主辅助（`agent-resources.ts`） |
 | `src/services/` | 宿主无关业务规则（`agents/`、`workspace/`、`history/`、`installation/`） |
 | `src/model/` | 纯数据类型与窄能力契约（`plugin-host.ts`、`acp.ts`、`agent.ts`、`history.ts`、`workspace-config.ts`），不含实现或宿主 SDK 类型 |
 | `src/storage/` | 原子 JSON、ACP worker 控制记录与历史归档存储 |
@@ -51,8 +51,8 @@ Claude / Antigravity / 任意插件宿主 hooks、CLI 与薄 stdio MCP
 
 所有宿主读取同一工作区根目录 `.pbot/config.json`，缺失、停用或损坏时保持休眠，不向上级目录继承：
 
-- **Pi**：`session_start` 读取配置，启用后注册 `pbot_history`、通过 `pi.registerMcpServer("pbot", ...)` 挂载 `lib/extension/mcp.js`（注入 `PBOT_WORKSPACE_ROOT`、`PBOT_MCP_AGENT_DIR` 与当前 `PBOT_MCP_SESSION_ID`），并在 `before_agent_start` 刷新工作区上下文。`/pbot` 仅保留 `init`、`status` 与 `worker`（共享同一会话归属），工作区外写入触发安全确认队列。关闭或重载时自动注销 MCP 服务并清理资源。
-- **dsh**：按根 Agent 的原始 `cwd` 读取配置，启用后注册技能、上下文、工作区外写保护、`pbot_history` 与后台历史整理，并通过 `@deepseek-ai/dsh-mcp-client` 挂载同一 `lib/extension/mcp.js`（暴露 `mcp__pbot__worker_*`）。Web 工作台仅保留**工作区**与**历史**两页，经原生 Typert Remote（`snapshot`、`history`）查询，不增设 HTTP 服务；聊天命令为 `/pbot`、`status`、`init`、`worker`、`history`。
+- **Pi**：`session_start` 读取配置，启用后注册 `pbot_history`、通过 `pi.registerMcpServer("pbot", ...)` 挂载 `lib/extension/mcp.js`（注入 `PBOT_WORKSPACE_ROOT`、`PBOT_MCP_AGENT_DIR` 与当前 `PBOT_MCP_SESSION_ID`），并在 `before_agent_start` 刷新工作区上下文。`/pbot` 保留 `init`、`status`、`history` 与 `worker`（共享同一会话归属），工作区外写入触发安全确认队列。关闭或重载时自动注销 MCP 服务并清理资源。
+- **dsh**：按根 Agent 的原始 `cwd` 读取配置，启用后注册技能、上下文、工作区外写保护、`pbot_history` 与根会话原始问答采集，并通过 `@deepseek-ai/dsh-mcp-client` 挂载同一 `lib/extension/mcp.js`（暴露 `mcp__pbot__worker_*`）。Web 工作台仅保留**工作区**与**历史**两页，经原生 Typert Remote（`snapshot`、`history`）查询，不增设 HTTP 服务；聊天命令为 `/pbot`、`status`、`init`、`history`、`worker`。
 - **轻插件宿主（Claude Code、Antigravity 及后续扩展）**：由 `plugin-runtime.ts` 通过 `PluginHostAdapter` 处理无状态 command hook（上下文注入、技能门控与 `raw` 历史采集）及 `init`/`status` CLI，跨 Harness 调度与只读跨宿主历史查询由宿主挂载 `lib/extension/mcp.js` 完成。不设自定义面板，也不拦截宿主原生 subagent。
 
 ## 文件存储
@@ -64,7 +64,7 @@ Claude / Antigravity / 任意插件宿主 hooks、CLI 与薄 stdio MCP
 | `<workspace>/.agents/skills/<name>/SKILL.md` | 全宿主共享的工作区自有技能（原生支持目录的宿主直接发现，其余宿主与 ACP worker 按需注入元数据索引） |
 | `<workspace>/AGENTS.md`、`areas/`、`projects/`、`knowledge/`、`providers/`、`scratch/`、`agents/` | 用户工作区资料（`init` 只补缺、不覆盖） |
 | `<workspace>/.pbot/history/raw/<id>.json` | 全宿主（Pi、dsh、Claude Code、Antigravity 等）原始问答与已知分支（各自只写本宿主来源） |
-| `<workspace>/.pbot/history/summary/<id>.json` | 派生分层摘要（Pi/dsh 空闲时按 `.write-summary` 锁为全宿主补齐，可失效重建，损坏不影响原始问答查询） |
+| `<workspace>/.pbot/history/summaries/<dimension>/<id>.json` | 按维度派生的摘要产物（由 `SummaryRunner` 扫描 `raw/` 按 `.write-summary-<dimension>` 锁并发生成，携带来源指纹支持去重与增量更新，可独立重建，损坏不影响原始问答查询） |
 | `~/.pbot/subagents/<id>/`（或 `PBOT_MCP_AGENT_DIR` / `PLUGIN_DATA/subagents`） | MCP `worker_*` 的控制记录（`descriptor.json`、`launch.json`、`acp-session.json`、`acp-process.json`、`acp-model.json`、`inbox/`、`completions/`、`reports/`、`permissions/`、`elicitations/`） |
 
 - `atomic-json` 先校验对象再写入临时文件并原子替换，拒绝符号链接、路径越界与特殊文件；短目录锁（`.control` / `.write-<host>`）串行化控制写操作。

@@ -11,7 +11,7 @@
 | Claude Code | `/personal-bot:pbot init`（或 `lib/claude.js init`） | `/personal-bot:pbot status` |
 | Antigravity | `/pbot init`（或 `lib/plugin.js antigravity init`） | `/pbot status` |
 
-`init` 先补建资料目录（`areas/`、`projects/`、`knowledge/`、`providers/`、`scratch/`、`agents/`）和缺失的根 `AGENTS.md`，再将 `.pbot/config.json` 中的 `enabled` 设为 `true` 并显式写入 `features`（`prompts`、`skills`、`mcp`、`history`，未设置项默认 `true`），保留已有资料、宿主自有文件（如 `CLAUDE.md`）、已设置的 `features` 开关及其他未知配置字段；配置文件损坏时先报错而不覆写。
+`init` 先补建资料目录（`areas/`、`projects/`、`knowledge/`、`providers/`、`scratch/`、`agents/`）和缺失的根 `AGENTS.md`，再将 `.pbot/config.json` 中的 `enabled` 设为 `true` 并显式写入 `features`（`prompts`、`skills`、`mcp`、`history`，未设置项默认 `true`）与 `summary`（`backend: "pi"`、`concurrency: 3`），保留已有资料、宿主自有文件（如 `CLAUDE.md`）、已设置的开关/摘要配置及其他未知配置字段；配置文件损坏时先报错而不覆写。
 
 ## 启用、模块开关（`features`）与停用规则
 
@@ -33,7 +33,7 @@
 | `features.prompts: false` | 关闭工作区提示词与角色上下文注入 |
 | `features.skills: false` | 关闭工作区与内置技能注册、技能门控及 `.agents/skills/` 索引注入 |
 | `features.mcp: false` | 关闭 `.pbot/mcp.json` 统一 MCP 挂载、`workspace_mcp_*` 桥接与 ACP `mcpServers` 透传 |
-| `features.history: false` | 关闭跨宿主历史归档采集、后台摘要整理及历史查询工具（`pbot_history` / `history_search` / `history_read`） |
+| `features.history: false` | 关闭跨宿主历史归档采集、摘要生成及历史查询工具（`pbot_history` / `history_search` / `history_read`） |
 | 文件不存在、缺少 `enabled` 或 `enabled: false` | 保持未启用，仅保留状态与初始化入口，宿主原生能力不受影响 |
 | JSON 损坏、字段类型错误或不可读 | 保持未启用并报告具体错误，修复后重新启用 |
 
@@ -93,6 +93,25 @@
 - `permission` 可选值为 `"ask"`（默认）、`"allow"`、`"deny"`：未配置或为 `"ask"` 时保持目标 Harness 自身默认权限策略，遇到 `session/request_permission` 时转发给主会话确认；`"allow"` 自动放行；`"deny"` 自动拒绝。
 - 命令不经过 shell 展开；参数中的相对路径按 worker 的 `cwd` 解析。凭据与模型认证由目标宿主自行管理，不写入此文件。
 - 新建 worker 时固定解析后的可执行路径、参数与权限策略；修改 `.pbot/config.json` 后，MCP 下次 `worker_discover` / `worker_create` 调用自动读取最新 `acp` 配置。
+
+## 历史摘要执行配置（`summary`）
+
+可选配置 `/pbot history summary` 所使用的独立 ACP worker 后端、模型与并发度（未配置时默认 `backend: "pi"`，并使用目标 harness 当前默认模型）：
+
+```json
+{
+  "enabled": true,
+  "summary": {
+    "backend": "pi",
+    "model": "provider/model",
+    "thinking": "low",
+    "concurrency": 3
+  }
+}
+```
+
+- 每个待摘要会话独立启动一个临时 ACP worker（附带 `PBOT_SUBAGENT_RUN_ID`，绝不写回 `raw/`），完成后立即销毁。
+- 修改后下次执行 `/pbot history summary` 直接生效，也可用命令行参数（`--backend`、`--model`、`--thinking`）临时覆盖。
 
 ## 手工修改生效方式
 

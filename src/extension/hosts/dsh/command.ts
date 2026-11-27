@@ -1,19 +1,24 @@
 import type { Context } from "@deepseek-ai/cordis";
 import type {} from "@deepseek-ai/dsh-commands";
-import { object, json } from "../../../common/json.js";
+import { json } from "../../../common/json.js";
 import { requireThat } from "../../../common/validation.js";
+import { createAcpHistorySummarizer } from "../../../integrations/acp/history-summary.js";
+import { parseHistoryCommand } from "../../../services/history/summary-command.js";
+import { listSummaryDimensions } from "../../../services/history/summary-registry.js";
+import { inspectWorkspaceSummaries, runWorkspaceSummaries } from "../../../services/history/summary-runner.js";
+import { readWorkspaceConfig, workspaceDisabledMessage, workspaceSummaryConfig } from "../../../services/workspace/workspace-config.js";
 import { dshWorkspaceStatus, type PbotManagement } from "./management.js";
 import type { DshWorkspaces } from "./workspace.js";
 import { parseWorkerCommand } from "../../mcp/workers.js";
 
-const usage = '用法：/pbot status | init | worker [overview|status|backends|models|create|request|response|output|close] [JSON] | history {"action":…}';
+const usage = '用法：/pbot status | init | history [summary [维度] [--force] [--backend <acp>] [--model <model>] | status | list | {"action":…}] | worker [overview|status|backends|models|create|request|response|output|close] [JSON]';
 
 export function registerDshCommand(ctx: Context, workspaces: DshWorkspaces, management: PbotManagement) {
   ctx.commands.register({
     name: "pbot",
-    description: "Personal Bot 工作区、跨 Harness worker 与历史管理",
+    description: "Personal Bot 工作区、历史摘要与跨 Harness worker 管理",
     recordInput: false,
-    input: { hint: "status | init | worker ... | history JSON", attachments: false },
+    input: { hint: "status | init | history ... | worker ...", attachments: false },
     async handler({ agent, rawInput, signal }) {
       signal.throwIfAborted();
       const command = rawInput.trim(), split = command.search(/\s/);
@@ -38,10 +43,39 @@ export function registerDshCommand(ctx: Context, workspaces: DshWorkspaces, mana
           break;
         }
         case "history": {
-          requireThat(rest.length > 0, usage);
-          const input: unknown = JSON.parse(rest);
-          requireThat(object(input), "命令参数必须是 JSON 对象。");
-          result = await management.history({ parentSessionId: agent.id, input: json(input) }, signal);
+          requireThat(workspace.features.history, "当前工作区已停用历史功能（features.history: false）。");
+          const parsed = parseHistoryCommand(rest);
+          if (parsed.kind === "status") {
+            result = inspectWorkspaceSummaries(workspace.root);
+          } else if (parsed.kind === "list") {
+            result = { dimensions: listSummaryDimensions().map(({ id, title, description }) => ({ id, title, description })) };
+          } else if (parsed.kind === "query") {
+            result = await management.history({ parentSessionId: agent.id, input: json(parsed.input) }, signal);
+          } else {
+            const active = AbortSignal.any([signal, workspace.lifetime.signal]);
+            const config = await readWorkspaceConfig(workspace.root);
+            requireThat(config.enabled && !config.error, workspaceDisabledMessage(config));
+            const summaryCfg = workspaceSummaryConfig(config);
+            const backend = parsed.backend ?? summaryCfg.backend;
+            const model = parsed.model ?? summaryCfg.model;
+            const thinking = parsed.thinking ?? summaryCfg.thinking;
+            const summarizer = createAcpHistorySummarizer({
+              cwd: workspace.root,
+              backend,
+              ...(config.acp ? { commands: config.acp } : {}),
+              ...(model ? { model } : {}),
+              ...(thinking ? { thinking } : {}),
+            });
+            const report = await runWorkspaceSummaries({
+              root: workspace.root,
+              summarizer,
+              ...(parsed.dimensions ? { dimensions: parsed.dimensions } : {}),
+              force: parsed.force,
+              ...(summaryCfg.concurrency !== undefined ? { concurrency: summaryCfg.concurrency } : {}),
+              signal: active,
+            });
+            result = { backend, ...(model ? { model } : {}), ...report };
+          }
           break;
         }
         default:

@@ -1,6 +1,5 @@
-import { randomUUID } from "node:crypto";
-import { isDeepStrictEqual } from "node:util";
-import type { HistoryExchange, HistoryHost, HistoryNode, HistoryRecord, HistorySession, HistorySummary, RawHistory } from "../../model/history.js";
+import { createHash, randomUUID } from "node:crypto";
+import type { HistoryExchange, HistoryHost, HistorySession, RawHistory } from "../../model/history.js";
 import { requireThat } from "../../common/validation.js";
 
 /** Each native entry has one predecessor. A shortened observation can extend a known path, not erase its prefix. */
@@ -28,9 +27,9 @@ function mergeBranches(previous: string[][], observed: string[][], removed: Set<
   return branches;
 }
 
-/** Only a native observation can change exchanges or establish branch order. */
+/** Merge a native session observation into its raw archive without modifying persisted order invariants. */
 export function indexHistory(session: HistorySession, previous?: RawHistory, host: HistoryHost = previous?.host ?? "pi"): RawHistory {
-  requireThat(!previous || previous.host === host && previous.sessionId === session.sessionId, "历史会话与归档来源不匹配。");
+  requireThat(!previous || (previous.host === host && previous.sessionId === session.sessionId), "历史会话与归档来源不匹配。");
   const id = previous?.id ?? (host === "pi" ? "" : host + "-") + randomUUID();
   const exchanges = new Map(previous?.exchanges.map(item => [item.id, item]));
   const byEnd = new Map(previous?.exchanges.map(item => [item.entryIds.at(-1)!, item.id]));
@@ -57,69 +56,56 @@ export function indexHistory(session: HistorySession, previous?: RawHistory, hos
       removed.add(item.id); exchanges.delete(item.id);
     }
   }
-  return { host, id, sessionId: session.sessionId, name: session.name, exchanges: [...exchanges.values()],
-    branches: mergeBranches(previous?.branches ?? [], branches, removed) };
+  return {
+    host,
+    id,
+    sessionId: session.sessionId,
+    name: session.name,
+    exchanges: [...exchanges.values()],
+    branches: mergeBranches(previous?.branches ?? [], branches, removed),
+  };
 }
 
-function span(children: HistoryExchange[]) {
-  const first = children[0]!, last = children.at(-1)!;
-  return { entryIds: [first.entryIds[0]!, last.entryIds.at(-1)!], from: first.from, to: last.to, completed: children.every(child => child.completed) };
-}
-
-/** Retire results using changed inputs before publishing a native correction. New groups need no disk write. */
-export function retainHistorySummaries(before: RawHistory, after: RawHistory, summaries: HistorySummary[]): HistorySummary[] {
-  const inputs = new Map<string, HistoryExchange>(after.exchanges.map(item => [item.id, item]));
-  const changed = new Set(before.exchanges.filter(item => !isDeepStrictEqual(item, inputs.get(item.id))).map(item => item.id));
-  if (!changed.size || !summaries.length) return summaries;
-  const retained = new Map<string, HistorySummary>();
-  for (const item of [...summaries].sort((a, b) => a.level - b.level)) {
-    const children = item.children.map(id => inputs.get(id));
-    if (!children.length || !children.every(child => child !== undefined)) { changed.add(item.id); continue; }
-    let summary = item;
-    if (item.children.some(id => changed.has(id))) {
-      summary = { ...item, ...span(children), text: "", ready: false }; changed.add(item.id);
-    }
-    retained.set(item.id, summary); inputs.set(item.id, summary);
-  }
-  return summaries.flatMap(item => retained.get(item.id) ?? []);
-}
-
-/** The four-way tree is a query view, never the source of native branch order. */
-export function historyView(raw: RawHistory, saved: readonly HistorySummary[] | null = []): HistoryRecord {
-  const nodes = new Map<string, HistoryNode>(raw.exchanges.map(value => [value.id,
-    { ...value, kind: "exchange", level: 0, ready: true, children: [], parents: [] }]));
-  const stored = new Map(saved?.map(value => [value.id, value]));
-  const groups = new Map<string, Pick<HistorySummary, "id" | "level" | "children">>(stored);
+/** Return deduplicated exchanges in conversation order (branch order first, then any unbranched entries by timestamp). */
+export function orderedRawExchanges(raw: RawHistory): (HistoryExchange & { id: string })[] {
+  const lookup = new Map(raw.exchanges.map(item => [item.id, item]));
+  const seen = new Set<string>();
+  const ordered: (HistoryExchange & { id: string })[] = [];
   for (const branch of raw.branches) {
-    let layer = branch.map(id => ({ id, end: nodes.get(id)!.entryIds.at(-1)! }));
-    for (let level = 1; layer.length >= 4; level++) {
-      const next: typeof layer = [];
-      for (let i = 0; i + 4 <= layer.length; i += 4) {
-        const end = layer[i + 3]!.end, id = `${raw.id}:${level}:${end}`;
-        groups.set(id, { id, level, children: layer.slice(i, i + 4).map(child => child.id) });
-        next.push({ id, end });
-      }
-      layer = next;
+    for (const id of branch) {
+      if (seen.has(id)) continue;
+      const item = lookup.get(id);
+      if (!item) continue;
+      seen.add(id);
+      ordered.push(item);
     }
   }
-  for (const group of [...groups.values()].sort((a, b) => a.level - b.level)) {
-    const children = group.children.map(id => nodes.get(id));
-    if (!children.length || !children.every(child => child !== undefined)) continue;
-    const old = stored.get(group.id);
-    const summary = old && isDeepStrictEqual(old.children, group.children) && (!old.ready || children.every(child => child.ready)) ? old :
-      { ...group, ...span(children), text: "", ready: false };
-    nodes.set(group.id, { ...summary, kind: "summary", parents: [] });
-  }
-  for (const node of nodes.values()) for (const child of node.children) nodes.get(child)!.parents.push(node.id);
-  const top = [...nodes.values()].filter(node => !node.parents.length).sort((a, b) => a.from.localeCompare(b.from));
-  for (const child of top) child.parents.push(raw.id);
-  const dates = raw.exchanges.flatMap(item => [item.from, item.to]).sort();
-  const name = raw.name || raw.exchanges[0]?.text.replace(/\s+/g, " ").slice(0, 80) || "";
-  nodes.set(raw.id, { id: raw.id, kind: "session", level: -1, entryIds: [], text: name, ready: true,
-    completed: raw.exchanges.every(item => item.completed), from: dates[0] ?? "", to: dates.at(-1) ?? "", parents: [], children: top.map(node => node.id) });
-  return { host: raw.host, id: raw.id, sessionId: raw.sessionId, name, nodes: [...nodes.values()] };
+  const rest = raw.exchanges
+    .filter(item => !seen.has(item.id))
+    .sort((a, b) => a.from.localeCompare(b.from) || a.id.localeCompare(b.id));
+  ordered.push(...rest);
+  return ordered;
 }
 
-export function historySummaries(record: HistoryRecord): HistorySummary[] {
-  return record.nodes.filter(node => node.kind === "summary").map(({ kind: _kind, parents: _parents, ...summary }) => summary);
+export function rawSessionTitle(raw: RawHistory): string {
+  return raw.name.trim();
+}
+
+export function rawSessionSpan(exchanges: readonly HistoryExchange[]): { from: string; to: string; completed: boolean } {
+  const dates = exchanges.flatMap(item => [item.from, item.to]).filter(Boolean).sort();
+  return {
+    from: dates[0] ?? "",
+    to: dates.at(-1) ?? "",
+    completed: exchanges.every(item => item.completed),
+  };
+}
+
+/** Stable SHA-256 fingerprint over ordered exchange contents for exact deduplication and prefix matching. */
+export function fingerprintExchanges(exchanges: readonly (HistoryExchange & { id: string })[]): string {
+  const hash = createHash("sha256");
+  for (const item of exchanges) {
+    hash.update(JSON.stringify([item.id, item.entryIds, item.text, item.from, item.to, item.completed]));
+    hash.update("\n");
+  }
+  return hash.digest("hex");
 }

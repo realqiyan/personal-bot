@@ -14,10 +14,25 @@ export interface ResolvedWorkspaceFeatures {
   readonly history: boolean;
 }
 
+export interface WorkspaceSummaryConfig {
+  backend?: string;
+  model?: string;
+  thinking?: string;
+  concurrency?: number;
+}
+
+export interface ResolvedWorkspaceSummaryConfig {
+  readonly backend: string;
+  readonly model?: string;
+  readonly thinking?: string;
+  readonly concurrency: number;
+}
+
 export interface WorkspaceConfig {
   enabled?: boolean;
   features?: WorkspaceFeatures;
   acp?: AcpCommands;
+  summary?: WorkspaceSummaryConfig;
 }
 
 export interface WorkspaceConfiguration {
@@ -27,4 +42,5 @@ export interface WorkspaceConfiguration {
   error?: string;
   features?: WorkspaceFeatures;
   acp?: AcpCommands;
+  summary?: WorkspaceSummaryConfig;
 }

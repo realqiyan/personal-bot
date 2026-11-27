@@ -10,8 +10,6 @@ import { agentFileTools } from "../../dist/integrations/hosts/pi/agent-tools.js"
 import { WorkspaceInstance } from "../../dist/extension/hosts/pi/lifecycle.js";
 import { McpWorkerRuntime } from "../../dist/extension/mcp/workers.js";
 import { Confirmations } from "../../dist/ui/pi/confirmation.js";
-import { HistoryService } from "../../dist/services/history/history-service.js";
-import { HistoryFiles } from "../../dist/storage/history-files.js";
 
 async function fixture(t) {
   const { root, session } = await host(t);
@@ -20,7 +18,6 @@ async function fixture(t) {
   const instance = new WorkspaceInstance(
     root,
     "test-session",
-    new HistoryService(root, new HistoryFiles(join(root, "history-index"))),
     workers,
   );
   t.after(() => instance.close());
@@ -68,5 +65,6 @@ test("workspace close invalidates access without changing user documents", async
   assert.deepEqual(JSON.parse(await readFile(join(f.root, ".pbot/config.json"), "utf8")), {
     enabled: true,
     features: { prompts: true, skills: true, mcp: true, history: true },
+    summary: { backend: "pi", concurrency: 3 },
   });
 });

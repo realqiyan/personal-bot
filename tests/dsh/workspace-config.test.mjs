@@ -74,6 +74,7 @@ test("one dsh profile applies workspace opt-in independently, mounts split MCP w
     assert.deepEqual(JSON.parse(await readFile(workspaceConfigPath(other), "utf8")), {
       enabled: true,
       features: { prompts: true, skills: true, mcp: true, history: true },
+      summary: { backend: "pi", concurrency: 3 },
     });
     await assert.rejects(host.ctx.commands.execute(handles[3].agent, "/pbot init", [], signal));
     assert.equal(await readFile(workspaceConfigPath(invalid), "utf8"), '{"enabled":"true"}');

@@ -71,6 +71,7 @@ test("enabled Antigravity workspace injects SessionStart context and never inter
     ...stored,
     enabled: true,
     features: { prompts: true, skills: true, mcp: true, history: true },
+    summary: { backend: "pi", concurrency: 3 },
   });
   assert.equal(await readFile(join(workspace, "AGENTS.md"), "utf8"), "UNIQUE_NATIVE_AGENTS_MARKER\n");
   for (const directory of ["areas", "projects", "knowledge", "providers", "scratch", "agents"]) {

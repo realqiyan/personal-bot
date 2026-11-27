@@ -114,7 +114,8 @@ export function showManagement(ctx: Context, parentSessionId: SessionId) {
     for (const match of rows(data.matches)) {
       const item = element("article"), meta = group(item, "pbot-between"); item.dataset.id = text(match.id); item.dataset.host = text(match.host);
       meta.append(element("h4", text(match.name)), element("span", text(match.host), "pbot-badge"));
-      item.append(note(`${time(match.from)} · ${match.kind === "session" ? "会话" : match.kind === "summary" ? "摘要" : "问答"}`), block(match.snippet || match.preview));
+      const kindLabel = match.kind === "session" ? "会话" : match.kind === "summary" ? `摘要${match.dimension ? "·" + text(match.dimension) : ""}` : "问答";
+      item.append(note(`${time(match.from)} · ${kindLabel}`), block(match.snippet || match.preview));
       button(item, "读取", () => readHistory(text(match.id), text(match.host)), "pbot-quiet"); historyBody.append(item);
     }
     if (!rows(data.matches).length) historyBody.append(empty("没有找到匹配内容", "试试更短的关键词，或调整来源和时间范围。"));
@@ -166,7 +167,16 @@ export function showManagement(ctx: Context, parentSessionId: SessionId) {
     }
     for (const control of tabs.values()) enabled(control, true);
     materials.hidden = false; initializeButton.textContent = "准备目录"; enabled(initializeButton, true);
-    const historyState = record(snapshot.history);
+    const historyState = object(snapshot.history) ? snapshot.history : null;
+    const historyDims = historyState && Array.isArray(historyState.dimensions) ? rows(historyState.dimensions) : [];
+    const historySummaryText = !historyState
+      ? "已停用"
+      : `原始会话 ${text(historyState.rawCount ?? 0)}` + (historyDims.length
+        ? " · " + historyDims.map(dim => {
+          const pending = Number(dim.pendingCreate ?? 0) + Number(dim.pendingIncremental ?? 0) + Number(dim.pendingRebuild ?? 0);
+          return `${text(dim.dimension)} ${text(dim.ready ?? 0)}/${text(dim.total ?? 0)}${pending ? `（待处理 ${pending}）` : ""}`;
+        }).join("，")
+        : "");
     counts.textContent = "Personal Bot 已启动 · 跨 Harness 调度通过 MCP worker_* 提供";
     const model = object(snapshot.model) ? snapshot.model : {};
     workspaceInfo.replaceChildren(facts([
@@ -175,7 +185,7 @@ export function showManagement(ctx: Context, parentSessionId: SessionId) {
       ["配置文件", record(snapshot.configuration).path],
       ["模型", model.model || "尚未选择"],
       ["Provider", model.provider || "—"],
-      ["历史", historyState.organizing ? "整理中" : historyState.pending === null ? "查询时更新索引" : `${historyState.pending} 项待整理`],
+      ["历史", historySummaryText],
     ]));
     statusBody.textContent = JSON.stringify(snapshot, null, 2);
   }

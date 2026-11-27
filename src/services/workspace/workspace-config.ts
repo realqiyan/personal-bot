@@ -3,9 +3,21 @@ import { dirname, join } from "node:path";
 import { object } from "../../common/json.js";
 import { isAcpBackend } from "../../common/validation.js";
 import { readJsonFile, writeJsonFile } from "../../storage/atomic-json.js";
-import type { ResolvedWorkspaceFeatures, WorkspaceConfig, WorkspaceConfiguration, WorkspaceFeatures } from "../../model/workspace-config.js";
+import type {
+  ResolvedWorkspaceFeatures,
+  ResolvedWorkspaceSummaryConfig,
+  WorkspaceConfig,
+  WorkspaceConfiguration,
+  WorkspaceFeatures,
+  WorkspaceSummaryConfig,
+} from "../../model/workspace-config.js";
 
 const featureKeys = ["prompts", "skills", "mcp", "history"] as const;
+const summaryKeys = ["backend", "model", "thinking", "concurrency"] as const;
+
+function nonEmptyString(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0 && !value.includes("\0");
+}
 
 function config(value: unknown): Record<string, unknown> {
   if (!object(value) || value.enabled !== undefined && typeof value.enabled !== "boolean") {
@@ -35,6 +47,24 @@ function config(value: unknown): Record<string, unknown> {
       }
     }
   }
+  if (value.summary !== undefined) {
+    if (!object(value.summary) || Object.keys(value.summary).some(key => !(summaryKeys as readonly string[]).includes(key))) {
+      throw new Error("summary 必须是 JSON 对象，仅支持 backend、model、thinking、concurrency。");
+    }
+    if (value.summary.backend !== undefined && !isAcpBackend(value.summary.backend)) {
+      throw new Error("summary.backend 必须为小写字母、数字和连字符（1–64 字符）。");
+    }
+    if (value.summary.model !== undefined && !nonEmptyString(value.summary.model)) {
+      throw new Error("summary.model 必须是非空字符串。");
+    }
+    if (value.summary.thinking !== undefined && !nonEmptyString(value.summary.thinking)) {
+      throw new Error("summary.thinking 必须是非空字符串。");
+    }
+    if (value.summary.concurrency !== undefined &&
+      (typeof value.summary.concurrency !== "number" || !Number.isInteger(value.summary.concurrency) || value.summary.concurrency < 1 || value.summary.concurrency > 8)) {
+      throw new Error("summary.concurrency 必须是 1 到 8 之间的整数。");
+    }
+  }
   return value;
 }
 
@@ -47,6 +77,20 @@ export function workspaceFeatures(configuration?: Pick<WorkspaceConfiguration, "
     skills: raw?.skills !== false,
     mcp: raw?.mcp !== false,
     history: raw?.history !== false,
+  };
+}
+
+export function workspaceSummaryConfig(
+  configuration?: Pick<WorkspaceConfiguration, "summary"> | WorkspaceSummaryConfig,
+): ResolvedWorkspaceSummaryConfig {
+  const raw: WorkspaceSummaryConfig | undefined = configuration && "summary" in configuration
+    ? configuration.summary
+    : configuration as WorkspaceSummaryConfig | undefined;
+  return {
+    backend: raw?.backend ?? "pi",
+    ...(raw?.model ? { model: raw.model } : {}),
+    ...(raw?.thinking ? { thinking: raw.thinking } : {}),
+    concurrency: raw?.concurrency ?? 3,
   };
 }
 
@@ -72,6 +116,7 @@ export async function readWorkspaceConfig(root: string): Promise<WorkspaceConfig
       enabled: settings.enabled === true,
       ...(settings.features ? { features: settings.features } : {}),
       ...(settings.acp ? { acp: settings.acp } : {}),
+      ...(settings.summary ? { summary: settings.summary } : {}),
     };
   } catch (error) {
     return { path, present: true, enabled: false, error: `工作区配置无效 ${path}: ${String(error)}` };
@@ -83,12 +128,14 @@ export async function initializeWorkspaceConfig(root: string): Promise<void> {
   const current = await readWorkspaceConfig(root);
   if (current.error) throw new Error(current.error);
   const hasExplicitFeatures = featureKeys.every(key => typeof current.features?.[key] === "boolean");
-  if (current.enabled && hasExplicitFeatures) return;
+  const hasExplicitSummary = typeof current.summary?.backend === "string" && typeof current.summary?.concurrency === "number";
+  if (current.enabled && hasExplicitFeatures && hasExplicitSummary) return;
   const directory = dirname(current.path);
   await mkdir(directory, { recursive: true });
   const value = current.present ? readJsonFile(directory, "config.json", config) : {};
   const features = workspaceFeatures((value as WorkspaceConfig).features);
-  const written = writeJsonFile(directory, "config.json", { ...value, enabled: true, features }, config, !current.present);
+  const summary = workspaceSummaryConfig((value as WorkspaceConfig).summary);
+  const written = writeJsonFile(directory, "config.json", { ...value, enabled: true, features, summary }, config, !current.present);
   if (!written) await initializeWorkspaceConfig(root);
 }
 

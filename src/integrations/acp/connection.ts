@@ -4,6 +4,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import * as acp from "@agentclientprotocol/sdk";
 import type { AcpHarnessAdapter, AcpModelSelection, AcpSessionReference } from "../../model/acp.js";
 import type { AgentOptions } from "../../model/agent.js";
+import { object } from "../../common/json.js";
 import { requireThat } from "../../common/validation.js";
 import { packageVersion } from "../../common/version.js";
 import { acpChoices, acpModelSelection, acpModelValue, acpThinkingValue } from "./model-selection.js";
@@ -142,9 +143,13 @@ export async function openAcp(
         systemPrompt: { mode: "append" as const, content: [{ type: "text" as const, text: openOptions.systemPrompt }] },
       } : {}),
     };
+    let startupInfo: string | undefined;
     if (reference.sessionId === null) {
       const created = await connection.agent.request<acp.NewSessionResponse>(acp.methods.agent.session.new, setup, { cancellationSignal: AbortSignal.any([cancel, AbortSignal.timeout(30_000)]), stopWaitingOnCancel: true });
       sessionId = created.sessionId; options = created.configOptions ?? [];
+      if (object(created._meta) && object(created._meta.piAcp) && typeof created._meta.piAcp.startupInfo === "string") {
+        startupInfo = created._meta.piAcp.startupInfo;
+      }
     } else {
       requireThat(capabilities.resume || capabilities.load, "目标 ACP 后端不支持恢复已有会话，请新建 worker。");
       const restored = capabilities.resume
@@ -157,6 +162,7 @@ export async function openAcp(
     return {
       sessionId: activeId, capabilities, signal: connected, close, images: advertised?.promptCapabilities?.image === true,
       systemPrompt: Boolean(advertised?.sessionCapabilities?.systemPrompt),
+      ...(startupInfo ? { startupInfo } : {}),
       selection,
       choices: () => acpChoices(options),
       async configure(requested: AgentOptions) {

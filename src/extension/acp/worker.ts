@@ -1,10 +1,12 @@
-import { dirname, resolve } from "node:path";
+import { randomUUID } from "node:crypto";
+import { dirname, join, resolve } from "node:path";
 import type { RequestPermissionRequest } from "@agentclientprotocol/sdk";
 import { AgentFiles, descriptor, launch, status } from "../../storage/agent-files.js";
 import { acpModelState, acpReference } from "../../storage/acp-files.js";
 import type { AcpModelSelection, AcpSessionReference } from "../../model/acp.js";
 import { AcpAgentRun } from "../../services/agents/acp-run.js";
 import { openAcp } from "../../integrations/acp/connection.js";
+import { acpExecutable } from "../../integrations/acp/executable.js";
 import { acpContent } from "../../integrations/acp/input.js";
 import { toAcpMcpServers } from "../../integrations/acp/mcp.js";
 import { resolveAcpHarness } from "../../integrations/acp/registry.js";
@@ -252,6 +254,118 @@ async function runWorker(args: string[]) {
   }
 }
 
+async function runOneShotPrompt() {
+  const lifetime = new AbortController();
+  const stop = () => lifetime.abort(new Error("ACP 摘要任务已取消。"));
+  process.on("SIGTERM", stop);
+  process.on("SIGINT", stop);
+  try {
+    const payload = await new Promise<{
+      reference: AcpSessionReference;
+      cwd: string;
+      system: string;
+      prompt: string;
+      model?: string;
+      thinking?: string;
+    }>((resolvePayload, rejectPayload) => {
+      const timer = setTimeout(() => rejectPayload(new Error("缺少 ACP 摘要任务参数。")), 5000);
+      process.once("message", (value: unknown) => {
+        clearTimeout(timer);
+        if (!object(value)) { rejectPayload(new Error("ACP 摘要任务参数必须是对象。")); return; }
+        resolvePayload(value as {
+          reference: AcpSessionReference;
+          cwd: string;
+          system: string;
+          prompt: string;
+          model?: string;
+          thinking?: string;
+        });
+      });
+      process.once("disconnect", () => { clearTimeout(timer); rejectPayload(new Error("ACP 摘要任务通道已断开。")); });
+    });
+    const reference = acpReference(payload.reference);
+    requireThat(typeof payload.cwd === "string" && payload.cwd.length > 0, "缺少 ACP 摘要工作目录。");
+    requireThat(typeof payload.prompt === "string" && payload.prompt.trim().length > 0, "缺少 ACP 摘要输入内容。");
+    const harness = resolveAcpHarness(reference.backend);
+    const packageRoot = resolve(resourceRoot, "..");
+    // Mark as managed subagent so no host (Pi, dsh, Claude, Antigravity) ever records raw history for summary runs.
+    const env: NodeJS.ProcessEnv = {
+      ...process.env,
+      ...(reference.env ?? {}),
+      PBOT_SUBAGENT_RUN_ID: "pbot-summary-" + randomUUID(),
+      ...(reference.backend === "pi" ? {
+        PBOT_SUMMARY_WORKER: "1",
+        PI_OFFLINE: "1",
+        PBOT_ACP_PI_COMMAND: process.env.PI_ACP_PI_COMMAND ?? acpExecutable("pi", "pi"),
+        PI_ACP_PI_COMMAND: join(packageRoot, "bin/pbot-pi-acp.mjs"),
+      } : {}),
+    };
+    let collecting = false;
+    let text = "";
+    const connection = await openAcp(
+      reference,
+      payload.cwd,
+      env,
+      {
+        update(update) {
+          if (collecting && update.sessionUpdate === "agent_message_chunk" && update.content.type === "text") {
+            text += update.content.text;
+          }
+        },
+        async permission() {
+          return { outcome: { outcome: "cancelled" } };
+        },
+      },
+      lifetime.signal,
+      {
+        harness,
+        ...(payload.system ? { systemPrompt: payload.system } : {}),
+      },
+    );
+    try {
+      if (payload.model || payload.thinking) {
+        const parsedModel = payload.model
+          ? (harness.parseModelValue ? harness.parseModelValue(payload.model) : { model: payload.model })
+          : undefined;
+        await connection.configure({
+          ...(parsedModel?.provider ? { provider: parsedModel.provider } : {}),
+          ...(parsedModel?.model ? { model: parsedModel.model } : {}),
+          ...(payload.thinking ? { thinking: payload.thinking } : {}),
+        });
+      }
+      const promptText = !connection.systemPrompt && payload.system
+        ? `${payload.system}\n\n---\n\n${payload.prompt}`
+        : payload.prompt;
+      collecting = true;
+      await connection.prompt([{ type: "text", text: promptText }]);
+      let cleaned = text;
+      if (connection.startupInfo) {
+        if (cleaned.startsWith(connection.startupInfo)) {
+          cleaned = cleaned.slice(connection.startupInfo.length);
+        } else {
+          const trimmedInfo = connection.startupInfo.trim();
+          const trimmedText = cleaned.trimStart();
+          if (trimmedInfo && trimmedText.startsWith(trimmedInfo)) {
+            cleaned = trimmedText.slice(trimmedInfo.length);
+          }
+        }
+      }
+      const answer = cleaned.trim();
+      requireThat(answer.length > 0, "ACP 摘要返回为空。");
+      await sendIpc({ type: "answer", text: answer });
+    } finally {
+      await connection.close();
+    }
+  } catch (error) {
+    await sendIpc({ type: "error", error: errorMessage(error) });
+    process.exitCode = 1;
+  } finally {
+    lifetime.abort();
+    if (process.connected) process.disconnect();
+  }
+}
+
 const args = process.argv.slice(2);
 if (args.includes("--probe")) await runProbe();
+else if (args.includes("--prompt")) await runOneShotPrompt();
 else await runWorker(args);

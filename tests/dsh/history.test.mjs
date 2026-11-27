@@ -1,15 +1,15 @@
-import { test } from "node:test";
+import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, readdir, realpath, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { randomUUID } from "node:crypto";
 import { createAssistantMessage, createUserMessage } from "@deepseek-ai/dsh-llm";
 import { dshHost } from "../helpers/dsh-host.mjs";
-import { DshHistoryWork, registerDshHistoryEvents } from "../../dist/extension/hosts/dsh/history.js";
-import { dshHistorySummarizer } from "../../dist/integrations/hosts/dsh/history-summary.js";
-import { recordHistoryCapture } from "../../dist/services/history/history-capture.js";
-import { HistoryService } from "../../dist/services/history/history-service.js";
-import { HistoryFiles } from "../../dist/storage/history-files.js";
+import * as pbot from "../../dist/dsh.js";
+import { initializeWorkspaceConfig } from "../../dist/services/workspace/workspace-config.js";
+import { readWorkspaceHistory, searchWorkspaceHistory } from "../../dist/services/history/history-query.js";
+import { runWorkspaceSummaries } from "../../dist/services/history/summary-runner.js";
 
 function emitDshExchange(session, turn, question, answer) {
   session.append("turn/start", { turn });
@@ -29,61 +29,71 @@ function emitDshExchange(session, turn, question, answer) {
   session.append("turn/end", { turn, reason: { kind: "completed" } });
 }
 
-test("dsh records root session turns via events and ignores native subagent sessions", async t => {
+test("dsh records root-session raw history, keeps idle silent, and exposes /pbot history commands and pbot_history tool", async t => {
   const root = await realpath(await mkdtemp(join(tmpdir(), "pbot-dsh-history-")));
-  const data = join(root, "dsh-data");
-  t.after(() => rm(root, { recursive: true, force: true }));
-  const host = await dshHost(data);
-  t.after(() => host.close());
+  const saved = { DSH_HOME: process.env.DSH_HOME, XDG_DATA_HOME: process.env.XDG_DATA_HOME, HOME: process.env.HOME };
+  Object.assign(process.env, { HOME: join(root, "user"), XDG_DATA_HOME: join(root, "user/data"), DSH_HOME: join(root, "home") });
+  await initializeWorkspaceConfig(root);
+  const host = await dshHost(join(root, "sessions"));
+  t.after(async () => {
+    await host.close();
+    for (const [key, value] of Object.entries(saved)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+    await rm(root, { recursive: true, force: true });
+  });
 
-  const parent = await host.ctx.agents.create({ cwd: root });
-  const child = await host.ctx.agents.create({ cwd: root, origin: "subagent", parentSession: parent.agent.id });
-  t.after(() => Promise.allSettled([parent.dispose(), child.dispose()]));
+  await host.ctx.plugin(pbot);
+  const parentHandle = await host.ctx.agents.create({
+    sessionId: randomUUID(),
+    meta: { cwd: root },
+    agentOptions: { provider: "not-configured", model: "none" },
+  });
+  const parent = parentHandle.agent;
+  t.after(() => parentHandle.dispose());
 
-  const work = new DshHistoryWork(host.ctx, root);
-  t.after(() => work.close());
-  registerDshHistoryEvents(host.ctx, parent.agent, work, () => {});
+  // Emit a completed root-session turn.
+  emitDshExchange(parent.session, 1, "请记录这条 dsh 对话", "已经记录完成。");
 
-  emitDshExchange(parent.agent.session, 1, "主会话问题 1", "主会话答复 1");
-  emitDshExchange(child.agent.session, 1, "子会话问题", "子会话答复");
-  emitDshExchange(parent.agent.session, 2, "主会话问题 2", "主会话答复 2");
+  // Raw file is written immediately, and NO summary is generated automatically on idle.
+  const rawNames = await readdir(join(root, ".pbot/history/raw"));
+  assert.equal(rawNames.length, 1);
+  assert.ok(rawNames[0].startsWith("dsh-"));
+  await assert.rejects(readdir(join(root, ".pbot/history/summaries")));
 
-  await work.service.refresh();
-  assert.equal(work.service.search({ host: "dsh" }).total, 1);
-  assert.equal(work.service.search({ query: "主会话答复 1" }).total, 1);
-  assert.equal(work.service.search({ query: "主会话答复 2" }).total, 1);
-  assert.equal(work.service.search({ query: "子会话答复" }).total, 0);
+  const signal = new AbortController().signal;
+  const runCmd = async command => {
+    const output = await host.ctx.commands.execute(parent, command, [], signal);
+    assert.equal(output.result.kind, "success", output.result.text);
+    return JSON.parse(output.result.text);
+  };
 
-  const rawFiles = await readdir(join(root, ".pbot/history/raw"));
-  assert.equal(rawFiles.length, 1);
-});
+  // /pbot history status & list commands.
+  const status = await runCmd("/pbot history status");
+  assert.equal(status.rawCount, 1);
+  assert.equal(status.dimensions[0].dimension, "session");
+  assert.equal(status.dimensions[0].pendingCreate, 1);
 
-test("dsh summarizes cross-host raw archives and exposes missing-provider failure cleanly", async t => {
-  const root = await realpath(await mkdtemp(join(tmpdir(), "pbot-dsh-summary-")));
-  const data = join(root, "dsh-data");
-  t.after(() => rm(root, { recursive: true, force: true }));
-  const host = await dshHost(data);
-  t.after(() => host.close());
-  const created = await host.ctx.agents.create({ cwd: root });
-  t.after(() => created.dispose());
+  const dims = await runCmd("/pbot history list");
+  assert.ok(dims.dimensions.some(d => d.id === "session"));
 
-  for (let i = 0; i < 4; i++) {
-    recordHistoryCapture(root, "claude", { kind: "input", sessionId: "claude-1", text: `跨宿主问题 ${i}` });
-    recordHistoryCapture(root, "claude", { kind: "answer", sessionId: "claude-1", assistantText: `跨宿主答复 ${i}`, completed: true });
-  }
+  // Explicit summary run generates the session summary.
+  const summaryReport = await runWorkspaceSummaries({
+    root,
+    summarizer: async () => "dsh 会话摘要：验证了根会话原文采集与查询。",
+  });
+  assert.equal(summaryReport.dimensions[0].created, 1);
 
-  const files = new HistoryFiles(join(root, ".pbot/history"), "dsh");
-  const service = new HistoryService(root, files);
-  t.after(() => service.close());
-  await service.refresh();
-  assert.equal(service.status.pending, 1);
+  // /pbot history JSON query searches both raw and summaries.
+  const searchResult = await runCmd('/pbot history {"action":"search","query":"验证了根会话"}');
+  assert.equal(searchResult.total, 1);
+  assert.equal(searchResult.matches[0].kind, "summary");
+  assert.equal(searchResult.matches[0].dimension, "session");
 
-  const failing = dshHistorySummarizer(host.ctx, { provider: "missing-provider", model: "missing-model" }, created.agent.id);
-  await assert.rejects(service.organize(failing, new AbortController().signal));
-  assert.equal(service.status.pending, 1);
-  assert.equal(service.warnings.length, 1);
-
-  await service.organize(async () => "dsh 为 Claude 生成的摘要", new AbortController().signal);
-  assert.equal(service.status.pending, 0);
-  assert.equal(service.search({ host: "claude", query: "dsh 为 Claude 生成的摘要" }).total, 1);
+  const rawSearch = searchWorkspaceHistory(root, { query: "请记录这条 dsh 对话", dimension: "raw" });
+  assert.equal(rawSearch.total, 1);
+  const readNode = readWorkspaceHistory(root, rawSearch.matches[0].id);
+  assert.equal(readNode.kind, "exchange");
+  assert.ok(readNode.text.includes("已经记录完成。"));
 });

@@ -32,6 +32,7 @@ test("Pi init starts a missing workspace and discovers methods only after activa
   assert.deepEqual(JSON.parse(await readFile(workspaceConfigPath(root), "utf8")), {
     enabled: true,
     features: { prompts: true, skills: true, mcp: true, history: true },
+    summary: { backend: "pi", concurrency: 3 },
   });
   assert.ok(session.getAllTools().some(tool => tool.name === "pbot_history"));
   assert.ok(pbotSkills(session._baseSystemPromptOptions).length > 0);
@@ -55,7 +56,7 @@ test("Pi reload applies workspace opt-in and opt-out and invalidates previously 
   await session._prepareRun({ messageType: "user", prompt: "Inspect disabled workspace" });
   assert.equal(Object.hasOwn(session._runSystemPromptOptions.sections, "pbot_environment"), false);
   assert.deepEqual(pbotSkills(session._runSystemPromptOptions), []);
-  assert.deepEqual(await readdir(join(root, ".pbot")), ["config.json"]);
+  assert.deepEqual((await readdir(join(root, ".pbot"))).sort(), ["config.json", "history"]);
   assert.deepEqual(errors, []);
 });
 

@@ -1,145 +1,383 @@
-import { test } from "node:test";
+import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { HistoryService } from "../../dist/services/history/history-service.js";
+import { createAcpHistorySummarizer } from "../../dist/integrations/acp/history-summary.js";
 import { recordHistoryCapture } from "../../dist/services/history/history-capture.js";
-import { historySummaries, historyView, indexHistory, retainHistorySummaries } from "../../dist/services/history/history-index.js";
+import { fingerprintExchanges, indexHistory, orderedRawExchanges } from "../../dist/services/history/history-index.js";
+import { readWorkspaceHistory, searchWorkspaceHistory, summaryNodeId } from "../../dist/services/history/history-query.js";
+import { parseHistoryCommand } from "../../dist/services/history/summary-command.js";
+import {
+  listSummaryDimensions,
+  registerSummaryDimension,
+  unregisterSummaryDimension,
+} from "../../dist/services/history/summary-registry.js";
+import { inspectWorkspaceSummaries, runWorkspaceSummaries } from "../../dist/services/history/summary-runner.js";
+import { readWorkspaceConfig, workspaceSummaryConfig } from "../../dist/services/workspace/workspace-config.js";
 import { HistoryFiles } from "../../dist/storage/history-files.js";
-import { splitHistorySummary } from "../../dist/integrations/history-summary.js";
-import { historyInput, historyResultSchema } from "../../dist/tools/history/contract.js";
-import { schema } from "../../dist/common/schema.js";
 
-function sessionFixture(sessionId, count, prefix = "问题") {
-  const exchanges = [];
-  for (let i = 0; i < count; i++) {
-    const t = new Date(Date.UTC(2026, 10, 27, 10, i, 0)).toISOString();
-    exchanges.push({
-      entryIds: [`${sessionId}:${i}`],
-      text: `用户：\n${prefix} ${i}\n\n助手：\n答复 ${i}`,
-      from: t,
-      to: t,
-      completed: true,
-    });
-  }
-  return { sessionId, name: "", branches: [exchanges] };
+function exchange(index, text = `问题 ${index}\n\n回答 ${index}`, completed = true) {
+  const time = new Date(Date.UTC(2026, 10, 27, 10, index)).toISOString();
+  return { entryIds: [`u${index}`, `a${index}`], text, from: time, to: time, completed };
 }
 
-test("recordHistoryCapture writes raw archives incrementally per host and isolates foreign raw writes", async t => {
-  const root = await mkdtemp(join(tmpdir(), "pbot-history-"));
+test("session summary creates per-session summary, deduplicates unchanged raw, rolls incrementally, and supports force rebuild", async t => {
+  const root = await realpath(await mkdtemp(join(tmpdir(), "pbot-history-summary-")));
   t.after(() => rm(root, { recursive: true, force: true }));
 
-  recordHistoryCapture(root, "pi", { kind: "input", sessionId: "pi-1", text: "第一问" });
-  recordHistoryCapture(root, "pi", { kind: "answer", sessionId: "pi-1", assistantText: "第一答", completed: true });
-  recordHistoryCapture(root, "dsh", { kind: "input", sessionId: "dsh-1", text: "dsh 问题" });
-  recordHistoryCapture(root, "dsh", { kind: "answer", sessionId: "dsh-1", assistantText: "dsh 答复", completed: true });
-  recordHistoryCapture(root, "antigravity", { kind: "input", sessionId: "agy-1", text: "未完成提问" });
+  recordHistoryCapture(root, "pi", { kind: "input", sessionId: "sess-a", text: "重构 summary 模块并清理所有历史遗留代码", timestamp: "2026-11-27T10:00:00.000Z" });
+  recordHistoryCapture(root, "pi", {
+    kind: "answer",
+    sessionId: "sess-a",
+    assistantText: "详细技术说明：先清理旧格式存储，再实现按会话维度的任务摘要，最后补充并发调度与去重指纹逻辑。旧正文唯一标记OLD_BODY_SENTINEL。",
+    completed: true,
+    timestamp: "2026-11-27T10:01:00.000Z",
+  });
+  recordHistoryCapture(root, "claude", { kind: "input", sessionId: "sess-b", text: "检查依赖边界", timestamp: "2026-11-27T10:02:00.000Z" });
+  recordHistoryCapture(root, "claude", { kind: "answer", sessionId: "sess-b", assistantText: "dependency-cruiser 全部通过。", completed: true, timestamp: "2026-11-27T10:03:00.000Z" });
 
-  const piFiles = new HistoryFiles(join(root, ".pbot/history"), "pi");
-  const dshFiles = new HistoryFiles(join(root, ".pbot/history"), "dsh");
-  const [piArchive] = piFiles.list();
-  const [dshArchive] = dshFiles.list();
-  assert.ok(piArchive && dshArchive);
-  assert.throws(() => piFiles.saveRaw(dshArchive.raw));
-  assert.throws(() => dshFiles.saveRaw(piArchive.raw));
+  const initialStatus = inspectWorkspaceSummaries(root);
+  assert.equal(initialStatus.rawCount, 2);
+  assert.equal(initialStatus.dimensions[0].dimension, "session");
+  assert.equal(initialStatus.dimensions[0].pendingCreate, 2);
+  assert.equal(initialStatus.dimensions[0].ready, 0);
 
-  const service = new HistoryService(root, piFiles);
-  t.after(() => service.close());
-  await service.refresh();
-  assert.equal(service.search().total, 3);
-  assert.equal(service.search({ host: "pi", query: "第一答" }).total, 1);
-  assert.equal(service.search({ host: "dsh", query: "dsh 答复" }).total, 1);
-  const agySession = service.search({ host: "antigravity" }).matches[0];
-  assert.equal(agySession.completed, false);
+  const calls = [];
+  const summarizer = async ({ prompt }) => {
+    calls.push(prompt);
+    if (prompt.includes("重构 summary")) return "摘要A：完成 summary 模块按会话重构设计。";
+    return "摘要B：依赖边界检查全部通过。";
+  };
 
-  const valid = schema(historyResultSchema);
-  assert.equal(valid(service.search()), true);
-  assert.equal(valid({ node: service.read(agySession.id), warnings: service.warnings }), true);
-  assert.throws(() => historyInput({ action: "search", host: "Bad Host!" }));
+  // 1. Initial run creates both summaries.
+  const first = await runWorkspaceSummaries({ root, summarizer });
+  assert.equal(first.dimensions[0].created, 2);
+  assert.equal(first.dimensions[0].skipped, 0);
+  assert.equal(first.dimensions[0].failed.length, 0);
+  assert.equal(calls.length, 2);
+
+  // 2. Re-running with unchanged RAW skips everything (0 LLM calls).
+  calls.length = 0;
+  const second = await runWorkspaceSummaries({ root, summarizer });
+  assert.equal(second.dimensions[0].skipped, 2);
+  assert.equal(second.dimensions[0].created, 0);
+  assert.equal(second.dimensions[0].incremental, 0);
+  assert.equal(calls.length, 0);
+
+  // 3. Appending a new turn to sess-a triggers rolling incremental update (sends existing summary + new turn only).
+  recordHistoryCapture(root, "pi", { kind: "input", sessionId: "sess-a", text: "补充去重和 rg 搜索", timestamp: "2026-11-27T10:05:00.000Z" });
+  recordHistoryCapture(root, "pi", { kind: "answer", sessionId: "sess-a", assistantText: "已加入 SHA-256 指纹去重与 rg 预过滤。", completed: true, timestamp: "2026-11-27T10:06:00.000Z" });
+
+  const midStatus = inspectWorkspaceSummaries(root);
+  assert.equal(midStatus.dimensions[0].ready, 1);
+  assert.equal(midStatus.dimensions[0].pendingIncremental, 1);
+
+  calls.length = 0;
+  const third = await runWorkspaceSummaries({
+    root,
+    summarizer: async ({ prompt }) => {
+      calls.push(prompt);
+      return "摘要A（更新）：完成按会话重构、SHA-256 指纹去重与 rg 搜索隔离。";
+    },
+  });
+  assert.equal(third.dimensions[0].skipped, 1);
+  assert.equal(third.dimensions[0].incremental, 1);
+  assert.equal(calls.length, 1);
+  assert.ok(calls[0].includes("已有摘要"));
+  assert.ok(calls[0].includes("补充去重和 rg 搜索"));
+  assert.ok(!calls[0].includes("OLD_BODY_SENTINEL"));
+
+  // 4. Force run rebuilds all sessions regardless of matching fingerprints.
+  calls.length = 0;
+  const forced = await runWorkspaceSummaries({ root, summarizer, force: true });
+  assert.equal(forced.dimensions[0].rebuilt, 2);
+  assert.equal(forced.dimensions[0].skipped, 0);
+  assert.equal(calls.length, 2);
+
+  // Verify storage layout only uses raw/ and summaries/<dimension>/.
+  const topDirs = (await readdir(join(root, ".pbot/history"))).sort();
+  assert.deepEqual(topDirs, ["raw", "summaries"]);
+  const dimDirs = await readdir(join(root, ".pbot/history/summaries"));
+  assert.deepEqual(dimDirs, ["session"]);
 });
 
-test("damaged raw or summary files emit warnings while keeping valid archives searchable", async t => {
-  const root = await mkdtemp(join(tmpdir(), "pbot-history-damaged-"));
-  t.after(() => rm(root, { recursive: true, force: true }));
+test("custom summary dimensions can be registered, executed, and queried independently", async t => {
+  const root = await realpath(await mkdtemp(join(tmpdir(), "pbot-history-dims-")));
+  t.after(() => {
+    unregisterSummaryDimension("decisions");
+    return rm(root, { recursive: true, force: true });
+  });
+
   const files = new HistoryFiles(join(root, ".pbot/history"), "pi");
-  const pi = indexHistory(sessionFixture("s1", 4, "正常问题"), undefined, "pi");
-  const dsh = indexHistory(sessionFixture("s2", 4, "其他宿主"), undefined, "dsh");
-  files.saveRaw(pi);
-  new HistoryFiles(files.directory, "dsh").saveRaw(dsh);
-
-  const service = new HistoryService(root, files);
-  t.after(() => service.close());
-  await service.refresh();
-  assert.equal(service.search().total, 2);
-
-  // Corrupt summary file: raw exchanges stay readable with a warning.
-  const summaryPath = join(files.directory, "summary", pi.id + ".json");
-  await writeFile(join(files.directory, "raw", "broken.json"), "{invalid json");
-  await service.refresh();
-  assert.equal(service.search().total, 2);
-  assert.equal(service.warnings.length, 1);
-  await rm(join(files.directory, "raw", "broken.json"));
-
-  // Corrupt raw host format: rejected with warning, peer stays readable.
-  const piPath = join(files.directory, "raw", pi.id + ".json");
-  const original = await readFile(piPath, "utf8");
-  for (const broken of [JSON.stringify({ ...pi, host: undefined }), JSON.stringify({ ...pi, host: "Bad Host!" }), "invalid JSON"]) {
-    await writeFile(piPath, broken);
-    await service.refresh();
-    assert.equal(service.search().total, 1);
-    assert.equal(service.search().matches[0].host, "dsh");
-    assert.equal(service.warnings.length, 1);
-  }
-  await writeFile(piPath, original);
-  await service.refresh();
-  await service.organize(async ({ prompt }) => "摘要：" + prompt.slice(0, 12), new AbortController().signal);
-  await writeFile(summaryPath, "{broken summary");
-  await service.refresh();
-  assert.equal(service.search({ host: "pi", query: "正常问题 0" }).total, 1);
-  assert.equal(service.warnings.length, 1);
-});
-
-test("history searches all levels, pages text and children, and invalidates summaries on exchange changes", async t => {
-  const root = await mkdtemp(join(tmpdir(), "pbot-history-levels-"));
-  t.after(() => rm(root, { recursive: true, force: true }));
-  const files = new HistoryFiles(join(root, ".pbot/history"), "pi");
-  const raw = indexHistory(sessionFixture("long-session", 16, "深层话题"), undefined, "pi");
+  const raw = indexHistory({ sessionId: "s1", name: "架构评审", branches: [[exchange(1, "决定采用注册表模式")]] }, undefined, "pi");
   files.saveRaw(raw);
 
-  const service = new HistoryService(root, files);
-  t.after(() => service.close());
-  await service.refresh();
-  assert.equal(service.status.pending, 5); // 4 level-1 + 1 level-2
-  await service.organize(async ({ prompt }) => "汇总：" + prompt.slice(0, 20), new AbortController().signal);
-  assert.equal(service.status.pending, 0);
+  registerSummaryDimension({
+    id: "decisions",
+    title: "关键决策摘要",
+    description: "提取跨会话架构决定",
+    plan(raws, existing, { force = false } = {}) {
+      const tasks = [];
+      let skipped = 0;
+      for (const item of raws) {
+        const ordered = orderedRawExchanges(item);
+        const fingerprint = fingerprintExchanges(ordered);
+        const prev = existing.get(item.id);
+        if (!force && prev?.source.fingerprint === fingerprint) { skipped++; continue; }
+        tasks.push({
+          id: item.id,
+          dimension: "decisions",
+          mode: prev ? "rebuild" : "create",
+          title: item.name,
+          host: item.host,
+          sessionId: item.sessionId,
+          from: ordered[0].from,
+          to: ordered.at(-1).to,
+          source: { rawIds: [item.id], exchangeIds: ordered.map(e => e.id), fingerprint },
+          exchanges: ordered,
+        });
+      }
+      return { tasks, skipped };
+    },
+    buildRequest(task) {
+      return { system: "提取决策", prompt: task.exchanges.map(e => e.text).join("\n"), maxTokens: 512 };
+    },
+    finalize(task, output, now) {
+      return {
+        id: task.id,
+        dimension: "decisions",
+        host: task.host,
+        sessionId: task.sessionId,
+        title: task.title,
+        text: output.trim(),
+        from: task.from,
+        to: task.to,
+        updatedAt: now,
+        source: task.source,
+      };
+    },
+  });
 
-  const sessionHit = service.search().matches[0];
-  const rootNode = service.read(sessionHit.id);
-  assert.equal(rootNode.children.length, 1);
-  const topSummary = service.read(rootNode.children[0].id);
-  assert.equal(topSummary.kind, "summary");
-  assert.equal(topSummary.children.length, 4);
+  assert.ok(listSummaryDimensions().some(d => d.id === "decisions"));
 
-  // Paging text works on exchange nodes.
-  const firstChild = service.read(topSummary.children[0].id);
-  const leaf = service.read(firstChild.children[0].id, 0, 10);
-  assert.equal(leaf.text.length, 10);
-  assert.equal(leaf.nextOffset, 10);
+  const report = await runWorkspaceSummaries({
+    root,
+    dimensions: ["decisions"],
+    summarizer: async () => "决策记录：使用 SummaryRegistry 支持多维度摘要扩展。",
+  });
+  assert.equal(report.dimensions.length, 1);
+  assert.equal(report.dimensions[0].dimension, "decisions");
+  assert.equal(report.dimensions[0].created, 1);
 
-  // retainHistorySummaries invalidates only changed branches.
-  const archive = historyView(raw, files.readArchive(raw.id).summaries);
-  const savedSummaries = historySummaries(archive);
-  const mutated = structuredClone(raw);
-  mutated.exchanges[0].text += "\n修订";
-  const retained = retainHistorySummaries(raw, mutated, savedSummaries);
-  assert.equal(retained.filter(s => !s.ready).length, 2); // level-1[0] and level-2
-  assert.equal(retained.filter(s => s.ready).length, 3); // other 3 level-1 summaries retained
+  const hitGlobal = searchWorkspaceHistory(root, { query: "SummaryRegistry" });
+  assert.equal(hitGlobal.total, 1);
+  assert.equal(hitGlobal.matches[0].kind, "summary");
+  assert.equal(hitGlobal.matches[0].dimension, "decisions");
+
+  const hitRawOnly = searchWorkspaceHistory(root, { query: "SummaryRegistry", dimension: "raw" });
+  assert.equal(hitRawOnly.total, 0);
+
+  const hitDimList = searchWorkspaceHistory(root, { dimension: "decisions" });
+  assert.equal(hitDimList.total, 1);
+
+  const summaryNode = readWorkspaceHistory(root, summaryNodeId("decisions", raw.id));
+  assert.equal(summaryNode.kind, "summary");
+  assert.equal(summaryNode.dimension, "decisions");
+  assert.equal(summaryNode.parents[0].id, raw.id);
+  assert.equal(summaryNode.children.length, 1);
+
+  const sessionNode = readWorkspaceHistory(root, raw.id);
+  assert.equal(sessionNode.kind, "session");
+  assert.equal(sessionNode.children[0].kind, "summary");
+  assert.equal(sessionNode.children[1].kind, "exchange");
+
+  const exchangeNode = readWorkspaceHistory(root, raw.exchanges[0].id);
+  assert.equal(exchangeNode.kind, "exchange");
+  assert.ok(exchangeNode.parents.some(p => p.id === raw.id));
+  assert.ok(exchangeNode.parents.some(p => p.id === summaryNodeId("decisions", raw.id)));
 });
 
-test("summary splitting preserves Unicode and text across bounded segments", () => {
-  const text = "你好😀世界".repeat(12);
-  const parts = splitHistorySummary(text, 7);
-  assert.equal(parts.join(""), text);
-  assert.ok(parts.every(part => part.length > 0 && part.length <= 7));
+test("createAcpHistorySummarizer spawns one isolated ACP worker per session with PBOT_SUBAGENT_RUN_ID and optional model override", async t => {
+  const root = await realpath(await mkdtemp(join(tmpdir(), "pbot-acp-summary-")));
+  t.after(() => rm(root, { recursive: true, force: true }));
+
+  const logFile = join(root, "worker-invocations.jsonl");
+  const acpScript = join(root, "local-acp.mjs");
+  await writeFile(acpScript, `#!/usr/bin/env node
+import { appendFileSync } from "node:fs";
+import readline from "node:readline";
+
+const logPath = process.env.SUMMARY_TEST_LOG;
+const rl = readline.createInterface({ input: process.stdin });
+const send = msg => process.stdout.write(JSON.stringify(msg) + "\\n");
+let configuredModel = null;
+
+rl.on("line", line => {
+  if (!line.trim()) return;
+  const req = JSON.parse(line);
+  if (req.method === "initialize") {
+    send({
+      jsonrpc: "2.0",
+      id: req.id,
+      result: {
+        protocolVersion: 1,
+        agentCapabilities: { sessionCapabilities: { systemPrompt: true, close: true } },
+      },
+    });
+  } else if (req.method === "session/new") {
+    const sid = "acp-sess-" + process.pid;
+    send({
+      jsonrpc: "2.0",
+      id: req.id,
+      result: {
+        sessionId: sid,
+        configOptions: [
+          {
+            id: "model",
+            name: "Model",
+            category: "model",
+            type: "select",
+            currentValue: "default/model",
+            options: [
+              { value: "default/model", name: "Default Model" },
+              { value: "fast/model", name: "Fast Model" },
+            ],
+          },
+        ],
+        _meta: {
+          piAcp: {
+            startupInfo: "pi v1.6.1\\n---\\n\\n## Context\\n- AGENTS.md\\n",
+          },
+        },
+      },
+    });
+  } else if (req.method === "session/set_config_option") {
+    configuredModel = req.params.value;
+    send({
+      jsonrpc: "2.0",
+      id: req.id,
+      result: {
+        configOptions: [
+          {
+            id: "model",
+            name: "Model",
+            category: "model",
+            type: "select",
+            currentValue: configuredModel,
+            options: [
+              { value: "default/model", name: "Default Model" },
+              { value: "fast/model", name: "Fast Model" },
+            ],
+          },
+        ],
+      },
+    });
+  } else if (req.method === "session/prompt") {
+    appendFileSync(logPath, JSON.stringify({
+      pid: process.pid,
+      subagentRunId: process.env.PBOT_SUBAGENT_RUN_ID ?? null,
+      configuredModel,
+    }) + "\\n");
+    const text = req.params.prompt[0]?.text ?? "";
+    const tag = text.includes("会话一") ? "摘要一" : "摘要二";
+    // Simulate pi-acp flushing startupInfo inside the first prompt turn.
+    send({
+      jsonrpc: "2.0",
+      method: "session/update",
+      params: {
+        sessionId: req.params.sessionId,
+        update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "pi v1.6.1\\n---\\n\\n## Context\\n- AGENTS.md\\n" } },
+      },
+    });
+    send({
+      jsonrpc: "2.0",
+      method: "session/update",
+      params: {
+        sessionId: req.params.sessionId,
+        update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: tag + "：" + (configuredModel ?? "default") } },
+      },
+    });
+    send({ jsonrpc: "2.0", id: req.id, result: { stopReason: "end_turn" } });
+  } else if (req.method === "session/close") {
+    send({ jsonrpc: "2.0", id: req.id, result: {} });
+  }
+});
+`);
+  await chmod(acpScript, 0o755);
+
+  recordHistoryCapture(root, "pi", { kind: "input", sessionId: "s-one", text: "会话一：需求讨论", timestamp: "2026-11-27T12:00:00.000Z" });
+  recordHistoryCapture(root, "pi", { kind: "answer", sessionId: "s-one", assistantText: "会话一完成。", completed: true, timestamp: "2026-11-27T12:01:00.000Z" });
+  recordHistoryCapture(root, "dsh", { kind: "input", sessionId: "s-two", text: "会话二：接口设计", timestamp: "2026-11-27T12:02:00.000Z" });
+  recordHistoryCapture(root, "dsh", { kind: "answer", sessionId: "s-two", assistantText: "会话二完成。", completed: true, timestamp: "2026-11-27T12:03:00.000Z" });
+
+  const commands = {
+    "summary-test": { command: process.execPath, args: [acpScript], env: { SUMMARY_TEST_LOG: logFile } },
+  };
+
+  // Default model (no override): spawns 2 isolated workers with distinct PIDs and PBOT_SUBAGENT_RUN_ID set.
+  const summarizerDefault = createAcpHistorySummarizer({ cwd: root, backend: "summary-test", commands });
+  const firstRun = await runWorkspaceSummaries({ root, summarizer: summarizerDefault, concurrency: 2 });
+  assert.equal(firstRun.dimensions[0].created, 2);
+  assert.equal(firstRun.dimensions[0].failed.length, 0);
+
+  const logs = (await readFile(logFile, "utf8")).trim().split("\n").map(line => JSON.parse(line));
+  assert.equal(logs.length, 2);
+  assert.notEqual(logs[0].pid, logs[1].pid);
+  assert.ok(logs.every(entry => typeof entry.subagentRunId === "string" && entry.subagentRunId.startsWith("pbot-summary-")));
+  assert.ok(logs.every(entry => entry.configuredModel === null));
+  // Summary runs must not create any extra raw history files.
+  assert.equal((await readdir(join(root, ".pbot/history/raw"))).length, 2);
+
+  // Model override with --force applies set_config_option.
+  const summarizerOverride = createAcpHistorySummarizer({ cwd: root, backend: "summary-test", commands, model: "fast/model" });
+  const forcedRun = await runWorkspaceSummaries({ root, summarizer: summarizerOverride, force: true, concurrency: 2 });
+  assert.equal(forcedRun.dimensions[0].rebuilt, 2);
+  const hit = searchWorkspaceHistory(root, { query: "摘要一：fast/model", dimension: "session" });
+  assert.equal(hit.total, 1);
+  assert.equal(hit.matches[0].snippet.includes("pi v1.6.1"), false);
+});
+
+test("workspace summary config defaults to pi and validates optional overrides", async t => {
+  const root = await realpath(await mkdtemp(join(tmpdir(), "pbot-summary-cfg-")));
+  t.after(() => rm(root, { recursive: true, force: true }));
+
+  assert.deepEqual(workspaceSummaryConfig(undefined), { backend: "pi", concurrency: 3 });
+
+  await mkdir(join(root, ".pbot"), { recursive: true });
+  await writeFile(join(root, ".pbot/config.json"), JSON.stringify({
+    enabled: true,
+    summary: { backend: "dsh", model: "deepseek-v4-flash", thinking: "low", concurrency: 4 },
+  }));
+  const cfg = await readWorkspaceConfig(root);
+  assert.equal(cfg.error, undefined);
+  assert.deepEqual(workspaceSummaryConfig(cfg), {
+    backend: "dsh",
+    model: "deepseek-v4-flash",
+    thinking: "low",
+    concurrency: 4,
+  });
+
+  await writeFile(join(root, ".pbot/config.json"), JSON.stringify({
+    enabled: true,
+    summary: { concurrency: 99 },
+  }));
+  const invalid = await readWorkspaceConfig(root);
+  assert.equal(invalid.enabled, false);
+  assert.ok(invalid.error?.includes("summary.concurrency"));
+});
+
+test("parseHistoryCommand handles status, list, summary options, and JSON queries", () => {
+  assert.deepEqual(parseHistoryCommand(""), { kind: "status" });
+  assert.deepEqual(parseHistoryCommand("status"), { kind: "status" });
+  assert.deepEqual(parseHistoryCommand("list"), { kind: "list" });
+  assert.deepEqual(parseHistoryCommand("summary"), { kind: "summary", force: false });
+  assert.deepEqual(
+    parseHistoryCommand("summary session --force --backend dsh --model flash --thinking low"),
+    { kind: "summary", dimensions: ["session"], force: true, backend: "dsh", model: "flash", thinking: "low" },
+  );
+  assert.deepEqual(parseHistoryCommand('{"action":"search","query":"abc"}'), { kind: "query", input: { action: "search", query: "abc" } });
+  assert.throws(() => parseHistoryCommand("summary --unknown"));
+  assert.throws(() => parseHistoryCommand("summary --backend"));
+  assert.throws(() => parseHistoryCommand("invalid"));
 });
