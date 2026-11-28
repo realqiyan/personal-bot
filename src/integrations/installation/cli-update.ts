@@ -1,11 +1,11 @@
 import { execFile, spawn } from "node:child_process";
 import { lstat, mkdir, readFile, realpath, rmdir } from "node:fs/promises";
 import { homedir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join } from "node:path";
 import { promisify } from "node:util";
 import { gt, lt, valid } from "semver";
 import { object } from "../../common/json.js";
-import { resourceRoot } from "../../common/paths.js";
+import { packageRoot } from "../../common/paths.js";
 import { requireThat } from "../../common/validation.js";
 import { packageVersion } from "../../common/version.js";
 
@@ -60,7 +60,7 @@ async function globalPackage(): Promise<string | undefined> {
   const directory = join(stdout.trim(), "personal-bot");
   try {
     // An npm link points at a development checkout; keep updates out of that checkout.
-    if ((await lstat(directory)).isDirectory() && await realpath(directory) === await realpath(resolve(resourceRoot, ".."))) return directory;
+    if ((await lstat(directory)).isDirectory() && await realpath(directory) === await realpath(packageRoot)) return directory;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
   }

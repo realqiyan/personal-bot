@@ -88,7 +88,7 @@ MCP Server (src/extension/mcp/workers.ts) -> AgentService -> AcpWorkerHost -> sr
 ## 4. 可扩展宿主升级适配器（`HostUpgraderRegistry`）
 
 ```text
-pbot upgrade|update (src/extension/setup/upgrade.ts)
+pbot upgrade|update (src/extension/cli/commands/upgrade.ts)
         ↓
 src/services/installation/upgrade-service.ts (宿主无关编排与单宿主容错)
         ↓

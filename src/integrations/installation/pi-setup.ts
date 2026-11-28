@@ -1,16 +1,19 @@
 import { access, readFile, realpath } from "node:fs/promises";
-import { constants } from "node:fs";
+import { constants, existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { checkStableVersion, npmName } from "../../common/package-source.js";
+import { packageRoot as pbotPackageRoot } from "../../common/paths.js";
 import type { InstalledPackage, PackageChoice, PiInstallation, SetupOperations, SystemCommand } from "../../model/installation.js";
 import { findExecutable, npmGlobalBinary, SetupProcesses } from "./processes.js";
 
 export const piPackageName = "@earendil-works/pi-coding-agent";
 export class PiBootstrapRequired extends Error {}
-const bridge = fileURLToPath(new URL("./pi-bridge.js", import.meta.url));
-const guard = fileURLToPath(new URL("../../extension/setup/guard.js", import.meta.url));
+const localBridge = fileURLToPath(new URL("./pi-bridge.js", import.meta.url));
+const bridge = existsSync(localBridge) ? localBridge : join(pbotPackageRoot, "lib/integrations/installation/pi-bridge.js");
+const localGuard = fileURLToPath(new URL("../../extension/setup/guard.js", import.meta.url));
+const guard = existsSync(localGuard) ? localGuard : join(pbotPackageRoot, "lib/extension/setup/guard.js");
 
 async function packageRoot(command: string, version: string, env: NodeJS.ProcessEnv): Promise<string> {
   const resolved = await realpath(command);

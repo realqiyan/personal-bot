@@ -2,6 +2,7 @@ import { cp, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/pr
 import { resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { bundleNode, compileProject, root } from "./compile-project.mjs";
+import { workspaceCliShim } from "./build-cli.mjs";
 async function copyLicenseAndDisclaimer(directory) {
   for (const file of ["LICENSE", "DISCLAIMER.md"]) {
     await cp(resolve(root, file), resolve(directory, file));
@@ -170,7 +171,8 @@ const repoUrl = typeof repository === "string"
 const runtime = await mkdtemp(resolve(tmpdir(), "pbot-plugin-runtime-"));
 try {
   compileProject("tsconfig.claude.json", runtime);
-  await bundleNode("src/extension/setup/workspace-cli.ts", resolve(runtime, "extension/workspace-cli.js"));
+  await bundleNode("src/extension/cli/index.ts", resolve(runtime, "extension/cli.js"));
+  await writeFile(resolve(runtime, "extension/workspace-cli.js"), workspaceCliShim);
   await bundleNode("src/mcp.ts", resolve(runtime, "extension/mcp.js"));
   await bundleNode("src/extension/acp/worker.ts", resolve(runtime, "extension/acp-worker.js"));
   await cp(runtime, resolve(root, "lib"), { recursive: true });

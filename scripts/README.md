@@ -5,7 +5,7 @@
 | 命令 | 作用 |
 | --- | --- |
 | `npm run build` | 清理 `dist`，编译测试模块，再依次构建 CLI、dsh 与插件产物 |
-| `npm run build:cli` | 清理 `lib`，编译安装器、Pi 检查桥接与启动保护，打包工作区 CLI（`init`、`status`、`history`） |
+| `npm run build:cli` | 清理 `lib`，编译 Pi 检查桥接与启动保护，打包统一 CLI（`lib/extension/cli.js` 与 `workspace-cli.js` 兼容入口） |
 | `npm run build:dsh` | 编译 Host，将 TypeBox 与许可证纳入 `lib`，再构建原生 Web Loader 模块 |
 | `npm run build:plugins`（`build:claude` 别名） | 在临时目录编译一次共享插件运行时（`lib/plugin.js`、`lib/claude.js`），通过 `esbuild` 打包零外部依赖的 `lib/extension/mcp.js` 与 `lib/extension/acp-worker.js`，并执行各已注册插件宿主构建目标（同步 Claude 清单、组装自包含 `lib/antigravity-plugin/`、生成 `lib/codex-marketplace/` 与 `lib/qoder-plugin/`） |
 

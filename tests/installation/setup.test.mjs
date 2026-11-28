@@ -5,7 +5,8 @@ import { mkdtemp, mkdir, readFile, readdir, realpath, rm, symlink, writeFile } f
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
-import { packageChoices, parseCatalog, parseSetupArgs, executeSetup } from "../../dist/services/installation/setup-service.js";
+import { packageChoices, parseCatalog, executeSetup } from "../../dist/services/installation/setup-service.js";
+import { extractCommonFlags } from "../../dist/extension/cli/args.js";
 import { checkStableVersion, npmName, ordinaryNpm } from "../../dist/common/package-source.js";
 import { SetupProcesses, findExecutable, tmuxInstallCommand } from "../../dist/integrations/installation/processes.js";
 import { PiBootstrapRequired, PiSetup } from "../../dist/integrations/installation/pi-setup.js";
@@ -28,13 +29,42 @@ async function fixture(t) {
 
 const plugin = (id, source = `npm:${id}`) => ({ id, source, label: id, description: id, defaultSelected: true });
 
-test("setup arguments preserve paths and reject ambiguous or unsupported invocations", () => {
-  assert.deepEqual(parseSetupArgs(["setup", "--workspace", "a b/研究"]), { action: "setup", workspace: "a b/研究" });
-  assert.deepEqual(parseSetupArgs(["install-antigravity"]), { action: "install-antigravity" });
-  assert.deepEqual(parseSetupArgs(["mcp"]), { action: "mcp" });
-  assert.deepEqual(parseSetupArgs([]), { action: "help" });
-  for (const args of [["unknown"], ["install-antigravity", "--yes"], ["mcp", "--yes"], ["setup", "--workspace"], ["setup", "--workspace", "--yes"],
-    ["setup", "--workspace", "a", "--workspace", "b"], ["setup", "--yes"]]) assert.throws(() => parseSetupArgs(args));
+test("CLI arguments preserve paths, support global flags before or after commands, and reject invalid invocations", async t => {
+  assert.deepEqual(extractCommonFlags(["setup", "--workspace", "a b/研究"]), { workspace: "a b/研究", json: false, help: false, rest: ["setup"] });
+  assert.deepEqual(extractCommonFlags(["--workspace=a b/研究", "--json", "status"]), { workspace: "a b/研究", json: true, help: false, rest: ["status"] });
+  assert.deepEqual(extractCommonFlags(["mcp", "add", "svc", "--workspace", "ws", "--", "node", "--workspace", "ignored"]), {
+    workspace: "ws", json: false, help: false, rest: ["mcp", "add", "svc", "--", "node", "--workspace", "ignored"],
+  });
+  for (const args of [
+    ["setup", "--workspace"],
+    ["setup", "--workspace", "--yes"],
+    ["setup", "--workspace", "a", "--workspace", "b"],
+  ]) assert.throws(() => extractCommonFlags(args));
+
+  const f = await fixture(t);
+  const cli = resolve("bin/pbot.mjs");
+  const run = args => exec(process.execPath, [cli, ...args], { cwd: f.workspace, env: { HOME: f.home, PATH: process.env.PATH } });
+  const rootHelp = (await run(["--help"])).stdout;
+  assert.match(rootHelp, /pbot <命令>/);
+  const mcpHelp = (await run(["mcp", "--help"])).stdout;
+  assert.match(mcpHelp, /pbot mcp list/);
+  const upgradeHelp = (await run(["help", "upgrade"])).stdout;
+  assert.match(upgradeHelp, /pbot upgrade\|update/);
+  const version = JSON.parse(await readFile("package.json", "utf8")).version;
+  const prefixedUpgrade = JSON.parse((await run(["--workspace", f.workspace, "--json", "upgrade", "--version", version])).stdout);
+  assert.equal(prefixedUpgrade.workspaceRoot, f.workspace);
+  assert.equal(prefixedUpgrade.ok, true);
+  const addedMcp = JSON.parse((await run(["mcp", "add", `--workspace=${f.workspace}`, "demo", "--", "node", "--help"])).stdout);
+  assert.deepEqual(addedMcp.server, { command: "node", args: ["--help"] });
+  for (const args of [
+    ["unknown"],
+    ["install-antigravity", "--yes"],
+    ["install-antigravity", "--workspace", f.workspace],
+    ["mcp", "--yes"],
+    ["setup", "--yes"],
+  ]) {
+    await assert.rejects(run(args), error => error.code === 2);
+  }
 });
 
 test("plugin catalog cannot contain duplicate package identities or non-npm execution sources", () => {

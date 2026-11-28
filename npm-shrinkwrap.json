@@ -1,12 +1,12 @@
 {
   "name": "personal-bot",
-  "version": "0.3.4",
+  "version": "0.3.5",
   "lockfileVersion": 3,
   "requires": true,
   "packages": {
     "": {
       "name": "personal-bot",
-      "version": "0.3.4",
+      "version": "0.3.5",
       "license": "MIT",
       "dependencies": {
         "@agentclientprotocol/sdk": "2.6.0",

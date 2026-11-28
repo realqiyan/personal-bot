@@ -41,41 +41,6 @@ export function packageChoices(catalog: PluginSpec[], installed: InstalledPackag
       selected: plugin.id === "pbot" || (first ? plugin.defaultSelected : existing.length > 0), keep: custom };
   });
 }
-export function parseSetupArgs(args: string[]): {
-  action: "help" | "version" | "setup" | "upgrade" | "install-antigravity" | "mcp" | "mcp-manage";
-  workspace?: string;
-  mcpArgs?: string[];
-  upgradeArgs?: string[];
-  upgradeVerb?: "upgrade" | "update";
-} {
-  if (!args.length || args.length === 1 && ["--help", "-h"].includes(args[0]!)) return { action: "help" };
-  if (args.length === 1 && ["--version", "-v"].includes(args[0]!)) return { action: "version" };
-  if (args[0] === "upgrade" || args[0] === "update") {
-    return { action: "upgrade", upgradeArgs: args.slice(1), upgradeVerb: args[0] };
-  }
-  if (args[0] === "install-antigravity") {
-    if (args.length === 1) return { action: "install-antigravity" };
-    if (args.length === 2 && ["--help", "-h"].includes(args[1]!)) return { action: "help" };
-    throw new Error("用法：pbot install-antigravity");
-  }
-  if (args[0] === "mcp") {
-    if (args.length === 1) return { action: "mcp" };
-    if (args.length === 2 && ["--help", "-h"].includes(args[1]!)) return { action: "help" };
-    if (["list", "add", "remove"].includes(args[1]!)) return { action: "mcp-manage", mcpArgs: args.slice(1) };
-    throw new Error("用法：pbot mcp [list|add|remove ...]");
-  }
-  if (args[0] !== "setup") throw new Error("用法：pbot setup [--workspace <目录>] | pbot upgrade|update [--workspace <目录>] | pbot install-antigravity | pbot mcp [list|add|remove ...]");
-  let workspace: string | undefined;
-  for (let index = 1; index < args.length; index++) {
-    const arg = args[index]!;
-    if ((arg === "--help" || arg === "-h") && args.length === 2) return { action: "help" };
-    if (arg !== "--workspace" || workspace !== undefined) throw new Error(`不支持的参数：${arg}`);
-    const value = args[++index];
-    if (!value || value.startsWith("--") || /[\x00-\x1f\x7f]/.test(value)) throw new Error("--workspace 需要目录。");
-    workspace = value;
-  }
-  return workspace === undefined ? { action: "setup" } : { action: "setup", workspace };
-}
 
 export async function executeSetup(plan: SetupPlan, operations: SetupOperations,
   report: (result: SetupResult) => void, signal: AbortSignal): Promise<{ pi?: PiInstallation; results: SetupResult[] }> {
