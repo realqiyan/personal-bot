@@ -23,14 +23,10 @@ Personal Bot 复用各宿主的原生 CLI、MCP、认证与权限体系，不额
   - **dsh**：使用原生 `@deepseek-ai/dsh-mcp-client` 与 profile 配置管理外部 MCP。
   - **Claude Code**：使用 `claude mcp add --scope project <server> ...`（写入 `.mcp.json`），会话内 `/mcp` 核对状态。
   - **Antigravity**：全局使用 `agy mcp add|remove|list`（管理 `~/.gemini/config/mcp_config.json`）。
+  - **其他宿主（如 Codex、Qoder CLI）**：使用对应宿主自带的原生 MCP 命令或配置入口管理。
 - 外部系统接入与排障使用工作区按需技能 [provider-connections](../../resources/skills/provider-connections/SKILL.md)。
 
-## Python 计算
+## 运行环境与可选扩展
 
-各宿主与 ACP worker 均通过原生 Bash 调用项目声明的 Python 解释器、依赖与工作目录，不修改 Python 环境变量。按需读取：
-- 通用计算方法：[resources/references/compute.md](../../resources/references/compute.md)
-- 技术指标与回测：[resources/references/compute-finance.md](../../resources/references/compute-finance.md)
-
-## 可选 Task Conductor
-
-周期任务、重复流程、DAG 或宿主关闭后仍需持续执行的任务使用可选的 `task-conductor-plugin`（通过宿主原生 MCP 接入），安装与配置遵循[上游接入指南](https://github.com/realqiyan/task-conductor/blob/master/docs/host-integrations.md)。Personal Bot 通过 [resources/references/task-conductor.md](../../resources/references/task-conductor.md) 提供按需操作参考。
+- **项目计算与脚本执行**：各宿主与 ACP worker 直接通过原生 Bash 遵循项目声明的解释器、依赖与工作目录。领域特定的计算规范或方法保存在工作区 `knowledge/` 或 `.agents/skills/` 中按需加载。
+- **可选第三方插件与调度工具**：Personal Bot 不内置第三方插件的引导与操作手册；如需周期调度、DAG 或其他外部能力，直接按上游文档在对应宿主中安装配置并使用其自身技能或工具说明。

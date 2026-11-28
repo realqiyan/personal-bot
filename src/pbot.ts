@@ -34,7 +34,7 @@ export default function pbot(pi: ExtensionAPI) {
           ...server,
           exposure: "direct",
           timeout: 600,
-          description: "跨代理程序委派（worker_*）",
+          description: "跨助手委派（worker_*）",
         });
         registeredMcpServers.push(mcpServerName);
       }

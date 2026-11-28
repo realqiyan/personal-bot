@@ -26,7 +26,7 @@ Personal Bot is a harness-agnostic workspace and unified MCP cross-harness deleg
 - `src/ui/`: host-specific UI under `pi/` (`confirmation.ts`) and `dsh/` (Web workspace/history UI).
 - `src/common/`: shared JSON, validation, schema, file, path, and version helpers.
 - `.claude-plugin/`, `hooks/hooks.json`, `.mcp.json`: Claude plugin discovery, command hooks (workspace context & skill gating only — never intercepts native subagents), and MCP server declaration.
-- `resources/`: model-facing prompts, roles, skills, references, and templates (strictly separate from developer docs).
+- `resources/`: model-facing prompts, roles, skills, and templates (strictly separate from developer docs).
 - `tests/`: real-process Node tests under domain subdirectories; real-model acceptance runs separately.
 - `docs/`: categorized documentation (`docs/README.md` index → `hosts/`, `guides/`, `architecture/`, `maintainers/`).
 - `scripts/`: build helpers (`build-cli.mjs`, `build-dsh.mjs`, `build-plugins.mjs`) and consumer checks.

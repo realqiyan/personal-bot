@@ -459,7 +459,9 @@ test("workspace MCP bridge serves stdio and Streamable HTTP servers, hot-reloads
   });
   const bound = new McpClient(boundChild);
   t.after(() => bound.close());
-  await bound.request("initialize", { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "test", version: "1.0.0" } });
+  const boundInit = await bound.request("initialize", { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "test", version: "1.0.0" } });
+  assert.equal(boundInit.result.instructions.includes("workspace_mcp_"), false);
+  assert.equal(boundInit.result.instructions.includes("history_search"), false);
   const boundTools = (await bound.request("tools/list")).result.tools.map(tool => tool.name);
   assert.deepEqual(boundTools, ["worker_create", "worker_close", "worker_request", "worker_response", "worker_output", "worker_discover"]);
 
@@ -480,6 +482,7 @@ test("workspace MCP bridge serves stdio and Streamable HTTP servers, hot-reloads
   t.after(() => nativeMcp.close());
   const nativeInit = await nativeMcp.request("initialize", { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "test", version: "1.0.0" } });
   assert.equal(nativeInit.result.instructions.includes("workspace_mcp_"), false);
+  assert.equal(nativeInit.result.instructions.includes("history_search"), false);
   const nativeTools = (await nativeMcp.request("tools/list")).result.tools.map(tool => tool.name);
   assert.deepEqual(nativeTools, ["worker_create", "worker_close", "worker_request", "worker_response", "worker_output", "worker_discover"]);
   const rejectedNativeCall = await nativeMcp.call("workspace_mcp_discover", { workspace });

@@ -37,7 +37,7 @@ export async function agentText(
 export function formatWorkspaceSkills(skills: readonly WorkspaceSkillMeta[]): string {
   if (!skills.length) return "";
   const lines = skills.map(skill => `- **${skill.name}**（\`${skill.path}\`）：${skill.description}`);
-  return "## 工作区技能\n\n匹配任务时按需读取对应 `SKILL.md` 正文：\n" + lines.join("\n");
+  return "## 可用技能\n\n任务匹配时按需读取对应 `SKILL.md` 正文：\n" + lines.join("\n");
 }
 
 export async function loadWorkspaceContext(options: {
@@ -71,7 +71,7 @@ export async function loadWorkspaceContext(options: {
     : ["", "", ""];
   const skillsSection = formatWorkspaceSkills(workspaceSkills);
   const noticesSection = notices.length
-    ? "## 启动提示\n\n" + notices.map(item => `- ${item}`).join("\n")
+    ? "## 启动提示\n\n以下为工作区维护提醒，适时顺带告知用户即可，勿未经用户要求自行执行：\n" + notices.map(item => `- ${item}`).join("\n")
     : "";
   const environment = { host, workspaceRoot: root, resourceRoot };
   const text = [

@@ -11,8 +11,7 @@
 | 协调者操作导航 | Pi/dsh 加载 `resources/prompts/history-coordinator.md`；轻插件宿主加载 `resources/prompts/plugin-coordinator.md` |
 | 工作区自有技能 | `<workspace>/.agents/skills/*/SKILL.md`，Pi/dsh/Antigravity/Codex/Qoder CLI 原生发现；Claude Code 与未声明原生发现的 ACP worker 按需注入元数据索引（受 `features.skills` 控制） |
 | 专业方法技能 | `resources/skills/`（`project-maintenance`、`provider-connections`），只暴露元数据，按任务读取正文（受 `features.skills` 控制） |
-| 计算与外部任务参考 | `resources/references/compute.md`、`compute-finance.md`、`task-conductor.md`，按需读取 |
-| 历史摘要专用提示 | `resources/prompts/history-summary.md`，仅用于 Pi/dsh 独立历史摘要调用 |
+| 历史摘要专用提示 | `resources/prompts/history-summary.md`、`history-monthly-summary.md`，仅用于独立历史摘要调用，不注入普通对话会话 |
 
 ## 各宿主加载方式
 

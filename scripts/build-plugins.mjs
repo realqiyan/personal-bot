@@ -93,7 +93,6 @@ async function buildAntigravityPlugin({ version, repoUrl, runtime }) {
   await cp(resolve(root, "resources/antigravity/skills"), resolve(agyRoot, "skills"), { recursive: true });
 
   await cp(resolve(root, "resources/agents"), resolve(agyRoot, "resources/agents"), { recursive: true });
-  await cp(resolve(root, "resources/references"), resolve(agyRoot, "resources/references"), { recursive: true });
   await cp(resolve(root, "resources/templates"), resolve(agyRoot, "resources/templates"), { recursive: true });
   for (const prompt of ["workspace.md", "plugin-coordinator.md", "history-summary.md", "history-monthly-summary.md"]) {
     await cp(resolve(root, "resources/prompts", prompt), resolve(agyRoot, "resources/prompts", prompt));

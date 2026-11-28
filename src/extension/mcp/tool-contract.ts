@@ -11,7 +11,7 @@ export const discoverTargets = ["overview", "workers", "backends", "models"] as 
 function formatBackendItem(entry: ReturnType<typeof inspectAcpBackends>[number], defaultBackend?: string): string {
   const tags: string[] = [];
   if (entry.label) tags.push(entry.label);
-  if (entry.backend === defaultBackend) tags.push("当前");
+  if (entry.backend === defaultBackend) tags.push("当前宿主");
   return tags.length ? `${entry.backend}（${tags.join("，")}）` : entry.backend;
 }
 
@@ -34,8 +34,8 @@ function workspaceProperty(workspaceBound: boolean) {
   return {
     type: "string",
     description: workspaceBound
-      ? "目标工作区根目录的绝对路径；默认使用当前工作区，通常省略。"
-      : "目标工作区根目录的绝对路径（如上下文中提供了 workspaceRoot 则传该路径）；请显式传入。",
+      ? "工作区根目录绝对路径；默认当前工作区，通常省略。"
+      : "目标工作区根目录绝对路径；请传入环境中的 workspaceRoot。",
   };
 }
 
@@ -50,8 +50,7 @@ export function buildPbotWorkerTools(commands: AcpCommands = {}, defaultBackend?
     {
       name: "worker_create" as const,
       description:
-        "启动一个独立的外部 AI 助手会话（worker），用于将任务委派给其他助手或指定模型/思考深度来独立处理（如按用户要求切换助手、获取独立审查或第二意见、并行分担子任务）。" +
-        "本工具仅建立会话并返回 workerId，随后通过 worker_request 发送具体任务。不需要借助其他助手时，优先自行完成或使用当前内置子代理。\n" +
+        "启动独立的外部助手会话并返回 workerId（不发送任务，随后用 worker_request 派发）。未指定其他助手或特定模型时，优先自行完成或使用当前内置子代理。\n" +
         overview,
       annotations: {
         title: "Create Worker",
@@ -67,19 +66,19 @@ export function buildPbotWorkerTools(commands: AcpCommands = {}, defaultBackend?
         properties: {
           backend: {
             type: "string",
-            description: "要启动的外部助手标识（不区分大小写，支持常见别名，如 claude-code、agy）。",
+            description: "目标外部助手标识（不区分大小写，支持常见别名如 claude-code、agy）。",
           },
           model: {
             type: "string",
-            description: "仅用户明确要求特定模型时指定（支持模型 ID、显示名或 provider/model，不区分大小写）；不确定可用值时先用 worker_discover(target=\"models\") 查询；不填则使用该助手默认模型。",
+            description: "目标模型（模型 ID、显示名或 provider/model，不区分大小写）；未明确指定时省略以用默认模型，不确定可选值时先查 worker_discover(target=\"models\")。",
           },
           thinking: {
             type: "string",
-            description: "仅用户明确要求思考深度时指定（如 low / medium / high / xhigh / max，不区分大小写）；不填则使用默认设置。",
+            description: "思考深度（如 low / medium / high / xhigh / max，不区分大小写）；未明确指定时省略以用默认设置。",
           },
           cwd: {
             type: "string",
-            description: "助手执行任务时的工作目录（绝对路径或相对工作区的路径），默认为当前工作区根目录。",
+            description: "执行目录（绝对路径或相对工作区路径），默认工作区根目录。",
           },
           workspace,
         },
@@ -88,7 +87,7 @@ export function buildPbotWorkerTools(commands: AcpCommands = {}, defaultBackend?
     {
       name: "worker_close" as const,
       description:
-        "结束不再需要的外部助手会话并释放资源。若该助手支持会话恢复，后续仍可直接用 worker_request 在原上下文中继续对话。",
+        "结束外部助手会话并释放进程。若该会话支持恢复（capabilities.resume），后续仍可直接用 worker_request 续接。",
       annotations: {
         title: "Close Worker",
         readOnlyHint: false,
@@ -103,7 +102,7 @@ export function buildPbotWorkerTools(commands: AcpCommands = {}, defaultBackend?
         properties: {
           workerId: {
             type: "string",
-            description: "要结束的助手会话 ID（来自 worker_create 或 worker_discover）。",
+            description: "助手会话 ID（来自 worker_create 或 worker_discover）。",
           },
           workspace,
         },
@@ -112,9 +111,8 @@ export function buildPbotWorkerTools(commands: AcpCommands = {}, defaultBackend?
     {
       name: "worker_request" as const,
       description:
-        "向指定的外部助手派发任务，或在同一上下文中追问与补充要求，并获取执行结果（已关闭但支持恢复的会话会自动续接）。" +
-        `默认最多等待 ${defaultWaitMs / 1000} 秒返回结果；将 waitMs 设为 0 可立即返回并转入后台执行，适合耗时任务或多助手并行。` +
-        "若返回 timedOut 或结果含 nextOffset，用 worker_output 继续等待或翻页；若返回 needsResponse，先向用户确认再用 worker_response 回复。",
+        "向外部助手派发任务或在同一上下文中追问（已关闭且支持恢复的会话会自动续接）。" +
+        `默认最多等待 ${defaultWaitMs / 1000} 秒（waitMs 设为 0 可立即转后台并行）；返回 timedOut 或 nextOffset 用 worker_output，返回 needsResponse 先向用户确认再用 worker_response。`,
       annotations: {
         title: "Send Request to Worker",
         readOnlyHint: false,
@@ -129,17 +127,17 @@ export function buildPbotWorkerTools(commands: AcpCommands = {}, defaultBackend?
         properties: {
           workerId: {
             type: "string",
-            description: "目标助手会话 ID（来自 worker_create 或 worker_discover）。",
+            description: "助手会话 ID（来自 worker_create 或 worker_discover）。",
           },
           message: {
             type: "string",
-            description: "要发送的任务说明或追问内容。外部助手看不到你与用户的对话历史，首次派发时请写清背景、目标、相关文件路径、约束条件和期望产出。",
+            description: "任务说明或追问内容。外部助手看不到当前会话历史，首次派发需写清背景、目标、相关文件路径、约束和期望产出。",
           },
           waitMs: {
             type: "integer",
             minimum: 0,
             maximum: maxWaitMs,
-            description: `最多等待结果的毫秒数（默认 ${defaultWaitMs}）；设为 0 可立即返回并在后台执行。`,
+            description: `最多等待毫秒数（默认 ${defaultWaitMs}）；0 表示立即返回转后台执行。`,
           },
           workspace,
         },
@@ -148,9 +146,8 @@ export function buildPbotWorkerTools(commands: AcpCommands = {}, defaultBackend?
     {
       name: "worker_response" as const,
       description:
-        "当外部助手在执行过程中暂停并请求确认或补充信息（返回 needsResponse: true）时，向其提交决定以继续执行。" +
-        "支持三类请求：操作授权（kind=\"permission\"）、问答表单（kind=\"form\"）和链接确认（kind=\"url\"）。" +
-        `提交前先向用户确认；提交后默认最多等待 ${defaultWaitMs / 1000} 秒返回后续结果（waitMs 设为 0 立即返回）。`,
+        "回复外部助手暂停时发出的待处理请求（needsResponse: true），支持操作授权、表单问答与链接确认。" +
+        `提交前先向用户确认；提交后默认等待最多 ${defaultWaitMs / 1000} 秒返回后续结果。`,
       annotations: {
         title: "Respond to Worker Request",
         readOnlyHint: false,
@@ -170,26 +167,26 @@ export function buildPbotWorkerTools(commands: AcpCommands = {}, defaultBackend?
           action: {
             type: "string",
             enum: [...acpElicitationActions],
-            description: "处理方式：accept 表示同意授权、提交表单回答或确认链接；decline 表示拒绝；cancel 表示取消本次请求。",
+            description: "accept 同意/提交表单/确认链接；decline 拒绝；cancel 取消请求。",
           },
           requestId: {
             type: "string",
-            description: "要回复的请求 ID（来自 pendingRequests[].requestId）；仅一条待处理请求时可省略，多条时必填。",
+            description: "请求 ID（pendingRequests[].requestId）；仅一条待处理请求时可省略，多条时必填。",
           },
           optionId: {
             type: "string",
-            description: "仅授权请求（kind=\"permission\"）且 action 不为 cancel 时可用：指定选项 ID（来自 pendingRequests[].options[].optionId），省略时默认单次允许或拒绝。",
+            description: "仅 permission 请求且 action≠cancel 时可用：指定 pendingRequests[].options[].optionId，省略则按 action 单次允许或拒绝。",
           },
           content: {
             type: "object",
             additionalProperties: true,
-            description: "仅表单提问（kind=\"form\"）且 action=\"accept\" 时可用：按 pendingRequests[].schema.properties 填写的回答对象（值为字符串、数字、布尔值或字符串数组）。",
+            description: "仅 form 请求且 action=\"accept\" 时可用：按 pendingRequests[].schema.properties 填写回答对象（值为字符串、数字、布尔值或字符串数组）。",
           },
           waitMs: {
             type: "integer",
             minimum: 0,
             maximum: maxWaitMs,
-            description: `提交回复后最多等待后续结果的毫秒数（默认 ${defaultWaitMs}）；设为 0 立即返回。`,
+            description: `提交后最多等待毫秒数（默认 ${defaultWaitMs}）；0 表示立即返回。`,
           },
           workspace,
         },
@@ -198,8 +195,7 @@ export function buildPbotWorkerTools(commands: AcpCommands = {}, defaultBackend?
     {
       name: "worker_output" as const,
       description:
-        "获取或等待外部助手的最新执行结果。用于收取后台任务的产出、在等待超时（timedOut）后继续等待，或在长结果分页（含 nextOffset）时读取后续内容。" +
-        "任务仍在运行时会等待其完成（也可能返回 timedOut 或 needsResponse），已结束则立即返回。",
+        "获取或等待外部助手的最新结果，用于收取后台产出、timedOut 后继续等待，或按 nextOffset 分页续读。任务已结束时立即返回，运行中最多等待 waitMs。",
       annotations: {
         title: "Get Worker Output",
         readOnlyHint: true,
@@ -214,18 +210,18 @@ export function buildPbotWorkerTools(commands: AcpCommands = {}, defaultBackend?
         properties: {
           workerId: {
             type: "string",
-            description: "要等待或获取结果的助手会话 ID。",
+            description: "助手会话 ID。",
           },
           offset: {
             type: "integer",
             minimum: 0,
-            description: "结果读取起始位置（默认 0）；翻页读取剩余内容时传入上次返回的 nextOffset。",
+            description: "读取起始位置（默认 0）；翻页续读时传上次返回的 nextOffset。",
           },
           waitMs: {
             type: "integer",
             minimum: 0,
             maximum: maxWaitMs,
-            description: `任务仍在运行时最多等待的毫秒数（默认 ${defaultWaitMs}）；任务已结束或翻页读取时会立即返回。`,
+            description: `运行中最多等待毫秒数（默认 ${defaultWaitMs}）；已结束或翻页时立即返回。`,
           },
           workspace,
         },
@@ -234,8 +230,7 @@ export function buildPbotWorkerTools(commands: AcpCommands = {}, defaultBackend?
     {
       name: "worker_discover" as const,
       description:
-        "了解当前可以委派哪些外部助手、查看已有助手会话的运行状态以便复用，或查询某个助手支持的模型与思考深度选项。" +
-        "默认（target=\"overview\"）同时返回可用助手与已有会话；仅在需要核对模型或思考深度可选值时再查 target=\"models\"（耗时较长）。",
+        "查询可用外部助手、已有会话状态，或某个助手支持的模型与思考深度。默认（overview）返回可用助手与已有会话；仅需核对模型或思考深度可选值时再查 models（需启动探测，耗时较长）。",
       annotations: {
         title: "Discover Workers, Backends & Models",
         readOnlyHint: true,
@@ -251,21 +246,21 @@ export function buildPbotWorkerTools(commands: AcpCommands = {}, defaultBackend?
           target: {
             type: "string",
             enum: [...discoverTargets],
-            description: "查询范围，默认 \"overview\"（同时返回可用助手与已有会话）；\"workers\" 查全部或单个会话状态；\"backends\" 查可用助手列表；\"models\" 查指定助手支持的模型与思考深度。",
+            description: "overview（默认，可用助手与已有会话）、workers（全部或单个会话状态）、backends（可用助手）、models（指定助手的模型与思考深度）。",
           },
           workerId: {
             type: "string",
-            description: "仅 target=\"workers\" 可用：指定单个助手会话 ID；不填则列出全部。",
+            description: "仅 target=\"workers\" 可用：指定单个会话 ID，省略列全部。",
           },
           backend: {
             type: "string",
             description: availableIds
-              ? `仅 target="models" 可用（${modelsBackendHint}）：目标外部助手标识，支持常见别名；当前可用：${availableIds}。`
-              : `仅 target="models" 可用（${modelsBackendHint}）：目标外部助手标识，支持常见别名。`,
+              ? `仅 target="models" 可用（${modelsBackendHint}）：目标助手标识，支持别名；当前可用：${availableIds}。`
+              : `仅 target="models" 可用（${modelsBackendHint}）：目标助手标识，支持别名。`,
           },
           model: {
             type: "string",
-            description: "仅 target=\"models\" 可用：指定模型以查看该模型支持的思考深度选项。",
+            description: "仅 target=\"models\" 可用：指定模型以查看其支持的思考深度选项。",
           },
           workspace,
         },
@@ -280,7 +275,7 @@ export function buildWorkspaceMcpTools(workspaceBound = false) {
     {
       name: "workspace_mcp_discover" as const,
       description:
-        "发现当前工作区共享的外部工具服务（MCP）及其可用工具。不传 server 时列出可用服务；传入 server 时返回该服务提供的工具清单与参数说明。",
+        "查询当前工作区共享 MCP 服务（.pbot/mcp.json）。省略 server 列出服务；传入 server 返回其工具列表与参数说明。",
       annotations: {
         title: "Discover Workspace MCP Servers & Tools",
         readOnlyHint: true,
@@ -295,7 +290,7 @@ export function buildWorkspaceMcpTools(workspaceBound = false) {
         properties: {
           server: {
             type: "string",
-            description: "目标工具服务名称；不填时列出工作区全部可用服务。",
+            description: "服务名称；省略列出工作区全部已配置服务。",
           },
           workspace,
         },
@@ -304,8 +299,7 @@ export function buildWorkspaceMcpTools(workspaceBound = false) {
     {
       name: "workspace_mcp_call" as const,
       description:
-        "调用当前工作区共享的外部工具服务（MCP）中的指定工具，用于访问工作区接入的外部能力与数据源。" +
-        "不确定工具名或参数格式时，先用 workspace_mcp_discover(server) 查询。",
+        "调用工作区共享 MCP 服务中的指定工具。不确定工具名或参数时先用 workspace_mcp_discover(server) 查询。",
       annotations: {
         title: "Call Workspace MCP Tool",
         readOnlyHint: false,
@@ -320,16 +314,16 @@ export function buildWorkspaceMcpTools(workspaceBound = false) {
         properties: {
           server: {
             type: "string",
-            description: "目标工具服务名称（可通过 workspace_mcp_discover 获取）。",
+            description: "服务名称（来自 workspace_mcp_discover）。",
           },
           tool: {
             type: "string",
-            description: "要调用的工具名称。",
+            description: "工具名称。",
           },
           arguments: {
             type: "object",
             additionalProperties: true,
-            description: "传给目标工具的参数对象，不填则为空对象。",
+            description: "传给目标工具的参数对象，默认空对象。",
           },
           workspace,
         },
@@ -344,7 +338,7 @@ export function buildHistoryMcpTools(workspaceBound = false) {
     {
       name: "history_search" as const,
       description:
-        "搜索当前工作区跨宿主（pi、dsh、claude、antigravity 等）的历史问答与摘要归档。省略 query 时列出各会话；传入 query 按不区分大小写的连续关键词匹配原文与摘要。",
+        "搜索当前工作区跨宿主历史问答与摘要归档（不含工具调用日志）。省略 query 列出各会话或指定维度摘要；传入 query 按不区分大小写的连续关键词匹配。",
       annotations: {
         title: "Search Workspace History",
         readOnlyHint: true,
@@ -359,15 +353,15 @@ export function buildHistoryMcpTools(workspaceBound = false) {
         properties: {
           host: {
             type: "string",
-            description: "可选来源筛选（如 pi、dsh、claude、antigravity）；省略查全部宿主。",
+            description: "来源宿主筛选（如 pi、dsh、claude、antigravity、codex、qoder）；省略查全部。",
           },
           dimension: {
             type: "string",
-            description: "可选范围筛选：raw 表示仅搜原文，或指定摘要维度（如 monthly、session）；省略查全部原文与维度摘要。",
+            description: "范围筛选：raw 仅原文，或指定摘要维度（如 monthly、session）；省略查全部。",
           },
           query: {
             type: "string",
-            description: "不区分大小写的连续关键词；省略时列出各会话（或指定维度摘要）。",
+            description: "连续关键词（不区分大小写）；省略列会话或指定维度摘要。",
           },
           sessionId: {
             type: "string",
@@ -384,13 +378,13 @@ export function buildHistoryMcpTools(workspaceBound = false) {
           offset: {
             type: "integer",
             minimum: 0,
-            description: "匹配结果偏移，默认 0。",
+            description: "结果偏移，默认 0。",
           },
           limit: {
             type: "integer",
             minimum: 1,
             maximum: historyPageLimits.search.max,
-            description: `最多返回条数（1–${historyPageLimits.search.max}），默认 ${historyPageLimits.search.default}。`,
+            description: `返回条数（1–${historyPageLimits.search.max}），默认 ${historyPageLimits.search.default}。`,
           },
           workspace,
         },
@@ -399,7 +393,7 @@ export function buildHistoryMcpTools(workspaceBound = false) {
     {
       name: "history_read" as const,
       description:
-        "按节点 id 读取当前工作区历史归档的正文与上下级节点（monthly、session、summary、exchange），支持从月度汇总下钻至单会话摘要与原始问答。正文过长时用 nextOffset 续读，子节点过多时用 nextChildrenOffset 续读。",
+        "按节点 id 读取历史正文与上下级（可从 monthly 汇总下钻至 session 摘要和 exchange 原文）。正文分页传 nextOffset，子节点分页传 nextChildrenOffset。",
       annotations: {
         title: "Read Workspace History Node",
         readOnlyHint: true,
@@ -414,16 +408,16 @@ export function buildHistoryMcpTools(workspaceBound = false) {
         properties: {
           id: {
             type: "string",
-            description: "history_search 或上下级返回的节点 id。",
+            description: "节点 id（来自 history_search 或上下级）。",
           },
           host: {
             type: "string",
-            description: "跨来源 ID 冲突时显式指定来源宿主。",
+            description: "跨宿主 id 冲突时指定来源宿主。",
           },
           offset: {
             type: "integer",
             minimum: 0,
-            description: "正文字符偏移，默认 0。",
+            description: "正文字符偏移，默认 0；续读传上次 nextOffset。",
           },
           limit: {
             type: "integer",
@@ -434,7 +428,7 @@ export function buildHistoryMcpTools(workspaceBound = false) {
           childrenOffset: {
             type: "integer",
             minimum: 0,
-            description: "子节点列表偏移，默认 0；续读传上页 nextChildrenOffset。",
+            description: "子节点偏移，默认 0；续读传上次 nextChildrenOffset。",
           },
           workspace,
         },

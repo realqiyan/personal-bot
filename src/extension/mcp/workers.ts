@@ -40,15 +40,27 @@ const progressIntervalMs = 5_000;
 
 export type ProgressReporter = (message: string) => void;
 
-export const mcpWorkerOnlyInstructions =
-  "提供跨助手协作能力（worker_*）：可启动并调度其他外部 AI 助手在当前工作区中独立执行任务，适用于用户指定其他助手、需要特定模型或思考深度、获取独立审查/第二意见，或并行处理子任务。不需要借助其他助手时，优先自行完成或使用当前内置子代理。\n" +
-  "使用流程：用 worker_create 启动目标助手（或用 worker_discover 复用已有会话）→ 用 worker_request 派发任务或继续追问 → 任务完成后可用 worker_close 结束会话。后台等待、超时续等（timedOut）或长结果翻页（nextOffset）用 worker_output；助手请求授权或提问（needsResponse）时，先向用户确认，再用 worker_response 回复。";
+const workerCapabilityInstruction =
+  "跨助手委派（worker_*）：启动并调度其他外部助手在当前工作区独立执行任务；无需外部助手时优先自行完成或使用内置子代理。" +
+  "流程：worker_create 启动（或 worker_discover 复用）→ worker_request 派发/追问 → 完成后 worker_close；" +
+  "后台取结果、超时续等（timedOut）或翻页（nextOffset）用 worker_output；返回 needsResponse 时先向用户确认，再用 worker_response 回复。";
 
-export const mcpInstructions =
-  "提供三类能力：\n" +
-  "1. 跨助手协作（worker_*）：启动并调度其他外部 AI 助手在当前工作区中独立执行任务，适用于用户指定其他助手、需要特定模型或思考深度、获取独立审查/第二意见，或并行处理子任务。不需要借助其他助手时，优先自行完成或使用当前内置子代理。使用流程：worker_create 启动助手（或 worker_discover 复用已有会话）→ worker_request 派发任务或追问 → 完成后 worker_close 结束；后台等待、超时续等（timedOut）或长结果翻页（nextOffset）用 worker_output；返回 needsResponse 时先向用户确认，再用 worker_response 回复。\n" +
-  "2. 工作区共享外部工具（workspace_mcp_*）：发现并调用当前工作区接入的外部工具服务与数据源（可与当前环境原生工具同时使用）。先用 workspace_mcp_discover 查看可用服务与工具说明，再用 workspace_mcp_call 调用。\n" +
-  "3. 跨宿主历史查询（history_search / history_read）：只读检索当前工作区在 Pi、dsh、Claude Code、Antigravity 等宿主中记录的历史问答与摘要归档。";
+const workspaceMcpCapabilityInstruction =
+  "工作区共享 MCP（workspace_mcp_*）：先用 workspace_mcp_discover 查 .pbot/mcp.json 中的服务与工具，再用 workspace_mcp_call 调用。";
+
+const historyCapabilityInstruction =
+  "跨宿主历史（history_search / history_read）：只读检索当前工作区跨宿主记录的历史问答与摘要归档。";
+
+export function buildMcpInstructions(options: { workspaceMcp: boolean; history: boolean }): string {
+  const parts = [workerCapabilityInstruction];
+  if (options.workspaceMcp) parts.push(workspaceMcpCapabilityInstruction);
+  if (options.history) parts.push(historyCapabilityInstruction);
+  return parts.length === 1 ? parts[0]! : parts.map((text, index) => `${index + 1}. ${text}`).join("\n");
+}
+
+export const mcpWorkerOnlyInstructions = buildMcpInstructions({ workspaceMcp: false, history: false });
+
+export const mcpInstructions = buildMcpInstructions({ workspaceMcp: true, history: true });
 
 export function defaultWorkerDirectory(): string {
   if (process.env.PBOT_MCP_AGENT_DIR) return process.env.PBOT_MCP_AGENT_DIR;
@@ -252,7 +264,7 @@ export class McpWorkerRuntime {
     return entry;
   }
 
-  async toolDefinitions() {
+  private async resolveToolContext() {
     let commands: AcpCommands | undefined;
     let includeWorkspaceMcp = !this.#nativeWorkspaceMcp;
     let includeHistory = !this.#nativeHistory;
@@ -266,6 +278,16 @@ export class McpWorkerRuntime {
         includeHistory = !this.#nativeHistory && features.history;
       }
     } catch { /* Fall back to registered built-in harnesses when cwd is outside an enabled workspace. */ }
+    return { commands, includeWorkspaceMcp, includeHistory };
+  }
+
+  async serverInstructions(): Promise<string> {
+    const { includeWorkspaceMcp, includeHistory } = await this.resolveToolContext();
+    return buildMcpInstructions({ workspaceMcp: includeWorkspaceMcp, history: includeHistory });
+  }
+
+  async toolDefinitions() {
+    const { commands, includeWorkspaceMcp, includeHistory } = await this.resolveToolContext();
     const defaultBackend = this.#defaultBackend ? canonicalAcpBackend(this.#defaultBackend, commands) : undefined;
     const workspaceBound = Boolean(pluginMcpWorkspaceRoot());
     return [
@@ -556,7 +578,7 @@ export async function handleMcpRequest(
           protocolVersion: requested || protocolVersion,
           capabilities: { tools: {} },
           serverInfo: { name: "personal-bot", version: packageVersion },
-          instructions: runtime.nativeWorkspaceMcp ? mcpWorkerOnlyInstructions : mcpInstructions,
+          instructions: await runtime.serverInstructions(),
         },
       };
     }
