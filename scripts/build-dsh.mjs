@@ -1,14 +1,9 @@
-import { spawnSync } from "node:child_process";
 import { copyFile, glob, readFile, writeFile } from "node:fs/promises";
 import { dirname, relative, resolve, sep } from "node:path";
-import { fileURLToPath } from "node:url";
+import { compileProject, root } from "./compile-project.mjs";
 import { build } from "esbuild";
 
-const root = fileURLToPath(new URL("../", import.meta.url));
-const result = spawnSync(process.execPath, [fileURLToPath(new URL("../node_modules/typescript/bin/tsc", import.meta.url)),
-  "--project", "tsconfig.dsh.json"], { cwd: root, stdio: "inherit" });
-if (result.error) throw result.error;
-if (result.status !== 0) process.exit(result.status ?? 1);
+compileProject("tsconfig.dsh.json");
 
 // Pi supplies TypeBox through its loader; dsh needs a bundled copy without a package peer install.
 const typebox = resolve(root, "lib/common/typebox.js");

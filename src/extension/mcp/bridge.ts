@@ -4,6 +4,7 @@ import { object } from "../../common/json.js";
 import { requireThat } from "../../common/validation.js";
 import { packageVersion } from "../../common/version.js";
 import type {
+  WorkspaceMcpConfiguration,
   ResolvedWorkspaceMcpHttpServer,
   ResolvedWorkspaceMcpServer,
   ResolvedWorkspaceMcpStdioServer,
@@ -263,65 +264,76 @@ class HttpMcpClient implements DownstreamClient {
   }
 }
 
-export class WorkspaceMcpBridge {
-  readonly #clients = new Map<string, DownstreamClient>();
-  readonly #connecting = new Map<string, Promise<DownstreamClient>>();
-  #closed = false;
+function configuredServer(root: string, configuration: WorkspaceMcpConfiguration, serverName: string) {
+  const raw = Object.hasOwn(configuration.servers, serverName) ? configuration.servers[serverName] : undefined;
+  requireThat(raw, `工作区未注册名为 "${serverName}" 的 MCP 服务（已注册：${Object.keys(configuration.servers).join(", ") || "无"}）。`);
+  requireThat(raw.enabled !== false, `工作区 MCP 服务 "${serverName}" 当前已停用（enabled: false）。`);
+  return resolveWorkspaceMcpServer(root, serverName, raw);
+}
 
-  #key(root: string, name: string): string {
-    return `${root}\0${name}`;
+interface Connection {
+  key: string;
+  client: DownstreamClient;
+  ready: Promise<void>;
+  users: number;
+  retired: boolean;
+  closing?: Promise<void>;
+}
+
+export class WorkspaceMcpBridge {
+  readonly #connections = new Set<Connection>();
+  #closing: Promise<void> | undefined;
+
+  #close(connection: Connection): Promise<void> {
+    return connection.closing ??= connection.ready.catch(() => {}).then(() => connection.client.close())
+      .finally(() => this.#connections.delete(connection));
   }
 
-  async #connect(root: string, server: ResolvedWorkspaceMcpServer): Promise<DownstreamClient> {
-    requireThat(!this.#closed, "Workspace MCP 桥接已关闭。");
-    const key = this.#key(root, server.name);
+  #retire(connection: Connection): Promise<void> | undefined {
+    connection.retired = true;
+    if (!connection.users) return this.#close(connection);
+  }
+
+  async #withClient<T>(
+    root: string, server: ResolvedWorkspaceMcpServer, operation: (client: DownstreamClient) => Promise<T>,
+  ): Promise<T> {
+    requireThat(!this.#closing, "Workspace MCP 桥接已关闭。");
+    const key = `${root}\0${server.name}`;
     const fingerprint = JSON.stringify(server);
-    const existing = this.#clients.get(key);
-    if (existing && existing.alive && existing.fingerprint === fingerprint) return existing;
-    if (existing) {
-      this.#clients.delete(key);
-      await existing.close().catch(() => {});
+    let connection = [...this.#connections].find(entry => entry.key === key && !entry.retired);
+    if (connection && (!connection.client.alive || connection.client.fingerprint !== fingerprint)) {
+      void this.#retire(connection)?.catch(() => {});
+      connection = undefined;
     }
-    const inflight = this.#connecting.get(key);
-    if (inflight) return inflight;
-    const creating = (async () => {
+    if (!connection) {
       const client = server.transport === "http"
         ? new HttpMcpClient(server, fingerprint)
         : new StdioMcpClient(server, fingerprint);
-      try {
-        await client.initialize();
-        if (this.#closed) {
-          await client.close();
-          throw new Error("Workspace MCP 桥接已关闭。");
-        }
-        this.#clients.set(key, client);
-        return client;
-      } catch (error) {
-        await client.close().catch(() => {});
-        throw error;
-      }
-    })();
-    this.#connecting.set(key, creating);
-    try { return await creating; }
-    finally { if (this.#connecting.get(key) === creating) this.#connecting.delete(key); }
+      connection = { key, client, ready: client.initialize(), users: 0, retired: false };
+      this.#connections.add(connection);
+    }
+
+    connection.users++;
+    try {
+      try { await connection.ready; }
+      catch (error) { connection.retired = true; throw error; }
+      requireThat(!this.#closing, "Workspace MCP 桥接已关闭。");
+      return await operation(connection.client);
+    } finally {
+      connection.users--;
+      if (connection.retired && !connection.users) await this.#close(connection).catch(() => {});
+    }
   }
 
   async #pruneRemoved(root: string, activeNames: ReadonlySet<string>): Promise<void> {
     const prefix = `${root}\0`;
-    const stale: DownstreamClient[] = [];
-    for (const [key, client] of this.#clients) {
-      if (!key.startsWith(prefix)) continue;
-      const name = key.slice(prefix.length);
-      if (!activeNames.has(name)) {
-        this.#clients.delete(key);
-        stale.push(client);
-      }
-    }
-    await Promise.allSettled(stale.map(client => client.close()));
+    await Promise.allSettled([...this.#connections]
+      .filter(entry => entry.key.startsWith(prefix) && !activeNames.has(entry.key.slice(prefix.length)))
+      .map(entry => this.#retire(entry)));
   }
 
   async discover(root: string, serverName?: string) {
-    requireThat(!this.#closed, "Workspace MCP 桥接已关闭。");
+    requireThat(!this.#closing, "Workspace MCP 桥接已关闭。");
     const configuration = await readWorkspaceMcpConfig(root);
     if (configuration.error) throw new Error(configuration.error);
     const enabledNames = new Set(
@@ -347,39 +359,34 @@ export class WorkspaceMcpBridge {
       };
     }
 
-    const raw = Object.hasOwn(configuration.servers, serverName) ? configuration.servers[serverName] : undefined;
-    requireThat(raw, `工作区未注册名为 "${serverName}" 的 MCP 服务（已注册：${Object.keys(configuration.servers).join(", ") || "无"}）。`);
-    requireThat(raw.enabled !== false, `工作区 MCP 服务 "${serverName}" 当前已停用（enabled: false）。`);
-    const resolved = resolveWorkspaceMcpServer(root, serverName, raw);
-    const client = await this.#connect(root, resolved);
-    const tools: unknown[] = [];
-    let cursor: string | undefined;
-    for (;;) {
-      const page = await client.request("tools/list", cursor ? { cursor } : {});
-      if (object(page) && Array.isArray(page.tools)) tools.push(...page.tools);
-      const next = object(page) && typeof page.nextCursor === "string" && page.nextCursor ? page.nextCursor : undefined;
-      if (!next) break;
-      cursor = next;
-    }
-    return {
-      workspace: root,
-      server: resolved.name,
-      transport: resolved.transport,
-      ...(resolved.description ? { description: resolved.description } : {}),
-      tools,
-    };
+    const resolved = configuredServer(root, configuration, serverName);
+    return this.#withClient(root, resolved, async client => {
+      const tools: unknown[] = [];
+      let cursor: string | undefined;
+      for (;;) {
+        const page = await client.request("tools/list", cursor ? { cursor } : {});
+        if (object(page) && Array.isArray(page.tools)) tools.push(...page.tools);
+        const next = object(page) && typeof page.nextCursor === "string" && page.nextCursor ? page.nextCursor : undefined;
+        if (!next) break;
+        cursor = next;
+      }
+      return {
+        workspace: root,
+        server: resolved.name,
+        transport: resolved.transport,
+        ...(resolved.description ? { description: resolved.description } : {}),
+        tools,
+      };
+    });
   }
 
   async call(root: string, serverName: string, toolName: string, args: Record<string, unknown> = {}) {
-    requireThat(!this.#closed, "Workspace MCP 桥接已关闭。");
+    requireThat(!this.#closing, "Workspace MCP 桥接已关闭。");
     const configuration = await readWorkspaceMcpConfig(root);
     if (configuration.error) throw new Error(configuration.error);
-    const raw = Object.hasOwn(configuration.servers, serverName) ? configuration.servers[serverName] : undefined;
-    requireThat(raw, `工作区未注册名为 "${serverName}" 的 MCP 服务（已注册：${Object.keys(configuration.servers).join(", ") || "无"}）。`);
-    requireThat(raw.enabled !== false, `工作区 MCP 服务 "${serverName}" 当前已停用（enabled: false）。`);
-    const resolved = resolveWorkspaceMcpServer(root, serverName, raw);
-    const client = await this.#connect(root, resolved);
-    const result = await client.request("tools/call", { name: toolName, arguments: args });
+    const resolved = configuredServer(root, configuration, serverName);
+    const result = await this.#withClient(root, resolved, client =>
+      client.request("tools/call", { name: toolName, arguments: args }));
     if (object(result)) {
       return {
         server: resolved.name,
@@ -397,15 +404,8 @@ export class WorkspaceMcpBridge {
     };
   }
 
-  async close(): Promise<void> {
-    if (this.#closed) return;
-    this.#closed = true;
-    const inflight = [...this.#connecting.values()];
-    this.#connecting.clear();
-    await Promise.allSettled(inflight);
-    const clients = [...this.#clients.values()];
-    this.#clients.clear();
-    await Promise.allSettled(clients.map(client => client.close()));
+  close(): Promise<void> {
+    return this.#closing ??= Promise.allSettled([...this.#connections].map(entry => this.#close(entry))).then(() => {});
   }
 }
 

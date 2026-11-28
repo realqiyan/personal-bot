@@ -1,17 +1,11 @@
+import { inspectWorkspaceSummaries } from "../../../services/history/summary-runner.js";
+import { workspaceDisabledMessage } from "../../../services/workspace/workspace-config.js";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { packageVersion } from "../../../common/version.js";
-import { requireThat } from "../../../common/validation.js";
-import { createAcpHistorySummarizer } from "../../../integrations/acp/history-summary.js";
-import { migrateWorkspaceHistory } from "../../../services/history/history-migrate.js";
-import { parseHistoryCommand } from "../../../services/history/summary-command.js";
-import { listSummaryDimensions } from "../../../services/history/summary-registry.js";
-import { inspectWorkspaceSummaries, runWorkspaceSummaries } from "../../../services/history/summary-runner.js";
 import { initializeWorkspace } from "../../../services/workspace/workspace-preparation.js";
-import { readWorkspaceConfig, readWorkspaceHistoryLayoutSync, workspaceDisabledMessage, workspaceSummaryConfig } from "../../../services/workspace/workspace-config.js";
-import { executeHistory } from "../../../tools/history/actions.js";
-import { historyInput } from "../../../tools/history/contract.js";
 import type { Confirmations } from "../../../ui/pi/confirmation.js";
 import type { Lifecycle } from "./lifecycle.js";
+import { runHistoryCommand } from "../history-command.js";
 import { parseWorkerCommand } from "../../mcp/workers.js";
 
 function formatHistoryStatusLine(root: string): string[] {
@@ -82,61 +76,18 @@ export function registerCommand(pi: ExtensionAPI, lifecycle: Lifecycle, confirma
       }
       if (command === "history") {
         try {
-          requireThat(instance.features.history, "当前工作区已停用历史功能（features.history: false）。");
-          const parsed = parseHistoryCommand(argument);
-          if (parsed.kind === "status") {
-            ctx.ui.notify(JSON.stringify(inspectWorkspaceSummaries(instance.root), null, 2), "info");
-            return;
-          }
-          if (parsed.kind === "list") {
-            const layout = readWorkspaceHistoryLayoutSync(instance.root);
-            const dims = listSummaryDimensions(layout).map(({ id, title, description }) => ({ id, title, description }));
-            ctx.ui.notify(JSON.stringify({ layout, dimensions: dims }, null, 2), "info");
-            return;
-          }
-          if (parsed.kind === "migrate") {
-            const report = migrateWorkspaceHistory(instance.root, { dryRun: parsed.dryRun });
-            ctx.ui.notify(JSON.stringify(report, null, 2), "info");
-            return;
-          }
-          if (parsed.kind === "query") {
-            const result = executeHistory(instance.root, historyInput(parsed.input), instance.signal());
-            ctx.ui.notify(JSON.stringify(result, null, 2), "info");
-            return;
-          }
-          const signal = instance.signal();
-          const config = await readWorkspaceConfig(instance.root);
-          requireThat(config.enabled && !config.error, workspaceDisabledMessage(config));
-          const summaryCfg = workspaceSummaryConfig(config);
-          const backend = parsed.backend ?? summaryCfg.backend;
-          const model = parsed.model ?? summaryCfg.model;
-          const thinking = parsed.thinking ?? summaryCfg.thinking;
-          const summarizer = createAcpHistorySummarizer({
-            cwd: instance.root,
-            backend,
-            ...(config.acp ? { commands: config.acp } : {}),
-            ...(model ? { model } : {}),
-            ...(thinking ? { thinking } : {}),
+          const result = await runHistoryCommand(instance, argument, instance.signal(), {
+            start: backend => ctx.ui.setStatus("pbot-history", `历史摘要生成中 (${backend})`),
+            update: progress => {
+              if (lifecycle.active === instance) {
+                ctx.ui.setStatus("pbot-history", `历史摘要 ${progress.dimension} (${progress.completed}/${progress.total})`);
+              }
+            },
+            finish: () => {
+              if (lifecycle.active === instance) ctx.ui.setStatus("pbot-history", undefined);
+            },
           });
-          ctx.ui.setStatus("pbot-history", `历史摘要生成中 (${backend})`);
-          try {
-            const report = await runWorkspaceSummaries({
-              root: instance.root,
-              summarizer,
-              ...(parsed.dimensions ? { dimensions: parsed.dimensions } : {}),
-              force: parsed.force,
-              ...(summaryCfg.concurrency !== undefined ? { concurrency: summaryCfg.concurrency } : {}),
-              signal,
-              onProgress: progress => {
-                if (lifecycle.active === instance) {
-                  ctx.ui.setStatus("pbot-history", `历史摘要 ${progress.dimension} (${progress.completed}/${progress.total})`);
-                }
-              },
-            });
-            ctx.ui.notify(JSON.stringify({ backend, ...(model ? { model } : {}), ...report }, null, 2), "info");
-          } finally {
-            if (lifecycle.active === instance) ctx.ui.setStatus("pbot-history", undefined);
-          }
+          ctx.ui.notify(JSON.stringify(result, null, 2), "info");
         } catch (error) {
           ctx.ui.notify(error instanceof Error ? error.message : String(error), "error");
         }

@@ -62,7 +62,9 @@
 }
 ```
 
-可用 `pbot mcp list|add|remove` 管理该文件。启用 `features.mcp`（默认）后，原生挂载与桥接工具二选一，避免同一服务重复暴露：
+`pbot mcp list` 读取配置。`add` 与 `remove` 使用短时目录锁 `.pbot/mcp.json.lock` 串行更新服务项。若进程异常退出并遗留锁，先确认操作该文件的命令都已结束，再用 `rmdir .pbot/mcp.json.lock` 清理空锁目录。
+
+启用 `features.mcp`（默认）后，原生挂载与桥接工具二选一，避免同一服务重复暴露：
 - Pi 与 dsh 直接通过原生 API 挂载 `.pbot/mcp.json` 中的服务（不再暴露 `workspace_mcp_*` 桥接工具）；
 - 轻插件宿主（Claude Code、Antigravity）及其他 MCP 宿主通过 `pbot` MCP 提供的 `workspace_mcp_discover` / `workspace_mcp_call` 动态发现并调用（修改 `.pbot/mcp.json` 即改即生效）；
 - 跨 Harness ACP worker 自动通过 ACP v1 `mcpServers`（或 Pi/dsh 受管成员原生挂载）获得同一组服务。

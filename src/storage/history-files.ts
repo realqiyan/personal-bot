@@ -2,11 +2,11 @@ import { spawnSync } from "node:child_process";
 import { linkSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmdirSync, unlinkSync } from "node:fs";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { isDeepStrictEqual } from "node:util";
-import { requireThat } from "../common/validation.js";
+import { isHistoryIdentifier, requireThat } from "../common/validation.js";
 import type { HistoryHost, HistoryLayout, RawHistory, SummaryArtifact } from "../model/history.js";
 import { internalPath, readJsonFile, syncDirectory, writeJsonFile } from "./atomic-json.js";
 import { fileId, privateDirectory } from "./file-access.js";
-import { isHistoryHost, isSummaryDimension, matchIdentity, rawHistory, summaryArtifact } from "./history-format.js";
+import { matchIdentity, rawHistory, summaryArtifact } from "./history-format.js";
 
 const yearPattern = /^\d{4}$/;
 const monthPattern = /^(?:0[1-9]|1[0-2])$/;
@@ -243,7 +243,7 @@ export class HistoryFiles {
     readonly host: HistoryHost = "pi",
     readonly layout: HistoryLayout = "monthly",
   ) {
-    requireThat(isHistoryHost(host), "历史来源无效。");
+    requireThat(isHistoryIdentifier(host), "历史来源无效。");
   }
 
   get warnings(): readonly string[] { return this.#warnings; }
@@ -252,7 +252,7 @@ export class HistoryFiles {
   get rawDirectory(): string { return join(this.directory, "raw"); }
   get summariesDirectory(): string { return join(this.directory, "summaries"); }
   summaryDirectory(dimension: string): string {
-    requireThat(isSummaryDimension(dimension), "历史摘要维度无效：" + dimension);
+    requireThat(isHistoryIdentifier(dimension), "历史摘要维度无效：" + dimension);
     return join(this.summariesDirectory, dimension);
   }
 
@@ -276,13 +276,17 @@ export class HistoryFiles {
 
   /** Synchronous dimension write lock for derived summary files. */
   controlSummary<T>(dimension: string, operation: () => T): T {
-    requireThat(isSummaryDimension(dimension), "历史摘要维度无效：" + dimension);
+    requireThat(isHistoryIdentifier(dimension), "历史摘要维度无效：" + dimension);
     return this.withLock(".write-summary-" + dimension, "summary:" + dimension, operation);
   }
 
   /** Synchronous migration lock for explicit layout migration. */
   controlMigration<T>(operation: () => T): T {
     return this.withLock(".write-migrate", "migrate", operation);
+  }
+
+  migrationNotice(): string | undefined {
+    return this.layout === "monthly" ? this.detectFlatFiles().message : undefined;
   }
 
   /** Detect unmigrated top-level flat JSON files when running under monthly layout. */
@@ -312,7 +316,7 @@ export class HistoryFiles {
   }
 
   listFlatSummaryFiles(dimension: string): string[] {
-    requireThat(isSummaryDimension(dimension), "历史摘要维度无效：" + dimension);
+    requireThat(isHistoryIdentifier(dimension), "历史摘要维度无效：" + dimension);
     const dir = this.summaryDirectory(dimension);
     if (!sharedDirectory(this.directory) || !ordinaryDirectory(this.summariesDirectory) || !ordinaryDirectory(dir)) return [];
     return topLevelJsonNames(dir);
@@ -323,14 +327,17 @@ export class HistoryFiles {
   }
 
   readFlatSummaryFile(dimension: string, name: string): SummaryArtifact {
-    requireThat(isSummaryDimension(dimension), "历史摘要维度无效：" + dimension);
+    requireThat(isHistoryIdentifier(dimension), "历史摘要维度无效：" + dimension);
     return readJsonFile(this.directory, `summaries/${dimension}/${name}`, value => namedSummary(value, name, dimension));
   }
 
   /** Atomically move a file within .pbot/history/ without ever overwriting an existing destination. */
-  moveHistoryFile(fromRelative: string, toRelative: string): "moved" | "conflict" {
-    ensureDirectory(this.directory);
+  moveHistoryFile(fromRelative: string, toRelative: string, dryRun = false): "moved" | "conflict" {
     const src = internalPath(this.directory, fromRelative);
+    if (dryRun) {
+      const target = internalPath(this.directory, toRelative, true);
+      return ordinaryFile(target) ? "conflict" : "moved";
+    }
     const dstParentRel = dirname(toRelative);
     if (dstParentRel && dstParentRel !== ".") {
       privateDirectory(this.directory, dstParentRel);
@@ -342,8 +349,8 @@ export class HistoryFiles {
       if ((error as NodeJS.ErrnoException).code === "EEXIST") return "conflict";
       throw error;
     }
-    unlinkSync(src);
     syncDirectory(dirname(dst));
+    unlinkSync(src);
     syncDirectory(dirname(src));
     return "moved";
   }
@@ -380,7 +387,7 @@ export class HistoryFiles {
   }
 
   saveRaw(raw: RawHistory) {
-    requireThat(isHistoryHost(raw.host) && raw.host === this.host, "历史归档只允许所属来源写入。");
+    requireThat(isHistoryIdentifier(raw.host) && raw.host === this.host, "历史归档只允许所属来源写入。");
     rawHistory(raw);
     ensureDirectory(this.directory);
     const name = filename(raw.id);
@@ -403,7 +410,7 @@ export class HistoryFiles {
     if (!sharedDirectory(this.directory) || !ordinaryDirectory(this.summariesDirectory)) return [];
     const entries = readdirSync(this.summariesDirectory, { withFileTypes: true });
     return entries
-      .filter(entry => entry.isDirectory() && !entry.isSymbolicLink() && isSummaryDimension(entry.name))
+      .filter(entry => entry.isDirectory() && !entry.isSymbolicLink() && isHistoryIdentifier(entry.name))
       .map(entry => entry.name)
       .sort();
   }
@@ -413,7 +420,7 @@ export class HistoryFiles {
   }
 
   listSummaries(dimension: string, onlyFiles?: readonly string[]): SummaryArtifact[] {
-    requireThat(isSummaryDimension(dimension), "历史摘要维度无效：" + dimension);
+    requireThat(isHistoryIdentifier(dimension), "历史摘要维度无效：" + dimension);
     const dir = this.summaryDirectory(dimension);
     if (!sharedDirectory(this.directory) || !ordinaryDirectory(this.summariesDirectory) || !ordinaryDirectory(dir)) return [];
     const files = onlyFiles ?? listLayoutJsonFiles(dir, this.layout, this.summaryBucketDepth(dimension));
@@ -432,7 +439,7 @@ export class HistoryFiles {
   }
 
   readSummary(dimension: string, id: string): SummaryArtifact | undefined {
-    requireThat(isSummaryDimension(dimension), "历史摘要维度无效：" + dimension);
+    requireThat(isHistoryIdentifier(dimension), "历史摘要维度无效：" + dimension);
     const dir = this.summaryDirectory(dimension);
     if (!sharedDirectory(this.directory) || !ordinaryDirectory(this.summariesDirectory) || !ordinaryDirectory(dir)) return undefined;
     const name = filename(id);

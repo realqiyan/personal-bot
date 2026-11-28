@@ -531,7 +531,7 @@ test("history.layout supports monthly (default) and flat, enforces strict layout
   // Explicit migrate moves raw + summary directly into 2026/10/ with zero duplicates and untouched config.json.
   const migrated = migrateWorkspaceHistory(root);
   assert.equal(migrated.dryRun, false);
-  assert.equal(migrated.moved.length, 2);
+  assert.deepEqual(migrated.moved, dryRun.moved);
   assert.equal(migrated.skipped.length, 0);
   assert.equal(migrated.errors.length, 0);
   assert.equal(await readFile(join(root, ".pbot/config.json"), "utf8"), configBefore);
@@ -595,7 +595,13 @@ test("monthly layout keeps cross-month sessions in start bucket, falls back to u
   assert.deepEqual(monthlySearch.matches[0].parents, []);
 
   // Drill down: monthly -> session summary -> exchange.
-  const octNode = readWorkspaceHistory(root, "summary:monthly:2026-10");
+  const match = monthlySearch.matches[0];
+  const octNode = readWorkspaceHistory(root, match.id, 0, undefined, 0, match.host);
+  for (const query of ["", "十月月度汇总"]) {
+    const filtered = searchWorkspaceHistory(root, { dimension: "monthly", query, host: match.host, sessionId: match.sessionId });
+    assert.deepEqual(filtered.matches.map(item => item.id), [match.id]);
+  }
+  assert.throws(() => readWorkspaceHistory(root, match.id, 0, undefined, 0, "dsh"));
   assert.equal(octNode.dimension, "monthly");
   assert.deepEqual(octNode.parents, []);
   assert.equal(octNode.children.length, 1);

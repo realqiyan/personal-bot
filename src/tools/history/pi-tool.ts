@@ -1,11 +1,11 @@
-import { defineTool } from "@earendil-works/pi-coding-agent";
-import type { CallAccess } from "../access.js";
+import { defineTool, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { markdownResult } from "../result.js";
 import { historyDescription, historyInput, historyParameters, historyResultSchema } from "./contract.js";
 import { executeHistory } from "./actions.js";
 
-export function historyTool(root: string, access: CallAccess) {
-  return defineTool({
+export function registerPiHistoryTool(pi: ExtensionAPI, root: string, access: { check(): void }) {
+  const tool = defineTool({
+    namespace: { name: "pbot", description: "工作区历史查询。" },
     name: "pbot_history",
     label: "历史对话",
     description: historyDescription,
@@ -18,4 +18,6 @@ export function historyTool(root: string, access: CallAccess) {
       return markdownResult(result, args.action === "search" ? "历史搜索" : "历史正文");
     },
   });
+  pi.registerTool(tool);
+  return () => pi.registerTool({ ...tool, exposure: "hidden" });
 }

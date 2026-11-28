@@ -1,6 +1,6 @@
 import { object } from "../common/json.js";
-import { requireThat } from "../common/validation.js";
-import type { HistoryExchange, HistoryHost, HistoryIdentity, RawHistory, SummaryArtifact } from "../model/history.js";
+import { isHistoryIdentifier, requireThat } from "../common/validation.js";
+import type { HistoryExchange, HistoryIdentity, RawHistory, SummaryArtifact } from "../model/history.js";
 import { fileId } from "./file-access.js";
 
 const strings = (value: unknown): value is string[] => Array.isArray(value) && value.every(item => typeof item === "string");
@@ -11,13 +11,11 @@ const exchangeFields = ["id", "entryIds", "text", "from", "to", "completed"];
 const summaryArtifactFields = ["id", "dimension", "host", "sessionId", "title", "text", "from", "to", "updatedAt", "source"];
 const summarySourceFields = ["rawIds", "exchangeIds", "fingerprint"];
 
-const identifierPattern = /^[a-z0-9][a-z0-9-]{0,63}$/;
-export const isHistoryHost = (value: unknown): value is HistoryHost => typeof value === "string" && identifierPattern.test(value);
-export const isSummaryDimension = (value: unknown): value is string => typeof value === "string" && identifierPattern.test(value);
+export { isHistoryIdentifier as isHistoryHost, isHistoryIdentifier as isSummaryDimension } from "../common/validation.js";
 
 function identity(value: unknown): asserts value is HistoryIdentity {
   requireThat(
-    object(value) && isHistoryHost(value.host) && typeof value.id === "string" &&
+    object(value) && isHistoryIdentifier(value.host) && typeof value.id === "string" &&
     typeof value.sessionId === "string" && value.sessionId.length > 0,
     "历史归档身份无效。",
   );
@@ -61,11 +59,11 @@ export function summaryArtifact(value: unknown, expectedDimension?: string): Sum
   requireThat(object(value) && fields(value, summaryArtifactFields), "历史摘要产物格式无效。");
   requireThat(typeof value.id === "string" && value.id.length > 0, "历史摘要 ID 无效。");
   fileId(value.id);
-  requireThat(isSummaryDimension(value.dimension), "历史摘要维度无效。");
+  requireThat(isHistoryIdentifier(value.dimension), "历史摘要维度无效。");
   if (expectedDimension !== undefined) {
     requireThat(value.dimension === expectedDimension, `历史摘要维度不匹配，预期 ${expectedDimension}，实际 ${value.dimension}。`);
   }
-  if (value.host !== undefined) requireThat(isHistoryHost(value.host), "历史摘要来源 host 无效。");
+  if (value.host !== undefined) requireThat(isHistoryIdentifier(value.host), "历史摘要来源 host 无效。");
   if (value.sessionId !== undefined) requireThat(typeof value.sessionId === "string" && value.sessionId.length > 0, "历史摘要 sessionId 无效。");
   requireThat(
     typeof value.title === "string" && typeof value.text === "string" && value.text.trim().length > 0 &&

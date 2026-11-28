@@ -6,6 +6,7 @@ import { cp, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/p
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
+import { WorkspaceMcpBridge } from "../../dist/extension/mcp/bridge.js";
 
 const exec = promisify(execFile);
 const builtBundle = resolve("lib/antigravity-plugin");
@@ -189,7 +190,7 @@ class McpClient {
   }
 }
 
-async function startHttpMcpServer(t) {
+async function startHttpMcpServer(t, beforeInitialize) {
   let deleted = false;
   const server = createServer((req, res) => {
     if (req.method === "DELETE") {
@@ -201,7 +202,7 @@ async function startHttpMcpServer(t) {
     let body = "";
     req.setEncoding("utf8");
     req.on("data", chunk => { body += chunk; });
-    req.on("end", () => {
+    req.on("end", async () => {
       const msg = JSON.parse(body);
       if (msg.id === undefined) {
         res.writeHead(202);
@@ -211,6 +212,7 @@ async function startHttpMcpServer(t) {
       const auth = req.headers.authorization || "";
       const session = req.headers["mcp-session-id"] || "";
       if (msg.method === "initialize") {
+        await beforeInitialize?.();
         res.writeHead(200, { "Content-Type": "application/json", "Mcp-Session-Id": "http-sess-42" });
         res.end(JSON.stringify({
           jsonrpc: "2.0",
@@ -512,4 +514,37 @@ test("workspace MCP bridge serves stdio and Streamable HTTP servers, hot-reloads
   assert.equal(removedCli.removed, true);
   const storedFile = JSON.parse(await readFile(join(cliWorkspace, ".pbot/mcp.json"), "utf8"));
   assert.deepEqual(Object.keys(storedFile.mcpServers), ["demo-http"]);
+});
+
+test("changing a server during its handshake routes concurrent calls to the requested configuration", async t => {
+  const root = await mkdtemp(join(tmpdir(), "pbot-bridge-handshake-"));
+  const dir = join(root, ".pbot");
+  await mkdir(dir);
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const bridge = new WorkspaceMcpBridge();
+  const started = Promise.withResolvers();
+  const release = Promise.withResolvers();
+  const old = await startHttpMcpServer(t, () => {
+    started.resolve();
+    return release.promise;
+  });
+  const current = await startHttpMcpServer(t, release.resolve);
+  const configure = (url, authorization) => writeFile(join(dir, "mcp.json"), JSON.stringify({
+    mcpServers: { shared: { url, timeout: 3, headers: { authorization } } },
+  }));
+  try {
+    await configure(old.url, "first");
+    const first = bridge.call(root, "shared", "http_json");
+    await started.promise;
+    await configure(current.url, "second");
+    const second = bridge.call(root, "shared", "http_json");
+    // Only the second endpoint can release the first handshake.
+    const replies = await Promise.all([first, second]);
+    assert.deepEqual(replies.map(reply => JSON.parse(reply.content[0].text).auth), ["first", "second"]);
+  } finally {
+    release.resolve();
+    await bridge.close();
+  }
+  assert.equal(old.isDeleted(), true);
+  assert.equal(current.isDeleted(), true);
 });

@@ -1,6 +1,7 @@
 import type { Context } from "@deepseek-ai/cordis";
 import type {} from "@deepseek-ai/dsh-api-remotes/client";
 import type { SessionId } from "@deepseek-ai/dsh-session/types";
+import { historyPageLimits } from "../../model/history.js";
 import { object, json } from "../../common/json.js";
 import { block, details, element, empty, facts, field, group, note, pageTitle, record, rows, select, text, time } from "./elements.js";
 import { managementStyles } from "./styles.js";
@@ -72,29 +73,28 @@ export function showManagement(ctx: Context, parentSessionId: SessionId) {
     if (!result.ok) throw new Error(result.error.message);
     lifetime.signal.throwIfAborted(); return record(result.value);
   }
-  async function command(verb: string, input?: unknown, message = "操作已接纳。") {
-    const result = await ctx.remote.commands.execute(parentSessionId, "/pbot " + verb + (input === undefined ? "" : " " + JSON.stringify(input)), []);
+  async function initializeWorkspace() {
+    const result = await ctx.remote.commands.execute(parentSessionId, "/pbot init", []);
     if (!result.ok) throw new Error(result.error.message + "；如连接中断，请先刷新记录确认操作是否已接纳。");
     if (!result.value) throw new Error("管理命令未被接纳。");
     if (result.value.result.kind === "error") throw new Error(result.value.result.text);
-    inform(message);
+    inform("工作区已初始化并启用。");
     if (!closed) { try { await refresh(); } catch (error) { inform("操作已接纳；刷新状态未成功：" + String(error), "error"); } }
-    return result.value.result.text ?? "";
   }
 
-  const status = section("status", "工作区"); pageTitle(status, "工作区", "");
+  const status = section("status", "工作区"); pageTitle(status, "工作区");
   const counts = note(""), workspaceInfo = group(status); status.querySelector("header")!.after(counts); counts.classList.add("pbot-counts");
   const materials = group(status, "pbot-setting"); materials.append(element("h3", "资料目录"));
-  const initializeButton = button(materials, "准备目录", async () => { await command("init", undefined, "工作区已初始化并启用。"); });
+  const initializeButton = button(materials, "准备目录", initializeWorkspace);
   const diagnostic = details(status, "环境详情"), statusBody = block(""); statusBody.classList.add("pbot-raw"); diagnostic.append(statusBody);
 
-  const history = section("history", "历史"); pageTitle(history, "历史", "");
+  const history = section("history", "历史"); pageTitle(history, "历史");
   const searchForm = form(history); searchForm.className = "pbot-search";
   const historyQuery = field(searchForm, "关键词"), host = select(searchForm, "来源", [["", "全部"], ["pi", "Pi"], ["dsh", "dsh"], ["claude", "Claude Code"], ["antigravity", "Antigravity"], ["codex", "Codex"], ["qoder", "Qoder CLI"]]);
   historyQuery.placeholder = "留空查看最近会话"; submit(searchForm, "查询", () => searchHistory());
   const dateFilters = details(history, "时间范围"), dateGrid = group(dateFilters, "pbot-grid");
   const historyFrom = field(dateGrid, "开始时间"), historyTo = field(dateGrid, "结束时间");
-  for (const input of [historyFrom, historyTo]) (input as HTMLInputElement).type = "datetime-local";
+  for (const input of [historyFrom, historyTo]) input.type = "datetime-local";
   const historyBody = group(history, "pbot-history-results"), historyPaging = group(history, "pbot-pagination"), historyNode = group(history, "pbot-card"); historyNode.hidden = true;
   historyBody.append(empty("查询历史", "输入关键词，或留空查看最近会话。"));
   let historySearch: Record<string, unknown> = {};
@@ -119,7 +119,7 @@ export function showManagement(ctx: Context, parentSessionId: SessionId) {
       button(item, "读取", () => readHistory(text(match.id), text(match.host)), "pbot-quiet"); historyBody.append(item);
     }
     if (!rows(data.matches).length) historyBody.append(empty("没有找到匹配内容", "试试更短的关键词，或调整来源和时间范围。"));
-    if (offset) button(historyPaging, "上一页", () => searchHistory(Math.max(0, offset - 20), true));
+    if (offset) button(historyPaging, "上一页", () => searchHistory(Math.max(0, offset - historyPageLimits.search.default), true));
     if (typeof data.nextOffset === "number") button(historyPaging, "下一页", () => searchHistory(data.nextOffset as number, true));
   }
   async function readHistory(id: string, source: string, offset = 0, childrenOffset = 0) {

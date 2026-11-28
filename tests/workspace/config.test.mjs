@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { initializeWorkspaceConfig, readWorkspaceConfig, workspaceConfigPath, workspaceFeatures } from "../../dist/services/workspace/workspace-config.js";
@@ -86,6 +88,8 @@ test("workspace acp configuration supports permission policies and built-in over
   assert.equal(valid.acp.custom.permission, "deny");
   for (const bad of [
     { enabled: true, acp: { codex: { permission: "invalid" } } },
+    { enabled: true, acp: { codex: { permission: ["allow"] } } },
+    { enabled: true, history: { layout: ["flat"] } },
     { enabled: true, acp: { codex: { args: ["--flag"] } } },
   ]) {
     await writeFile(path, JSON.stringify(bad));
@@ -138,4 +142,20 @@ test("workspace MCP config validates reserved names, env templates, and skills d
     { name: "alpha", description: "Multi-line description", path: ".agents/skills/alpha/SKILL.md" },
     { name: "beta", description: "Single line", path: ".agents/skills/beta/SKILL.md" },
   ]);
+});
+
+test("concurrent CLI edits preserve every independent workspace MCP server", async t => {
+  const root = await directory(t);
+  const configPath = join(root, ".pbot", "mcp.json");
+  await mkdir(join(root, ".pbot"));
+  const metadata = { owner: "workspace", notes: ["keep"] };
+  await writeFile(configPath, JSON.stringify({ metadata, mcpServers: {} }));
+  const names = Array.from({ length: 12 }, (_, i) => `service-${i}`);
+  const cli = (...args) => promisify(execFile)(process.execPath, ["bin/pbot.mjs", "mcp", ...args]);
+  await Promise.all(names.map(name => cli("add", name, "--workspace", root, "--", "node")));
+  assert.deepEqual(Object.keys((await readWorkspaceMcpConfig(root)).servers).sort(), [...names].sort());
+  await Promise.all(names.map(name => cli("remove", name, "--workspace", root)));
+  assert.deepEqual((await readWorkspaceMcpConfig(root)).servers, {});
+  assert.deepEqual(JSON.parse(await readFile(configPath, "utf8")), { metadata, mcpServers: {} });
+  assert.deepEqual(await readdir(join(root, ".pbot")), ["mcp.json"]);
 });

@@ -10,7 +10,7 @@ import type {
   WorkspaceMcpServer,
   WorkspaceMcpStdioServer,
 } from "../../model/workspace-mcp.js";
-import { readJsonFile, writeJsonFile } from "../../storage/atomic-json.js";
+import { updateJsonFile } from "../../storage/atomic-json.js";
 
 const serverNamePattern = /^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$/;
 const reservedServerNames = new Set(["pbot"]);
@@ -29,13 +29,11 @@ export function isWorkspaceMcpHttpServer(server: WorkspaceMcpServer): server is 
 
 function validateStringRecord(value: unknown, label: string): Record<string, string> {
   requireThat(object(value), `${label} 必须是字符串映射。`);
-  const result: Record<string, string> = {};
-  for (const [key, entry] of Object.entries(value)) {
+  return Object.fromEntries(Object.entries(value).map(([key, entry]) => {
     requireThat(key.length > 0 && !key.includes("\0") && typeof entry === "string" && !entry.includes("\0"),
       `${label}.${key} 必须是非空键与无空字节字符串值。`);
-    result[key] = entry;
-  }
-  return result;
+    return [key, entry];
+  }));
 }
 
 export function validateWorkspaceMcpServer(name: string, value: unknown): WorkspaceMcpServer {
@@ -117,7 +115,7 @@ function validateMcpFile(value: unknown): WorkspaceMcpConfig {
   for (const [name, entry] of Object.entries(rawServers)) {
     servers[name] = validateWorkspaceMcpServer(name, entry);
   }
-  return { mcpServers: servers };
+  return { ...value, mcpServers: servers };
 }
 
 export function workspaceMcpPath(root: string): string {
@@ -148,6 +146,11 @@ export function expandEnvTemplate(value: string, env: NodeJS.ProcessEnv, context
   });
 }
 
+function expandEnvRecord(values: Record<string, string> | undefined, env: NodeJS.ProcessEnv, context: string) {
+  return Object.fromEntries(Object.entries(values ?? {}).map(([key, value]) =>
+    [key, expandEnvTemplate(value, env, `${context}.${key}`)]));
+}
+
 export function resolveWorkspaceMcpServer(
   root: string,
   name: string,
@@ -158,15 +161,11 @@ export function resolveWorkspaceMcpServer(
   if (isWorkspaceMcpHttpServer(server)) {
     const url = expandEnvTemplate(server.url, env, `MCP 服务 "${name}" 的 url`);
     requireThat(/^https?:\/\/.+/.test(url), `MCP 服务 "${name}" 展开后的 url 必须以 http:// 或 https:// 开头。`);
-    const headers: Record<string, string> = {};
-    for (const [key, value] of Object.entries(server.headers ?? {})) {
-      headers[key] = expandEnvTemplate(value, env, `MCP 服务 "${name}" 的 headers.${key}`);
-    }
     return {
       transport: "http",
       name,
       url,
-      headers,
+      headers: expandEnvRecord(server.headers, env, `MCP 服务 "${name}" 的 headers`),
       ...(server.description ? { description: server.description } : {}),
       timeout,
     };
@@ -174,17 +173,13 @@ export function resolveWorkspaceMcpServer(
 
   const command = expandEnvTemplate(server.command, env, `MCP 服务 "${name}" 的 command`);
   const args = (server.args ?? []).map((arg, index) => expandEnvTemplate(arg, env, `MCP 服务 "${name}" 的 args[${index}]`));
-  const resolvedEnv: Record<string, string> = {};
-  for (const [key, value] of Object.entries(server.env ?? {})) {
-    resolvedEnv[key] = expandEnvTemplate(value, env, `MCP 服务 "${name}" 的 env.${key}`);
-  }
   const cwd = server.cwd ? resolve(root, expandEnvTemplate(server.cwd, env, `MCP 服务 "${name}" 的 cwd`)) : root;
   return {
     transport: "stdio",
     name,
     command,
     args,
-    env: resolvedEnv,
+    env: expandEnvRecord(server.env, env, `MCP 服务 "${name}" 的 env`),
     cwd,
     ...(server.description ? { description: server.description } : {}),
     timeout,
@@ -215,10 +210,10 @@ export async function upsertWorkspaceMcpServer(
   if (current.error) throw new Error(current.error);
   const directory = dirname(current.path);
   await mkdir(directory, { recursive: true });
-  const existing = current.present ? readJsonFile(directory, "mcp.json", validateMcpFile) : { mcpServers: {} };
-  const next: WorkspaceMcpConfig = { mcpServers: { ...existing.mcpServers, [name]: validated } };
-  const written = writeJsonFile(directory, "mcp.json", next, validateMcpFile, !current.present);
-  if (!written) return upsertWorkspaceMcpServer(root, name, server);
+  await updateJsonFile(directory, "mcp.json", validateMcpFile, existing => ({
+    ...existing,
+    mcpServers: { ...existing?.mcpServers, [name]: validated },
+  }));
   return readWorkspaceMcpConfig(root);
 }
 
@@ -232,11 +227,11 @@ export async function removeWorkspaceMcpServer(
     return { removed: false, configuration: current };
   }
   const directory = dirname(current.path);
-  const existing = readJsonFile(directory, "mcp.json", validateMcpFile);
-  if (!Object.hasOwn(existing.mcpServers, name)) {
-    return { removed: false, configuration: await readWorkspaceMcpConfig(root) };
-  }
-  const remaining = Object.fromEntries(Object.entries(existing.mcpServers).filter(([key]) => key !== name));
-  writeJsonFile(directory, "mcp.json", { mcpServers: remaining }, validateMcpFile);
-  return { removed: true, configuration: await readWorkspaceMcpConfig(root) };
+  const removed = await updateJsonFile(directory, "mcp.json", validateMcpFile, existing => {
+    if (!existing || !Object.hasOwn(existing.mcpServers, name)) return undefined;
+    const remaining = { ...existing.mcpServers };
+    delete remaining[name];
+    return { ...existing, mcpServers: remaining };
+  });
+  return { removed, configuration: await readWorkspaceMcpConfig(root) };
 }

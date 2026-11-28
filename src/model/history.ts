@@ -172,6 +172,11 @@ export interface SummaryRunReport {
   warnings: string[];
 }
 
+export const historyPageLimits = {
+  search: { default: 20, max: 50 },
+  read: { default: 12_000, max: 24_000 },
+} as const;
+
 export interface HistoryQuery {
   host?: HistoryHost;
   query?: string;

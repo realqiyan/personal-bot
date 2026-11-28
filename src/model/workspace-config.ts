@@ -7,12 +7,9 @@ export interface WorkspaceFeatures {
   history?: boolean;
 }
 
-export interface ResolvedWorkspaceFeatures {
-  readonly prompts: boolean;
-  readonly skills: boolean;
-  readonly mcp: boolean;
-  readonly history: boolean;
-}
+export type ResolvedWorkspaceFeatures = Readonly<Required<WorkspaceFeatures>>;
+
+export const summaryConcurrency = { default: 3, max: 8 } as const;
 
 export interface WorkspaceSummaryConfig {
   backend?: string;
@@ -28,7 +25,8 @@ export interface ResolvedWorkspaceSummaryConfig {
   readonly concurrency: number;
 }
 
-export type HistoryLayout = "monthly" | "flat";
+export const historyLayouts = ["monthly", "flat"] as const;
+export type HistoryLayout = typeof historyLayouts[number];
 
 export interface WorkspaceHistoryConfig {
   layout?: HistoryLayout;
@@ -46,13 +44,9 @@ export interface WorkspaceConfig {
   history?: WorkspaceHistoryConfig;
 }
 
-export interface WorkspaceConfiguration {
+export interface WorkspaceConfiguration extends WorkspaceConfig {
   path: string;
   present: boolean;
   enabled: boolean;
   error?: string;
-  features?: WorkspaceFeatures;
-  acp?: AcpCommands;
-  summary?: WorkspaceSummaryConfig;
-  history?: WorkspaceHistoryConfig;
 }

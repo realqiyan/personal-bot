@@ -7,7 +7,7 @@
 | `npm run build` | 清理 `dist`，编译测试模块，再依次构建 CLI、dsh 与插件产物 |
 | `npm run build:cli` | 清理 `lib`，编译独立 CLI（`setup` / `install-antigravity` / `mcp`）、Pi 检查桥接与启动保护 |
 | `npm run build:dsh` | 编译 Host，将 TypeBox 与许可证纳入 `lib`，再构建原生 Web Loader 模块 |
-| `npm run build:plugins`（`build:claude` 别名） | 编译共享插件运行时（`lib/plugin.js`、`lib/claude.js`），通过 `esbuild` 打包零外部依赖的 `lib/extension/mcp.js` 与 `lib/extension/acp-worker.js`，并执行各已注册插件宿主构建目标（同步 Claude 清单、组装自包含 `lib/antigravity-plugin/`、生成 `lib/codex-marketplace/` 与 `lib/qoder-plugin/`） |
+| `npm run build:plugins`（`build:claude` 别名） | 在临时目录编译一次共享插件运行时（`lib/plugin.js`、`lib/claude.js`），通过 `esbuild` 打包零外部依赖的 `lib/extension/mcp.js` 与 `lib/extension/acp-worker.js`，并执行各已注册插件宿主构建目标（同步 Claude 清单、组装自包含 `lib/antigravity-plugin/`、生成 `lib/codex-marketplace/` 与 `lib/qoder-plugin/`） |
 
 完整构建与 `prepack` 均按 **CLI → dsh → plugins** 顺序执行；`build:cli` 会清空 `lib`，单独重建它后须补齐后两项。宿主 SDK 保持 optional peer，Pi 直接加载 `src`。完整开发使用 Linux/macOS、Node.js 24.9+；Pi/CLI/轻插件与打包 MCP/ACP 入口支持 Node.js 22.19+（Claude CLI 2.1.325+，Antigravity `agy` 1.5+）。
 

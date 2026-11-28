@@ -1,3 +1,4 @@
+import type { ResolvedWorkspaceMcpServer } from "../../../model/workspace-mcp.js";
 import { stat } from "node:fs/promises";
 import { realpathSync } from "node:fs";
 import { join } from "node:path";
@@ -7,7 +8,7 @@ import { acpMember } from "../../acp/member.js";
 import { agentFileTools } from "../../../integrations/hosts/pi/agent-tools.js";
 import { toPiMcpConfig } from "../../../integrations/hosts/pi/mcp.js";
 import { authorizeMutation } from "../../../services/workspace/workspace-files.js";
-import { readWorkspaceMcpConfig, resolveWorkspaceMcpServer } from "../../../services/workspace/workspace-mcp.js";
+import { loadNativeWorkspaceServers } from "../workspace-mcp.js";
 import { resourceRoot } from "../../../common/paths.js";
 import { launch } from "../../../storage/agent-files.js";
 import { requireThat } from "../../../common/validation.js";
@@ -24,16 +25,9 @@ export default async function piAcpMember(pi: ExtensionAPI) {
     requireThat(reference.host === "acp" && reference.backend === "pi" && realpathSync(ctx.cwd) === member.d.cwd &&
       (reference.sessionId === null || reference.sessionId === ctx.sessionManager.getSessionId()), "Pi ACP 会话身份或工作目录不匹配。");
   };
-  const workspaceMcpServers: ReturnType<typeof resolveWorkspaceMcpServer>[] = [];
+  const workspaceMcpServers: ResolvedWorkspaceMcpServer[] = [];
   if (member.features.mcp && process.env.PBOT_ACP_VALIDATE !== "1") {
-    const mcpConfig = await readWorkspaceMcpConfig(member.d.workspace);
-    if (!mcpConfig.error) {
-      for (const [name, server] of Object.entries(mcpConfig.servers)) {
-        if (server.enabled === false) continue;
-        try { workspaceMcpServers.push(resolveWorkspaceMcpServer(member.d.workspace, name, server)); }
-        catch { /* Leave individual misconfigured servers unavailable without aborting the worker. */ }
-      }
-    }
+    await loadNativeWorkspaceServers(member.d.workspace, server => { workspaceMcpServers.push(server); });
   }
   pi.on("resources_discover", async () => {
     if (!member.features.skills || member.d.options.noSkills) return {};

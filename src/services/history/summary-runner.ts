@@ -1,4 +1,4 @@
-import { join } from "node:path";
+import { isDeepStrictEqual } from "node:util";
 import { setTimeout as delay } from "node:timers/promises";
 import { requireThat } from "../../common/validation.js";
 import type {
@@ -12,13 +12,12 @@ import type {
   SummaryRunProgress,
   SummaryRunReport,
 } from "../../model/history.js";
-import { HistoryFiles } from "../../storage/history-files.js";
-import { readWorkspaceHistoryLayoutSync } from "../workspace/workspace-config.js";
+import { summaryConcurrency } from "../../model/workspace-config.js";
+import type { HistoryFiles } from "../../storage/history-files.js";
+import { workspaceHistoryFiles } from "./workspace-history.js";
 import { rawSessionSpan } from "./history-index.js";
 import { resolveSummaryDimensions } from "./summary-registry.js";
 
-const defaultConcurrency = 3;
-const maxConcurrency = 8;
 const lockRetryAttempts = 5;
 const lockRetryDelayMs = 40;
 export const defaultSummaryReminderDays = 7;
@@ -51,11 +50,7 @@ export interface InspectSummaryOptions {
   now?: Date;
 }
 
-export interface CheckSummaryReminderOptions {
-  dimensions?: readonly string[];
-  thresholdDays?: number;
-  now?: Date;
-}
+export type CheckSummaryReminderOptions = InspectSummaryOptions;
 
 function oldestRawTimestamp(raws: readonly RawHistory[]): number | undefined {
   let oldest: number | undefined;
@@ -120,8 +115,22 @@ export function checkHistorySummaryReminder(
   root: string,
   options: CheckSummaryReminderOptions = {},
 ): HistorySummaryReminder | undefined {
-  const layout = readWorkspaceHistoryLayoutSync(root);
-  const files = new HistoryFiles(join(root, ".pbot/history"), "pi", layout);
+  return summaryReminder(workspaceHistoryFiles(root), options);
+}
+
+export function historyStartupNotices(root: string): string[] {
+  const notices: string[] = [];
+  try {
+    const files = workspaceHistoryFiles(root);
+    const migration = files.migrationNotice();
+    if (migration) notices.push(migration);
+    const reminder = summaryReminder(files, {});
+    if (reminder) notices.push(reminder.message);
+  } catch { /* History diagnostics are best effort during host startup. */ }
+  return notices;
+}
+
+function summaryReminder(files: HistoryFiles, options: CheckSummaryReminderOptions) {
   const raws = files.listRaw();
   if (!raws.length) return undefined;
 
@@ -131,52 +140,12 @@ export function checkHistorySummaryReminder(
   const oldestRawMs = oldestRawTimestamp(raws);
   if (oldestRawMs === undefined || nowMs - oldestRawMs < thresholdDays * dayMs) return undefined;
 
-  const dimensions = resolveSummaryDimensions(options.dimensions, layout);
-  const seenDimensions = new Set<string>();
-  const summariesByDimension = new Map<string, Map<string, SummaryArtifact>>();
-  const allSummaries: SummaryArtifact[] = [];
-  let pendingCount = 0;
-
-  const loadDimension = (dimId: string) => {
-    const cached = summariesByDimension.get(dimId);
-    if (cached) return cached;
-    const list = files.listSummaries(dimId);
-    const map = new Map(list.map(item => [item.id, item]));
-    summariesByDimension.set(dimId, map);
-    return map;
-  };
-
-  for (const dimension of dimensions) {
-    seenDimensions.add(dimension.id);
-    if (dimension.id !== "session") loadDimension("session");
-    const existing = loadDimension(dimension.id);
-    allSummaries.push(...existing.values());
-    const plan = dimension.plan(raws, existing, { force: false, summariesByDimension });
-    pendingCount += plan.tasks.length;
-  }
-
-  for (const dim of files.listDimensions()) {
-    if (seenDimensions.has(dim)) continue;
-    allSummaries.push(...loadDimension(dim).values());
-  }
-
-  return evaluateSummaryReminder(raws, allSummaries, pendingCount, options);
+  const { totalPending, allSummaries } = inspectDimensions(files, raws, options, []);
+  return evaluateSummaryReminder(raws, allSummaries, totalPending, options);
 }
 
-/** Read-only inspection of raw archives vs derived summaries across requested dimensions. */
-export function inspectWorkspaceSummaries(
-  root: string,
-  options: InspectSummaryOptions = {},
-): { layout: HistoryLayout; rawCount: number; dimensions: SummaryDimensionStatus[]; warnings: string[]; reminder?: HistorySummaryReminder } {
-  const layout = readWorkspaceHistoryLayoutSync(root);
-  const files = new HistoryFiles(join(root, ".pbot/history"), "pi", layout);
-  const raws = files.listRaw();
-  const warnings = [...files.warnings];
-  if (layout === "monthly") {
-    const flatNotice = files.detectFlatFiles().message;
-    if (flatNotice) warnings.push(flatNotice);
-  }
-  const dimensions = resolveSummaryDimensions(options.dimensions, layout);
+function inspectDimensions(files: HistoryFiles, raws: RawHistory[], options: InspectSummaryOptions, warnings: string[]) {
+  const dimensions = resolveSummaryDimensions(options.dimensions, files.layout);
 
   const statuses: SummaryDimensionStatus[] = [];
   const seenDimensions = new Set<string>();
@@ -227,9 +196,23 @@ export function inspectWorkspaceSummaries(
     allSummaries.push(...loadDimension(dim).values());
   }
 
+  return { statuses, totalPending, allSummaries };
+}
+
+/** Read-only inspection of raw archives vs derived summaries across requested dimensions. */
+export function inspectWorkspaceSummaries(
+  root: string,
+  options: InspectSummaryOptions = {},
+): { layout: HistoryLayout; rawCount: number; dimensions: SummaryDimensionStatus[]; warnings: string[]; reminder?: HistorySummaryReminder } {
+  const files = workspaceHistoryFiles(root);
+  const raws = files.listRaw();
+  const warnings = [...files.warnings];
+  const flatNotice = files.migrationNotice();
+  if (flatNotice) warnings.push(flatNotice);
+  const { statuses, totalPending, allSummaries } = inspectDimensions(files, raws, options, warnings);
   const reminder = evaluateSummaryReminder(raws, allSummaries, totalPending, options);
   return {
-    layout,
+    layout: files.layout,
     rawCount: raws.length,
     dimensions: statuses,
     warnings: [...new Set(warnings)],
@@ -257,30 +240,28 @@ export async function runWorkspaceSummaries(options: RunSummaryOptions): Promise
   const signal = options.signal ?? new AbortController().signal;
   signal.throwIfAborted();
 
-  const concurrency = Math.max(1, Math.min(maxConcurrency, Math.floor(options.concurrency ?? defaultConcurrency)));
-  const layout = readWorkspaceHistoryLayoutSync(options.root);
-  const dimensions = resolveSummaryDimensions(options.dimensions, layout);
-  const files = new HistoryFiles(join(options.root, ".pbot/history"), "pi", layout);
+  const concurrency = Math.max(1, Math.min(summaryConcurrency.max, Math.floor(options.concurrency ?? summaryConcurrency.default)));
+  const files = workspaceHistoryFiles(options.root);
+  const dimensions = resolveSummaryDimensions(options.dimensions, files.layout);
 
+  const warnings: string[] = [];
+  const loadSummaries = (id: string) => {
+    const items = files.listSummaries(id);
+    warnings.push(...files.warnings);
+    return new Map(items.map(item => [item.id, item]));
+  };
+  // Capture each publication baseline before reading the input it will summarize.
+  const plannedDimensions = dimensions.map(dimension => ({ dimension, existing: loadSummaries(dimension.id) }));
   const raws = files.listRaw();
-  const warnings = [...files.warnings];
-  if (layout === "monthly") {
-    const flatNotice = files.detectFlatFiles().message;
-    if (flatNotice) warnings.push(flatNotice);
-  }
+  warnings.push(...files.warnings);
+  const flatNotice = files.migrationNotice();
+  if (flatNotice) warnings.push(flatNotice);
   const summariesByDimension = new Map<string, Map<string, SummaryArtifact>>();
   const reports: SummaryDimensionReport[] = [];
 
-  for (const dimension of dimensions) {
+  for (const { dimension, existing } of plannedDimensions) {
     signal.throwIfAborted();
-    if (dimension.id !== "session" && !summariesByDimension.has("session")) {
-      const sessionList = files.listSummaries("session");
-      warnings.push(...files.warnings);
-      summariesByDimension.set("session", new Map(sessionList.map(item => [item.id, item])));
-    }
-    const existingList = files.listSummaries(dimension.id);
-    warnings.push(...files.warnings);
-    const existing = new Map(existingList.map(item => [item.id, item]));
+    if (dimension.id !== "session") summariesByDimension.set("session", loadSummaries("session"));
     summariesByDimension.set(dimension.id, existing);
     const plan = dimension.plan(raws, existing, { force: Boolean(options.force), summariesByDimension });
 
@@ -310,12 +291,22 @@ export async function runWorkspaceSummaries(options: RunSummaryOptions): Promise
             const output = await options.summarizer(request, signal);
             signal.throwIfAborted();
             const artifact = dimension.finalize(task, output, new Date().toISOString());
-            await withSummaryLockRetry(files, dimension.id, () => {
+            const published = await withSummaryLockRetry(files, dimension.id, () => {
               signal.throwIfAborted();
-              files.saveSummary(artifact);
+              const current = files.readSummary(dimension.id, artifact.id);
+              if (isDeepStrictEqual(current, existing.get(artifact.id))) {
+                files.saveSummary(artifact);
+                return artifact;
+              }
+              if (current) existing.set(artifact.id, current);
+              else existing.delete(artifact.id);
+              requireThat(current && isDeepStrictEqual(current.source, artifact.source),
+                "摘要在生成期间已变更，请重新运行摘要。");
+              return current;
             }, signal);
-            existing.set(artifact.id, artifact);
-            if (task.mode === "create") report.created++;
+            existing.set(artifact.id, published);
+            if (published !== artifact) report.skipped++;
+            else if (task.mode === "create") report.created++;
             else if (task.mode === "incremental") report.incremental++;
             else report.rebuilt++;
           } catch (error) {

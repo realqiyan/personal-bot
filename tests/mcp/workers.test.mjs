@@ -5,7 +5,20 @@ import { access, cp, mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/pro
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
+import { mcpWorkerToolNames } from "../../dist/model/acp.js";
+import { McpWorkerRuntime, parseWorkerCommand } from "../../dist/extension/mcp/workers.js";
+
 const builtBundle = resolve("lib/antigravity-plugin");
+
+test("worker commands accept each published tool name and its short form", () => {
+  for (const tool of mcpWorkerToolNames) {
+    for (const name of [tool, tool.slice("worker_".length)]) {
+      assert.deepEqual(parseWorkerCommand(name + " {}"), { tool, args: {} });
+      assert.deepEqual(parseWorkerCommand(JSON.stringify({ tool: name })), { tool, args: {} });
+    }
+  }
+  assert.throws(() => parseWorkerCommand("unknown {}"));
+});
 
 // Minimal real ACP v1 stdio process advertising models/thinking, permissions, form/url elicitations, optional resume, delays, and long reports.
 const acpServerScript = `#!/usr/bin/env node
@@ -637,4 +650,15 @@ test("bundled MCP server exposes 6 split worker_* tools with strict schemas, ann
   assert.equal(defaultModels.data.backend, "local-acp");
   const createWithoutBackend = await hosted.call("worker_create", { workspace });
   assert.equal(createWithoutBackend.isError, true);
+});
+
+test("closing an MCP runtime stops calls still resolving their workspace", async t => {
+  const root = await mkdtemp(join(tmpdir(), "pbot-close-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await mkdir(join(root, ".pbot"));
+  await writeFile(join(root, ".pbot/config.json"), JSON.stringify({ enabled: true }));
+  const runtime = new McpWorkerRuntime(join(root, "workers"), "session");
+  const call = runtime.callTool("worker_discover", { workspace: root, target: "workers" });
+  await runtime.close();
+  await assert.rejects(call, /关闭/);
 });

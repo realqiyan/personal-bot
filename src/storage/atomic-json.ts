@@ -1,12 +1,13 @@
-import { constants, closeSync, fstatSync, fsyncSync, linkSync, lstatSync, openSync, readFileSync, realpathSync,
-  renameSync, unlinkSync, writeFileSync } from "node:fs";
+import { constants, closeSync, fstatSync, fsyncSync, linkSync, lstatSync, mkdirSync, openSync, readFileSync, realpathSync,
+  renameSync, rmdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import { randomUUID } from "node:crypto";
 import { canonical } from "../common/json.js";
 import { requireThat } from "../common/validation.js";
 
 /** The root must already exist. Never follow aliases inside internal storage. */
-export function internalPath(directory: string, relative: string): string {
+export function internalPath(directory: string, relative: string, allowMissingParents = false): string {
   const parts = relative.split("/");
   requireThat(parts.every(part => part && part !== "." && part !== ".." && !/[\\\x00-\x1f]/.test(part)), "内部状态路径无效。");
   const info = lstatSync(directory);
@@ -18,7 +19,7 @@ export function internalPath(directory: string, relative: string): string {
       const info = lstatSync(path);
       requireThat(!info.isSymbolicLink() && (index === parts.length - 1 ? info.isFile() : info.isDirectory()), "内部状态不能使用符号链接或特殊文件。");
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT" || index !== parts.length - 1) throw error;
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT" || (!allowMissingParents && index !== parts.length - 1)) throw error;
     }
   }
   return path;
@@ -71,4 +72,30 @@ export function writeJsonFile<T>(directory: string, relative: string, value: unk
     try { unlinkSync(temporary); }
     catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
   }
+}
+
+/** Serialize a read-modify-write across processes. An undefined replacement means no change. */
+export async function updateJsonFile<T>(directory: string, relative: string, validate: (value: unknown) => T,
+  update: (current: T | undefined) => T | undefined): Promise<boolean> {
+  const lock = internalPath(directory, relative) + ".lock";
+  const deadline = Date.now() + 3000;
+  for (;;) {
+    try { mkdirSync(lock, { mode: 0o700 }); break; }
+    catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+      if (Date.now() >= deadline) throw new Error(`写锁被占用：${lock}。若写入进程已退出，可手动移除遗留锁目录。`);
+      await delay(25);
+    }
+  }
+  try {
+    for (;;) {
+      let current: T | undefined;
+      try { current = readJsonFile(directory, relative, validate); }
+      catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+      const next = update(current);
+      if (next === undefined) return false;
+      if (writeJsonFile(directory, relative, next, validate, current === undefined)) return true;
+      // An external writer created the file first. Apply the edit to its value.
+    }
+  } finally { rmdirSync(lock); }
 }

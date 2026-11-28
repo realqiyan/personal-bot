@@ -2,7 +2,9 @@ import { readFileSync } from "node:fs";
 import { mkdir, readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { object } from "../../common/json.js";
-import { isAcpBackend } from "../../common/validation.js";
+import { acpPermissionPolicies } from "../../model/acp.js";
+import { historyLayouts, summaryConcurrency } from "../../model/workspace-config.js";
+import { isAcpBackend, isOneOf } from "../../common/validation.js";
 import { readJsonFile, writeJsonFile } from "../../storage/atomic-json.js";
 import type {
   HistoryLayout,
@@ -19,7 +21,6 @@ import type {
 const featureKeys = ["prompts", "skills", "mcp", "history"] as const;
 const summaryKeys = ["backend", "model", "thinking", "concurrency"] as const;
 const historyKeys = ["layout"] as const;
-const historyLayouts = ["monthly", "flat"] as const;
 
 function nonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0 && !value.includes("\0");
@@ -47,7 +48,7 @@ function config(value: unknown): Record<string, unknown> {
           (command.args === undefined || (Array.isArray(command.args) && command.args.every(arg => typeof arg === "string" && !arg.includes("\0"))));
       if (!object(command) || !launch ||
         (command.env !== undefined && (!object(command.env) || Object.entries(command.env).some(([k, v]) => !k || k.includes("\0") || typeof v !== "string" || v.includes("\0")))) ||
-        (command.permission !== undefined && !["ask", "allow", "deny"].includes(String(command.permission))) ||
+        (command.permission !== undefined && !isOneOf(command.permission, acpPermissionPolicies)) ||
         Object.keys(command).some(key => !["command", "args", "env", "permission"].includes(key))) {
         throw new Error("ACP 配置需要 command（内置目标可省略）及可选 args 字符串数组、env 字符串映射、permission（ask、allow 或 deny）。");
       }
@@ -67,15 +68,15 @@ function config(value: unknown): Record<string, unknown> {
       throw new Error("summary.thinking 必须是非空字符串。");
     }
     if (value.summary.concurrency !== undefined &&
-      (typeof value.summary.concurrency !== "number" || !Number.isInteger(value.summary.concurrency) || value.summary.concurrency < 1 || value.summary.concurrency > 8)) {
-      throw new Error("summary.concurrency 必须是 1 到 8 之间的整数。");
+      (typeof value.summary.concurrency !== "number" || !Number.isInteger(value.summary.concurrency) || value.summary.concurrency < 1 || value.summary.concurrency > summaryConcurrency.max)) {
+      throw new Error(`summary.concurrency 必须是 1 到 ${summaryConcurrency.max} 之间的整数。`);
     }
   }
   if (value.history !== undefined) {
     if (!object(value.history) || Object.keys(value.history).some(key => !(historyKeys as readonly string[]).includes(key))) {
       throw new Error("history 必须是 JSON 对象，仅支持 layout。");
     }
-    if (value.history.layout !== undefined && !(historyLayouts as readonly string[]).includes(String(value.history.layout))) {
+    if (value.history.layout !== undefined && !isOneOf(value.history.layout, historyLayouts)) {
       throw new Error('history.layout 必须是 "monthly" 或 "flat"。');
     }
   }
@@ -104,7 +105,7 @@ export function workspaceSummaryConfig(
     backend: raw?.backend ?? "pi",
     ...(raw?.model ? { model: raw.model } : {}),
     ...(raw?.thinking ? { thinking: raw.thinking } : {}),
-    concurrency: raw?.concurrency ?? 3,
+    concurrency: raw?.concurrency ?? summaryConcurrency.default,
   };
 }
 

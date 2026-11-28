@@ -22,7 +22,7 @@ Personal Bot is a harness-agnostic workspace and unified MCP cross-harness deleg
 - `src/model/`: plain data types and narrow capability contracts (`plugin-host.ts`, `acp.ts`, `agent.ts`, `history.ts`, `workspace-config.ts`); no business logic or host SDK types.
 - `src/storage/`: atomic JSON, ACP worker control files, and history storage.
 - `src/tools/`: `pbot_history` contracts (`history/contract.ts`, `history/actions.ts`) and symmetric host registrations (`history/pi-tool.ts`, `history/dsh-tool.ts`).
-- `src/ui/`: host-specific UI under `pi/` (`confirmation.ts`) and `dsh/` (Web workspace/history UI), plus shared CLI/presentation helpers (`presentation.ts`, `setup.ts`).
+- `src/ui/`: host-specific UI under `pi/` (`confirmation.ts`) and `dsh/` (Web workspace/history UI), plus the setup CLI interface (`setup.ts`).
 - `src/common/`: shared JSON, validation, schema, file, path, and version helpers.
 - `.claude-plugin/`, `hooks/hooks.json`, `.mcp.json`: Claude plugin discovery, command hooks (workspace context & skill gating only — never intercepts native subagents), and MCP server declaration.
 - `resources/`: model-facing prompts, roles, skills, references, and templates (strictly separate from developer docs).

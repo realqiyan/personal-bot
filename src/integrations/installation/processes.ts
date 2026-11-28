@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { access, realpath, stat } from "node:fs/promises";
 import { constants } from "node:fs";
 import { delimiter, isAbsolute, join, resolve } from "node:path";
-import type { SystemCommand } from "../../services/installation/setup-service.js";
+import type { SystemCommand } from "../../model/installation.js";
 
 export async function findExecutable(name: string, env: NodeJS.ProcessEnv = process.env): Promise<string | undefined> {
   const directories = (env.PATH ?? "").split(delimiter).filter(Boolean);

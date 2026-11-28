@@ -19,7 +19,8 @@ export interface AcpCommand {
   env?: Record<string, string>;
 }
 /** ask: forward target permission requests to the parent session; allow/deny: answer them automatically. */
-export type AcpPermissionPolicy = "ask" | "allow" | "deny";
+export const acpPermissionPolicies = ["ask", "allow", "deny"] as const;
+export type AcpPermissionPolicy = typeof acpPermissionPolicies[number];
 /** Workspace `acp.<name>` entry; omitting `command` keeps a registered harness's default command. */
 export interface AcpHarnessConfig {
   command?: string;
@@ -48,9 +49,10 @@ export interface AcpModelsResult {
 export interface AcpModelState extends AcpModelSelection { generation: string }
 export interface AcpProcess { generation: string; pid: number; startedAt: number }
 export interface AcpInput { generation: string; requestId: string }
+export const acpAnswerStates = ["completed", "failed", "cancelled"] as const;
 export interface AcpAnswer extends AcpInput {
   answer: string;
-  state: "completed" | "failed" | "cancelled";
+  state: typeof acpAnswerStates[number];
   error?: string;
 }
 export interface AcpReport { generation: string; cycleId: string; text: string }
@@ -61,8 +63,14 @@ export interface AcpPermission {
   options: { optionId: string; name: string; kind: string }[];
 }
 export interface AcpPermissionReply { generation: string; requestId: string; optionId: string | null }
-export type AcpElicitationAction = "accept" | "decline" | "cancel";
+export const acpElicitationActions = ["accept", "decline", "cancel"] as const;
+export type AcpElicitationAction = typeof acpElicitationActions[number];
 export type AcpElicitationValue = string | number | boolean | string[];
+export function isAcpElicitationValue(value: unknown): value is AcpElicitationValue {
+  return typeof value === "string" || typeof value === "boolean" || (typeof value === "number" && Number.isFinite(value))
+    || (Array.isArray(value) && value.every(item => typeof item === "string"));
+}
+
 export type AcpElicitationContent = Record<string, AcpElicitationValue>;
 export interface AcpElicitation {
   generation: string;

@@ -95,6 +95,12 @@ test("dsh records root-session raw history, keeps idle silent, and exposes /pbot
   assert.equal(summaryReport.dimensions[1].dimension, "monthly");
   assert.equal(summaryReport.dimensions[1].created, 1);
 
+  // Up-to-date summaries take the real command path without starting an ACP process.
+  const skipped = await runCmd("/pbot history summary session --backend dsh --model custom-model");
+  assert.equal(skipped.backend, "dsh");
+  assert.equal(skipped.model, "custom-model");
+  assert.equal(skipped.dimensions[0].skipped, 1);
+
   // /pbot history JSON query searches both raw and summaries.
   const searchResult = await runCmd('/pbot history {"action":"search","query":"验证了根会话"}');
   assert.equal(searchResult.total, 1);

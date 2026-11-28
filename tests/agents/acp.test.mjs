@@ -13,7 +13,7 @@ import { acpLaunch, canonicalAcpBackend, filterAcpStartOptions, inspectAcpBacken
 import { acpHarnesses, registerAcpHarness } from "../../dist/integrations/acp/registry.js";
 import { acpModelSelection, acpModelValue } from "../../dist/integrations/acp/model-selection.js";
 import { acpContent } from "../../dist/integrations/acp/input.js";
-import { launch } from "../../dist/storage/agent-files.js";
+import { AgentFiles, launch } from "../../dist/storage/agent-files.js";
 import { acpModelState, acpReference, acpReport } from "../../dist/storage/acp-files.js";
 import { packageVersion } from "../../dist/common/version.js";
 import { readWorkspaceConfig } from "../../dist/services/workspace/workspace-config.js";
@@ -39,7 +39,7 @@ async function fixture(t, keyless = false) {
     for (const [key, value] of Object.entries(prior)) { if (value === undefined) delete process.env[key]; else process.env[key] = value; }
     await rm(root, { recursive: true, force: true });
   });
-  return { root, directory, host, service, files: service.files };
+  return { root, directory, host, service, files: new AgentFiles(directory) };
 }
 
 test("ACP output keeps the final message across deltas and late tool status updates", () => {

@@ -1,6 +1,5 @@
-import { requireThat } from "../../common/validation.js";
+import { isHistoryIdentifier, requireThat } from "../../common/validation.js";
 import type { HistoryLayout, SummaryDimension } from "../../model/history.js";
-import { isSummaryDimension } from "../../storage/history-format.js";
 import { monthlySummaryDimension } from "./summary-dimensions/monthly.js";
 import { sessionSummaryDimension } from "./summary-dimensions/session.js";
 
@@ -11,7 +10,7 @@ const registry = new Map<string, SummaryDimension>([
 
 /** Register a custom summary dimension (e.g. daily, decisions, topics). */
 export function registerSummaryDimension(dimension: SummaryDimension): void {
-  requireThat(isSummaryDimension(dimension.id), "摘要维度 ID 无效：" + dimension.id);
+  requireThat(isHistoryIdentifier(dimension.id), "摘要维度 ID 无效：" + dimension.id);
   registry.set(dimension.id, dimension);
 }
 

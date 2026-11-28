@@ -7,7 +7,7 @@ import { dshResources, dshExpertTools } from "../../../integrations/hosts/dsh/re
 import { registerDshSkills } from "../../../integrations/hosts/dsh/skills.js";
 import { toDshMcpConfig } from "../../../integrations/hosts/dsh/mcp.js";
 import { finalDshAnswer } from "../../../integrations/hosts/dsh/messages.js";
-import { readWorkspaceMcpConfig, resolveWorkspaceMcpServer } from "../../../services/workspace/workspace-mcp.js";
+import { loadNativeWorkspaceServers } from "../workspace-mcp.js";
 import { registerDshFileEvents } from "./files.js";
 import { requireThat } from "../../../common/validation.js";
 
@@ -29,20 +29,9 @@ export async function apply(ctx: Context) {
     await agent.ctx.plugin({ name: "pbot-acp-expert", inject, apply: async scope => {
       if (member.features.skills) registerDshSkills(scope, agent, { workspaceRoot: member.d.workspace });
       if (member.features.mcp && process.env.PBOT_ACP_VALIDATE !== "1") {
-        const mcpConfig = await readWorkspaceMcpConfig(member.d.workspace);
-        if (mcpConfig.error) {
-          ctx.logger.warn(mcpConfig.error);
-        } else {
-          for (const [serverName, server] of Object.entries(mcpConfig.servers)) {
-            if (server.enabled === false) continue;
-            try {
-              const resolved = resolveWorkspaceMcpServer(member.d.workspace, serverName, server);
-              await scope.plugin(McpClient, toDshMcpConfig(resolved));
-            } catch (error) {
-              ctx.logger.warn(error instanceof Error ? error.message : String(error));
-            }
-          }
-        }
+        await loadNativeWorkspaceServers(member.d.workspace, async server => {
+          await scope.plugin(McpClient, toDshMcpConfig(server));
+        }, { warn: message => ctx.logger.warn(message) });
       }
       dshExpertTools(scope, agent, member.d.options);
       if (member.features.prompts) await dshResources(scope, agent, member.d.workspace, "general-purpose", member.check);

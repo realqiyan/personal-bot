@@ -6,8 +6,7 @@ import { loadWorkspaceContext } from "../../../integrations/agent-resources.js";
 import type { Confirmations } from "../../../ui/pi/confirmation.js";
 import type { Lifecycle } from "./lifecycle.js";
 import { readWorkspaceConfig, workspaceDisabledMessage } from "../../../services/workspace/workspace-config.js";
-import { checkHistoryMigrationNotice } from "../../../services/history/history-migrate.js";
-import { checkHistorySummaryReminder } from "../../../services/history/summary-runner.js";
+import { historyStartupNotices } from "../../../services/history/summary-runner.js";
 import { workspaceSkillPaths } from "../../../integrations/hosts/pi/skills.js";
 
 export function registerEvents(pi: ExtensionAPI, lifecycle: Lifecycle, confirmations: Confirmations) {
@@ -21,12 +20,7 @@ export function registerEvents(pi: ExtensionAPI, lifecycle: Lifecycle, confirmat
       }
       ctx.ui.setStatus("pbot", "PBot 已启动");
       if (lifecycle.active.features.history && ctx.hasUI) {
-        try {
-          const migrationNotice = checkHistoryMigrationNotice(lifecycle.active.root);
-          if (migrationNotice) ctx.ui.notify(migrationNotice, "info");
-          const reminder = checkHistorySummaryReminder(lifecycle.active.root);
-          if (reminder) ctx.ui.notify(reminder.message, "info");
-        } catch { /* Never block session startup if history reminder probe fails. */ }
+        for (const notice of historyStartupNotices(lifecycle.active.root)) ctx.ui.notify(notice, "info");
       }
     } catch (error) {
       ctx.ui.setStatus("pbot", "PBot 启动失败");

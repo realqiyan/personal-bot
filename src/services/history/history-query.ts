@@ -1,13 +1,13 @@
-import { join } from "node:path";
 import { requireThat } from "../../common/validation.js";
+import { historyPageLimits } from "../../model/history.js";
 import type { HistoryHost, HistoryQuery, RawHistory, SummaryArtifact } from "../../model/history.js";
 import {
-  HistoryFiles,
+  type HistoryFiles,
   historyBucketFromTimestamp,
   rawHistoryBucket,
   unknownHistoryBucket,
 } from "../../storage/history-files.js";
-import { readWorkspaceHistoryLayoutSync } from "../workspace/workspace-config.js";
+import { workspaceHistoryFiles } from "./workspace-history.js";
 import { orderedRawExchanges, rawSessionSpan, rawSessionTitle } from "./history-index.js";
 
 const summaryIdPrefix = "summary:";
@@ -147,37 +147,37 @@ function inTimeRange(from: string, to: string, after: number, before: number): b
  * Uses ripgrep (with automatic Node fallback) to pre-filter candidate JSON files before parsing.
  */
 export function searchWorkspaceHistory(root: string, query: HistoryQuery = {}): HistorySearchResult {
-  const { host, sessionId, dimension, from, to, offset = 0, limit = 20 } = query;
+  const { host, sessionId, dimension, from, to, offset = 0, limit = historyPageLimits.search.default } = query;
   const needle = (query.query ?? "").trim().toLowerCase();
   const after = from === undefined ? -Infinity : Date.parse(from);
   const before = to === undefined ? Infinity : Date.parse(to);
   requireThat(!Number.isNaN(after) && !Number.isNaN(before) && after <= before, "时间范围无效，请使用 ISO 日期或时间。");
 
-  const layout = readWorkspaceHistoryLayoutSync(root);
-  const files = new HistoryFiles(join(root, ".pbot/history"), "pi", layout);
+  const files = workspaceHistoryFiles(root);
   const warnings: string[] = [];
-  if (layout === "monthly") {
-    const flatNotice = files.detectFlatFiles().message;
-    if (flatNotice) warnings.push(flatNotice);
-  }
+  const flatNotice = files.migrationNotice();
+  if (flatNotice) warnings.push(flatNotice);
   const matches: HistorySearchMatch[] = [];
+
+  function collectSummaries(artifacts: SummaryArtifact[]) {
+    warnings.push(...files.warnings);
+    for (const artifact of artifacts) {
+      if (!inTimeRange(artifact.from, artifact.to, after, before)) continue;
+      if (needle && !`${artifact.title}\n${artifact.text}`.toLowerCase().includes(needle)) continue;
+      const brief = summaryBrief(artifact);
+      if (host && brief.host !== host || sessionId && brief.sessionId !== sessionId) continue;
+      matches.push({
+        ...brief,
+        parents: artifact.dimension === "monthly" ? [] : artifact.source.rawIds,
+        snippet: sliceSnippet(artifact.text, needle),
+      });
+    }
+  }
 
   if (!needle) {
     // Empty query: list sessions (default / dimension="raw") or list summaries of a specific dimension.
     if (dimension && dimension !== "raw") {
-      const summaries = files.listSummaries(dimension);
-      warnings.push(...files.warnings);
-      for (const artifact of summaries) {
-        if (host && artifact.host !== host) continue;
-        if (sessionId && artifact.sessionId !== sessionId) continue;
-        if (!inTimeRange(artifact.from, artifact.to, after, before)) continue;
-        const brief = summaryBrief(artifact);
-        matches.push({
-          ...brief,
-          parents: artifact.dimension === "monthly" ? [] : artifact.source.rawIds,
-          snippet: sliceSnippet(artifact.text, ""),
-        });
-      }
+      collectSummaries(files.listSummaries(dimension));
     } else {
       const raws = files.listRaw(host);
       warnings.push(...files.warnings);
@@ -225,20 +225,7 @@ export function searchWorkspaceHistory(root: string, query: HistoryQuery = {}): 
     }
 
     for (const dim of summaryDimensions) {
-      const candidateSummaries = files.searchCandidateSummaries(dim, needle);
-      warnings.push(...files.warnings);
-      for (const artifact of candidateSummaries) {
-        if (host && artifact.host !== host) continue;
-        if (sessionId && artifact.sessionId !== sessionId) continue;
-        const searchable = `${artifact.title}\n${artifact.text}`;
-        if (!searchable.toLowerCase().includes(needle)) continue;
-        if (!inTimeRange(artifact.from, artifact.to, after, before)) continue;
-        matches.push({
-          ...summaryBrief(artifact),
-          parents: artifact.dimension === "monthly" ? [] : artifact.source.rawIds,
-          snippet: sliceSnippet(artifact.text, needle),
-        });
-      }
+      collectSummaries(files.searchCandidateSummaries(dim, needle));
     }
   }
 
@@ -277,23 +264,22 @@ export function readWorkspaceHistory(
   root: string,
   id: string,
   offset = 0,
-  limit = 12000,
+  limit: number = historyPageLimits.read.default,
   childrenOffset = 0,
   host?: HistoryHost,
 ): HistoryReadNode {
-  const layout = readWorkspaceHistoryLayoutSync(root);
-  const files = new HistoryFiles(join(root, ".pbot/history"), "pi", layout);
+  const files = workspaceHistoryFiles(root);
   const baseWarnings: string[] = [];
-  if (layout === "monthly") {
-    const flatNotice = files.detectFlatFiles().message;
-    if (flatNotice) baseWarnings.push(flatNotice);
-  }
+  const flatNotice = files.migrationNotice();
+  if (flatNotice) baseWarnings.push(flatNotice);
 
   // 1. Summary artifact: summary:<dimension>:<artifactId>
   const parsedSummary = parseSummaryNodeId(id);
   if (parsedSummary) {
     const artifact = files.readSummary(parsedSummary.dimension, parsedSummary.artifactId);
-    requireThat(artifact && (!host || artifact.host === host), "历史节点不存在，请重新搜索。");
+    requireThat(artifact, "历史节点不存在，请重新搜索。");
+    const brief = summaryBrief(artifact);
+    requireThat(!host || brief.host === host, "历史节点不存在，请重新搜索。");
     const parents: HistoryNodeBrief[] = [];
     const children: HistoryNodeBrief[] = [];
 
@@ -332,14 +318,14 @@ export function readWorkspaceHistory(
     const pagedChildren = page(children, childrenOffset, 20);
     const sliced = sliceText(artifact.text, offset, limit);
     return {
-      ...summaryBrief(artifact),
+      ...brief,
       ...sliced,
       parents,
       children: pagedChildren.values,
       nextChildrenOffset: pagedChildren.nextOffset,
       source: {
-        host: artifact.host ?? "workspace",
-        sessionId: artifact.sessionId ?? artifact.id,
+        host: brief.host,
+        sessionId: brief.sessionId,
         entryIds: artifact.source.exchangeIds,
         dimension: artifact.dimension,
       },

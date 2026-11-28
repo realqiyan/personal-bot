@@ -5,24 +5,14 @@ import { object } from "../../common/json.js";
 import { packageVersion, releaseLine } from "../../common/version.js";
 import { requireThat } from "../../common/validation.js";
 import { AgentFiles, descriptor, launch, status, cycle } from "../../storage/agent-files.js";
-import type { AgentOwner, AgentOptions, AgentPendingRequest, AgentResponseInput, AgentStartOptions, AgentDescriptor, AgentCycle, AgentSessionReference, AgentView } from "../../model/agent.js";
-import type { AcpBackend, AcpSessionReference } from "../../model/acp.js";
+import type { AgentOwner, AgentOptions, AgentMessage, AgentPendingRequest, AgentResponseInput, AgentStartOptions, AgentDescriptor, AgentCycle, AgentHost, AgentView } from "../../model/agent.js";
 import { acpElicitationReply, acpModelState, acpPermissionReply, acpReference } from "../../storage/acp-files.js";
 
-export interface AgentHost {
-  available(backend: AcpBackend): void;
-  filterOptions?(backend: AcpBackend, options: AgentOptions): AgentOptions;
-  prepare(backend: AcpBackend, options: AgentOptions): AcpSessionReference;
-  alive(id: string): boolean;
-  validateSession(value: AgentDescriptor, reference: AgentSessionReference): void | Promise<void>;
-  launch(value: AgentDescriptor, directory: string, generation: string, reference: AgentSessionReference, resume: boolean, signal: AbortSignal): void | Promise<void>;
-  release(id: string, generation: string): void | Promise<void>;
-  report(value: AgentDescriptor, reference: AgentSessionReference, leaf: string): string | Promise<string>;
-}
+export type { AgentHost } from "../../model/agent.js";
 
 /** Host-neutral lifecycle manager for cross-harness ACP workers. */
 export class AgentService {
-  readonly files: AgentFiles;
+  private readonly files: AgentFiles;
   #closed = false;
   #preserve = false;
   readonly #starting = new Map<string, { generation: string; controller: AbortController; stage: "validate" | "launch" }>();
@@ -218,7 +208,7 @@ export class AgentService {
     try { await operation; } finally { this.#launches.delete(operation); }
   }
 
-  send(id: string, text: string, delivery: "steer" | "followUp", owner: AgentOwner, attachments: readonly string[] = []) {
+  send(id: string, text: string, delivery: AgentMessage["delivery"], owner: AgentOwner, attachments: readonly string[] = []) {
     const d = this.get(id, owner);
     return this.files.control(() => {
       requireThat(this.alive(id) && this.#starting.get(id)?.stage !== "validate" && !this.files.read(id, "launch.json", launch).stop, "worker 已停止或仍在恢复校验，请等待显式恢复完成。");
@@ -298,7 +288,12 @@ export class AgentService {
   }
 
   cycles(id: string, owner: AgentOwner): AgentCycle[] {
-    const d = this.get(id, owner), view = this.view(d, owner), values = this.files.completions(id);
+    return this.cyclesFor(this.view(this.get(id, owner), owner));
+  }
+
+  private cyclesFor(view: AgentView): AgentCycle[] {
+    const id = view.agentId;
+    const values = this.files.completions(id);
     if (view.cycle && !values.some(c => c.cycleId === view.cycle!.cycleId)) {
       values.push(view.state === "stopped" || view.state === "error" ? { ...view.cycle, state: "interrupted", finishedAt: view.cycle.finishedAt ?? Date.now() } : view.cycle);
     }
@@ -321,9 +316,26 @@ export class AgentService {
     return values;
   }
 
+  private snapshot(id: string, owner: AgentOwner) {
+    const view = this.view(this.get(id, owner), owner);
+    const cycles = this.cyclesFor(view);
+    const latest = cycles.at(-1);
+    return { current: latest ? { ...view, cycle: latest } : view, cycles };
+  }
+
   status(id: string, owner: AgentOwner) {
-    const d = this.get(id, owner), latest = this.cycles(id, owner).at(-1);
-    return { ...this.view(d, owner), ...(latest ? { cycle: latest } : {}) };
+    return this.snapshot(id, owner).current;
+  }
+
+  outputStatus(id: string, owner: AgentOwner, requestId?: string) {
+    const { current, cycles } = this.snapshot(id, owner);
+    const request = requestId ?? this.files.messages(id).findLast(item => item.generation === current.generation)?.requestId;
+    const cycle = request
+      ? cycles.find(item => item.generation === current.generation && item.requestIds.includes(request))
+      : current.cycle;
+    const stopped = current.state === "stopped" || current.state === "error";
+    const terminal = request ? stopped && !cycle : stopped || (current.state === "idle" && !cycle);
+    return { current, cycle, terminal };
   }
 
   async read(id: string, owner: AgentOwner, cycleId?: string, offset = 0, limit = 16000) {

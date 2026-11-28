@@ -37,3 +37,4 @@ Personal Bot 文档按使用场景与职责分为四类，根目录 [README.zh-C
 | --- | --- |
 | [npm 发布与验收](maintainers/release.md) | 候选包准备、CI/本机发布、消费检查与发布后验收 |
 | [维护脚本](../scripts/README.md) | 构建顺序、原生插件校验与消费检查脚本说明 |
+| [架构治理工作台](maintainers/architecture-governance.md) | 状态所有权、验证入口、当前任务与决策 |

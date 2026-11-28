@@ -14,8 +14,8 @@ export async function apply(ctx: Context) {
   requireThat(major! > 24 || (major === 24 && minor! >= 9), "dsh 接入需要 Node.js 24.9.0 或更新版本。");
   const workspaces = new DshWorkspaces(ctx);
   ctx.effect(() => () => workspaces.close());
-  const management = registerDshManagement(ctx, workspaces);
-  registerDshCommand(ctx, workspaces, management);
+  registerDshManagement(ctx, workspaces);
+  registerDshCommand(ctx, workspaces);
   ctx.on("agent/created", async ({ agent }) => {
     if (rootAgents(ctx.agents).includes(agent)) await workspaces.open(agent);
   });

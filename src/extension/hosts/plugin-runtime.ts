@@ -5,8 +5,7 @@ import { requireThat } from "../../common/validation.js";
 import { loadWorkspaceContext } from "../../integrations/agent-resources.js";
 import type { PluginHostAdapter } from "../../model/plugin-host.js";
 import { recordHistoryCapture } from "../../services/history/history-capture.js";
-import { checkHistoryMigrationNotice } from "../../services/history/history-migrate.js";
-import { checkHistorySummaryReminder } from "../../services/history/summary-runner.js";
+import { historyStartupNotices } from "../../services/history/summary-runner.js";
 import { readWorkspaceConfig, workspaceFeatures } from "../../services/workspace/workspace-config.js";
 import { initializeWorkspace } from "../../services/workspace/workspace-preparation.js";
 import { discoverSkills, discoverWorkspaceSkills } from "../../services/workspace/workspace-skills.js";
@@ -65,15 +64,7 @@ export async function pluginHook(adapter: PluginHostAdapter, payload: unknown): 
     const directory = join(resourceRoot, "skills");
     workspaceSkills.push(...await discoverSkills(directory, directory));
   }
-  const notices: string[] = [];
-  if (event.isSessionStart && features.history) {
-    try {
-      const migrationNotice = checkHistoryMigrationNotice(root);
-      if (migrationNotice) notices.push(migrationNotice);
-      const reminder = checkHistorySummaryReminder(root);
-      if (reminder) notices.push(reminder.message);
-    } catch { /* Never block session start if history reminder probe fails. */ }
-  }
+  const notices = event.isSessionStart && features.history ? historyStartupNotices(root) : [];
   if (!includePrompts && !workspaceSkills.length && !notices.length) return adapter.formatPass(payload);
   const context = await loadWorkspaceContext({
     host: adapter.host,

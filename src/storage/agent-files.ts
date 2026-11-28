@@ -2,9 +2,10 @@ import { existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { canonical, object } from "../common/json.js";
-import { requireThat } from "../common/validation.js";
+import { isOneOf, requireThat } from "../common/validation.js";
 import { readJsonFile, writeJsonFile } from "./atomic-json.js";
 import { fileId, privateDirectory } from "./file-access.js";
+import { agentStates, cycleSources, cycleStates, messageDeliveries } from "../model/agent.js";
 import type { AgentDescriptor, AgentLaunch, AgentMessage, AgentStatus, AgentCycle, AgentSessionReference } from "../model/agent.js";
 import type { AcpSessionReference } from "../model/acp.js";
 import { acpElicitation, acpPermission, acpReference } from "./acp-files.js";
@@ -22,18 +23,18 @@ export function launch(v: unknown): AgentLaunch {
 }
 export function message(v: unknown): AgentMessage {
   requireThat(object(v) && text(v.requestId) && text(v.generation) && Number.isSafeInteger(v.sequence) && typeof v.message === "string" &&
-    ["steer", "followUp"].includes(String(v.delivery)) && Array.isArray(v.files) && v.files.every(text), "子会话消息无效。");
+    isOneOf(v.delivery, messageDeliveries) && Array.isArray(v.files) && v.files.every(text), "子会话消息无效。");
   return v as unknown as AgentMessage;
 }
 export function cycle(v: unknown): AgentCycle {
   requireThat(object(v) && text(v.cycleId) && text(v.generation) && number(v.startedAt) &&
-    ["running", "completed", "failed", "cancelled", "interrupted"].includes(String(v.state)) &&
+    isOneOf(v.state, cycleStates) &&
     (v.leaf === null || text(v.leaf)) && Array.isArray(v.requestIds) && v.requestIds.every(text) &&
-    ["parent", "interactive", "mixed"].includes(String(v.source)) && (v.finishedAt === undefined || number(v.finishedAt)), "子会话周期无效。");
+    isOneOf(v.source, cycleSources) && (v.finishedAt === undefined || number(v.finishedAt)), "子会话周期无效。");
   return v as unknown as AgentCycle;
 }
 export function status(v: unknown): AgentStatus {
-  requireThat(object(v) && text(v.generation) && ["starting", "busy", "idle", "stopping", "stopped", "error"].includes(String(v.state)) &&
+  requireThat(object(v) && text(v.generation) && isOneOf(v.state, agentStates) &&
     typeof v.activity === "string" && number(v.updatedAt), "子会话状态无效。");
   if (v.cycle) cycle(v.cycle); return v as unknown as AgentStatus;
 }

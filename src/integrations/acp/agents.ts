@@ -2,8 +2,7 @@ import { fork, spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
-import type { AgentHost } from "../../services/agents/agent-service.js";
-import type { AgentDescriptor, AgentOptions, AgentSessionReference } from "../../model/agent.js";
+import type { AgentHost, AgentDescriptor, AgentOptions, AgentSessionReference } from "../../model/agent.js";
 import type { AcpBackend, AcpCommands, AcpModelsResult } from "../../model/acp.js";
 import { AgentFiles, launch } from "../../storage/agent-files.js";
 import { acpInput, acpProcess, acpReport } from "../../storage/acp-files.js";
@@ -17,7 +16,7 @@ export class AcpWorkerHost implements AgentHost {
   readonly files: AgentFiles;
   readonly worker = resolve(resourceRoot, "../lib/extension/acp-worker.js");
 
-  constructor(directory: string, readonly commands: AcpCommands = {}) {
+  constructor(directory: string, public commands: AcpCommands = {}) {
     this.files = new AgentFiles(directory);
   }
 

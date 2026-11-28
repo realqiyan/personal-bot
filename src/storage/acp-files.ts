@@ -1,7 +1,8 @@
 import { isAbsolute } from "node:path";
 import { object } from "../common/json.js";
-import { isAcpBackend, requireThat } from "../common/validation.js";
+import { isAcpBackend, isOneOf, requireThat } from "../common/validation.js";
 import { fileId } from "./file-access.js";
+import { acpAnswerStates, acpElicitationActions, acpPermissionPolicies, isAcpElicitationValue } from "../model/acp.js";
 import type { AcpAnswer, AcpElicitation, AcpElicitationReply, AcpInput, AcpPermission, AcpPermissionReply, AcpModelState, AcpProcess, AcpReport, AcpSessionReference } from "../model/acp.js";
 
 const text = (value: unknown): value is string => typeof value === "string" && value.length > 0 && !value.includes("\0");
@@ -12,7 +13,7 @@ export function acpReference(value: unknown): AcpSessionReference {
   if (value.env !== undefined) {
     requireThat(object(value.env) && Object.entries(value.env).every(([k, v]) => text(k) && typeof v === "string" && !v.includes("\0")), "ACP 环境变量配置无效。");
   }
-  requireThat(value.permission === undefined || ["ask", "allow", "deny"].includes(String(value.permission)), "ACP 权限策略无效。");
+  requireThat(value.permission === undefined || isOneOf(value.permission, acpPermissionPolicies), "ACP 权限策略无效。");
   const capabilities = value.capabilities;
   if (capabilities !== undefined) requireThat(object(capabilities) &&
     ["resume", "load", "close"].every(key => typeof capabilities[key] === "boolean"), "ACP 会话能力无效。");
@@ -33,7 +34,7 @@ export function acpInput(value: unknown): AcpInput {
 }
 export function acpAnswer(value: unknown): AcpAnswer {
   acpInput(value);
-  requireThat(object(value) && typeof value.answer === "string" && ["completed", "failed", "cancelled"].includes(String(value.state)) &&
+  requireThat(object(value) && typeof value.answer === "string" && isOneOf(value.state, acpAnswerStates) &&
     (value.error === undefined || typeof value.error === "string"), "ACP 最终回答无效。");
   return value as unknown as AcpAnswer;
 }
@@ -44,19 +45,13 @@ export function acpReport(value: unknown): AcpReport {
 export function acpPermission(value: unknown): AcpPermission {
   acpInput(value);
   requireThat(object(value) && typeof value.description === "string" && Array.isArray(value.options) && value.options.every(option =>
-    object(option) && text(option.optionId) && text(option.name) && ["allow_once", "allow_always", "reject_once", "reject_always"].includes(String(option.kind))), "ACP 确认请求无效。");
+    object(option) && text(option.optionId) && text(option.name) && isOneOf(option.kind, ["allow_once", "allow_always", "reject_once", "reject_always"])), "ACP 确认请求无效。");
   return value as unknown as AcpPermission;
 }
 export function acpPermissionReply(value: unknown): AcpPermissionReply {
   acpInput(value);
   requireThat(object(value) && (value.optionId === null || text(value.optionId)), "ACP 确认答复无效。");
   return value as unknown as AcpPermissionReply;
-}
-function elicitationValue(value: unknown): boolean {
-  return typeof value === "string"
-    || (typeof value === "number" && Number.isFinite(value))
-    || typeof value === "boolean"
-    || (Array.isArray(value) && value.every(item => typeof item === "string"));
 }
 export function acpElicitation(value: unknown): AcpElicitation {
   acpInput(value);
@@ -70,10 +65,10 @@ export function acpElicitation(value: unknown): AcpElicitation {
 }
 export function acpElicitationReply(value: unknown): AcpElicitationReply {
   acpInput(value);
-  requireThat(object(value) && ["accept", "decline", "cancel"].includes(String(value.action)), "ACP 交互答复无效。");
+  requireThat(object(value) && isOneOf(value.action, acpElicitationActions), "ACP 交互答复无效。");
   if (value.content !== undefined) {
     requireThat(value.action === "accept" && object(value.content) &&
-      Object.values(value.content).every(elicitationValue), "ACP 表单答复 content 无效。");
+      Object.values(value.content).every(isAcpElicitationValue), "ACP 表单答复 content 无效。");
   }
   return value as unknown as AcpElicitationReply;
 }

@@ -1,11 +1,8 @@
 import { object } from "../../common/json.js";
-import { stateLabel } from "../presentation.js";
 
 export const record = (value: unknown): Record<string, unknown> => { if (!object(value)) throw new Error("管理数据无效。"); return value; };
 export const rows = (value: unknown) => Array.isArray(value) ? value.map(record) : [];
 export const text = (value: unknown) => value === null || value === undefined ? "" : String(value);
-export const objectInput = (value: string) => record(JSON.parse(value || "{}"));
-export const lines = (value: string) => value.split(/\r?\n/).map(item => item.trim()).filter(Boolean);
 
 export function element<K extends keyof HTMLElementTagNameMap>(tag: K, content = "", className = "") {
   const node = document.createElement(tag); node.textContent = content; node.className = className; return node;
@@ -18,10 +15,9 @@ export function group(parent: HTMLElement, className = "pbot-stack") {
 export function details(parent: HTMLElement, title: string) {
   const node = element("details", "", "pbot-disclosure"); node.append(element("summary", title)); parent.append(node); return node;
 }
-export function field(parent: HTMLElement, label: string, multiline = false, value = "") {
-  const wrapper = element("label", "", "pbot-field"), input = multiline ? element("textarea") : element("input");
-  wrapper.append(element("span", label)); input.value = value; input.setAttribute("aria-label", label);
-  if (input instanceof HTMLTextAreaElement) input.rows = 3;
+export function field(parent: HTMLElement, label: string) {
+  const wrapper = element("label", "", "pbot-field"), input = element("input");
+  wrapper.append(element("span", label)); input.setAttribute("aria-label", label);
   wrapper.append(input); parent.append(wrapper); return input;
 }
 export function select(parent: HTMLElement, label: string, values: [string, string][]) {
@@ -29,9 +25,6 @@ export function select(parent: HTMLElement, label: string, values: [string, stri
   wrapper.append(element("span", label)); input.setAttribute("aria-label", label);
   for (const [value, title] of values) { const option = element("option", title); option.value = value; input.append(option); }
   wrapper.append(input); parent.append(wrapper); return input;
-}
-export function badge(state: unknown) {
-  const node = element("span", stateLabel(state), "pbot-badge"); node.dataset.state = text(state); return node;
 }
 export function facts(values: [string, unknown][]) {
   const node = element("dl", "", "pbot-facts");
@@ -41,8 +34,8 @@ export function facts(values: [string, unknown][]) {
 export function empty(title: string, description: string) {
   const node = element("div", "", "pbot-empty"); node.append(element("h3", title), note(description)); return node;
 }
-export function pageTitle(parent: HTMLElement, title: string, description: string) {
-  const node = element("header", "", "pbot-page-title"); node.append(element("h2", title)); if (description) node.append(note(description)); parent.append(node); return node;
+export function pageTitle(parent: HTMLElement, title: string) {
+  const node = element("header", "", "pbot-page-title"); node.append(element("h2", title)); parent.append(node); return node;
 }
 export function time(value: unknown) {
   const date = new Date(typeof value === "number" ? value : text(value));

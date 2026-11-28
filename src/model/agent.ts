@@ -9,15 +9,20 @@ export interface AgentDescriptor {
 }
 export type AgentSessionReference = AcpSessionReference;
 export interface AgentLaunch { generation: string; name: string; sequence: number; stop: boolean; startedAt: number }
-export interface AgentMessage { requestId: string; generation: string; sequence: number; message: string; delivery: "steer" | "followUp"; files: string[] }
+export const messageDeliveries = ["steer", "followUp"] as const;
+export const cycleStates = ["running", "completed", "failed", "cancelled", "interrupted"] as const;
+export const cycleSources = ["parent", "interactive", "mixed"] as const;
+export const agentStates = ["starting", "busy", "idle", "stopping", "stopped", "error"] as const;
+
+export interface AgentMessage { requestId: string; generation: string; sequence: number; message: string; delivery: typeof messageDeliveries[number]; files: string[] }
 export interface AgentCycle {
   cycleId: string; generation: string; startedAt: number; finishedAt?: number;
-  state: "running" | "completed" | "failed" | "cancelled" | "interrupted";
-  leaf: string | null; requestIds: string[]; source: "parent" | "interactive" | "mixed";
+  state: typeof cycleStates[number];
+  leaf: string | null; requestIds: string[]; source: typeof cycleSources[number];
   error?: string;
 }
 export interface AgentStatus {
-  generation: string; state: "starting" | "busy" | "idle" | "stopping" | "stopped" | "error";
+  generation: string; state: typeof agentStates[number];
   activity: string; updatedAt: number; accepted?: string[]; cycle?: AgentCycle; error?: string;
 }
 export interface AgentView extends AgentDescriptor {
@@ -39,3 +44,14 @@ export interface AgentResponseInput {
   content?: AcpElicitationContent;
 }
 export interface AgentCompletion { agentId: string; name: string; cycle: AgentCycle; report: string }
+
+export interface AgentHost {
+  available(backend: AcpBackend): void;
+  filterOptions?(backend: AcpBackend, options: AgentOptions): AgentOptions;
+  prepare(backend: AcpBackend, options: AgentOptions): AcpSessionReference;
+  alive(id: string): boolean;
+  validateSession(value: AgentDescriptor, reference: AgentSessionReference): void | Promise<void>;
+  launch(value: AgentDescriptor, directory: string, generation: string, reference: AgentSessionReference, resume: boolean, signal: AbortSignal): void | Promise<void>;
+  release(id: string, generation: string): void | Promise<void>;
+  report(value: AgentDescriptor, reference: AgentSessionReference, leaf: string): string | Promise<string>;
+}

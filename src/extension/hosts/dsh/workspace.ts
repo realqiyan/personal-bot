@@ -1,6 +1,4 @@
-import { existsSync } from "node:fs";
 import { realpath } from "node:fs/promises";
-import { resolve } from "node:path";
 import type { Agent } from "@deepseek-ai/dsh-agent";
 import type { Context } from "@deepseek-ai/cordis";
 import * as McpClient from "@deepseek-ai/dsh-mcp-client";
@@ -9,16 +7,14 @@ import { dshResources } from "../../../integrations/hosts/dsh/resources.js";
 import { registerDshFileEvents } from "./files.js";
 import { registerDshHistoryEvents } from "./history.js";
 import { registerDshHistoryTool } from "../../../tools/history/dsh-tool.js";
-import { resourceRoot } from "../../../common/paths.js";
 import { requireThat } from "../../../common/validation.js";
 import { toDshMcpConfig } from "../../../integrations/hosts/dsh/mcp.js";
 import { registerDshSkills } from "../../../integrations/hosts/dsh/skills.js";
 import { readWorkspaceConfig, workspaceDisabledMessage, workspaceFeatures } from "../../../services/workspace/workspace-config.js";
-import { readWorkspaceMcpConfig, resolveWorkspaceMcpServer } from "../../../services/workspace/workspace-mcp.js";
+import { loadNativeWorkspaceServers } from "../workspace-mcp.js";
 import type { ResolvedWorkspaceFeatures, WorkspaceConfiguration } from "../../../model/workspace-config.js";
 import { initializeWorkspace } from "../../../services/workspace/workspace-preparation.js";
-import { checkHistoryMigrationNotice } from "../../../services/history/history-migrate.js";
-import { checkHistorySummaryReminder } from "../../../services/history/summary-runner.js";
+import { historyStartupNotices } from "../../../services/history/summary-runner.js";
 import { McpWorkerRuntime, defaultWorkerDirectory } from "../../mcp/workers.js";
 
 export const dshDependencies = ["agents", "sessions", "sessionPersistence", "sessionQuery", "llm", "tools", "systemPrompt", "skills", "fs", "workingDirectory", "approval"];
@@ -43,8 +39,6 @@ export class DshWorkspace {
 
   async open() {
     this.check();
-    const mcpEntry = resolve(resourceRoot, "../lib/extension/mcp.js");
-    const workerDir = defaultWorkerDirectory();
     this.#scope = await this.agent.ctx.plugin({
       name: "pbot-coordinator",
       inject: dshDependencies,
@@ -55,29 +49,19 @@ export class DshWorkspace {
         if (this.features.history) {
           registerDshHistoryTool(ctx, this.agent, this.root, this.lifetime.signal, this.check);
           registerDshHistoryEvents(ctx, this.agent, this.root);
-          try {
-            const migrationNotice = checkHistoryMigrationNotice(this.root);
-            if (migrationNotice) this.ctx.logger.info(migrationNotice);
-            const reminder = checkHistorySummaryReminder(this.root);
-            if (reminder) this.ctx.logger.info(reminder.message);
-          } catch { /* Never block workspace startup if history reminder probe fails. */ }
+          for (const notice of historyStartupNotices(this.root)) this.ctx.logger.info(notice);
         }
-        if (existsSync(mcpEntry)) {
+        const server = this.workers.nativeServer(this.root);
+        if (server) {
           await ctx.plugin(McpClient, McpClient.Config({
             transport: "stdio",
             serverName: "pbot",
-            command: process.execPath,
-            args: [mcpEntry],
+            ...server,
             env: {
               ...(process.env.PATH ? { PATH: process.env.PATH } : {}),
               ...(process.env.HOME ? { HOME: process.env.HOME } : {}),
               ...(process.env.DSH_HOME ? { DSH_HOME: process.env.DSH_HOME } : {}),
-              PBOT_HOST: "dsh",
-              PBOT_WORKSPACE_ROOT: this.root,
-              PBOT_MCP_AGENT_DIR: workerDir,
-              PBOT_MCP_SESSION_ID: this.agent.id,
-              PBOT_NATIVE_WORKSPACE_MCP: "1",
-              PBOT_NATIVE_HISTORY: "1",
+              ...server.env,
             },
             cwd: this.root,
             toolCallTimeoutMs: 600_000,
@@ -85,21 +69,9 @@ export class DshWorkspace {
           }));
         }
         if (this.features.mcp) {
-          const mcpConfig = await readWorkspaceMcpConfig(this.root);
-          this.check();
-          if (mcpConfig.error) {
-            this.ctx.logger.warn(mcpConfig.error);
-          } else {
-            for (const [serverName, server] of Object.entries(mcpConfig.servers)) {
-              if (server.enabled === false) continue;
-              try {
-                const resolved = resolveWorkspaceMcpServer(this.root, serverName, server);
-                await ctx.plugin(McpClient, toDshMcpConfig(resolved));
-              } catch (error) {
-                this.ctx.logger.warn(error instanceof Error ? error.message : String(error));
-              }
-            }
-          }
+          await loadNativeWorkspaceServers(this.root, async server => {
+            await ctx.plugin(McpClient, toDshMcpConfig(server));
+          }, { check: this.check, warn: message => this.ctx.logger.warn(message) });
         }
       },
     });

@@ -1,12 +1,11 @@
 import { realpath } from "node:fs/promises";
 import { requireThat } from "../../../common/validation.js";
 import { authorizeMutation } from "../../../services/workspace/workspace-files.js";
-import type { CallAccess } from "../../../tools/access.js";
 import { readWorkspaceConfig, workspaceDisabledMessage, workspaceFeatures } from "../../../services/workspace/workspace-config.js";
 import type { ResolvedWorkspaceFeatures, WorkspaceConfiguration } from "../../../model/workspace-config.js";
 import type { McpWorkerRuntime } from "../../mcp/workers.js";
 
-export class WorkspaceInstance implements CallAccess {
+export class WorkspaceInstance {
   readonly #controller = new AbortController();
   #work = new AbortController();
   #closing: Promise<void> | undefined;

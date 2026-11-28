@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import type { InstalledPackage } from "../../services/installation/setup-service.js";
+import type { InstalledPackage } from "../../model/installation.js";
 import { npmName } from "../../common/package-source.js";
 
 type PiSdk = typeof import("@earendil-works/pi-coding-agent");

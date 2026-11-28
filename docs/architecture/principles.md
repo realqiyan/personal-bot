@@ -20,7 +20,7 @@ Personal Bot 不绑定单一宿主，所有能力按两条正交主线组织：
 
 ## 保持单向依赖与对称目录维度
 
-- 顶层分层：`tools / extension / ui → services → storage / model`；`integrations` 只做协议适配不调用业务服务，`services` 不依赖宿主 SDK 或接入层。所有边界由 `.dependency-cruiser.cjs` 静态检查。
+- 宿主入口与 extension 装配服务和适配器。tools 调用服务，UI 经宿主接口取得业务数据。services 与 integrations 通过 model 共享能力契约，两层分别访问所需存储。直接依赖见[技术设计](design.md)，静态边界由 `.dependency-cruiser.cjs` 检查。
 - 顶层目录按单一维度组织：`src/extension/` 按运行域（`hosts/`、`mcp/`、`acp/`、`setup/`），`src/integrations/` 按外部集成域（`hosts/`、`acp/`、`installation/`）；`hosts/` 下所有具体宿主平级建目录，禁止将具体宿主与领域类别混放或将单宿主文件散落到父目录顶层（详规见[技术设计](design.md)）。
 - 资源的创建、状态变更和释放由同一责任主体管理。工具与服务绑定工作区实例，关闭后旧调用失效。
 

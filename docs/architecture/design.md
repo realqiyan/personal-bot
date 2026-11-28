@@ -4,31 +4,30 @@
 
 ## 模块与依赖
 
-```text
-Pi / dsh 命令、历史工具与原生 MCP 挂载
-Claude / Antigravity / 任意插件宿主 hooks、CLI 与薄 stdio MCP
-         ↓
- tools / extension / ui
-         ↓
-      services
-      ↙      ↘
- storage   窄能力约定 (model)
-               ↑
-          integrations (hosts / acp / pi / dsh / installation)
-```
+下表列出源码的直接跨层依赖。单个模块的依赖由 `dependency-cruiser` 从导入关系生成，包含仅类型导入。入口负责装配，UI 通过宿主回调或 dsh Remote 取得数据。
+
+| 消费层 | 直接使用的内部层 |
+| --- | --- |
+| 顶层宿主与协议入口 | extension、tools、ui、integrations、services、common |
+| extension | tools、ui、integrations、services、storage、model、common。ACP 子进程负责读写控制文件，MCP 与宿主命令经服务访问存储 |
+| tools | services、integrations、model、common |
+| ui | model、common |
+| services、integrations | storage、model、common |
+| storage | model、common |
+| model、common | 仅各自层内的源码 |
 
 | 目录 | 责任 |
 | --- | --- |
 | `src/pbot.ts` / `src/dsh.ts` | Pi 与 dsh Host 装配（工作区生命周期、历史工具、原生 MCP 挂载） |
 | `src/plugin.ts` / `src/claude.ts` | 通用插件宿主 CLI/hook 入口（查 `PluginHostRegistry`）与 Claude 兼容入口 |
-| `src/mcp.ts` | 独立 stdio MCP 服务入口，暴露 6 个 `worker_*` 工具 |
+| `src/mcp.ts` | 独立 stdio MCP 服务入口，暴露 6 个 `worker_*` 工具，按工作区功能与宿主原生挂载情况提供共享 MCP 和历史查询 |
 | `src/extension/` | 按运行域划分的运行时编排：`hosts/`（`pi/`、`dsh/` 与共享 `plugin-runtime.ts`）、`mcp/`（`workers.ts`、`bridge.ts`）、`acp/`（`worker.ts`、`member.ts`）、`setup/`（`cli.ts`、`guard.ts`） |
 | `src/integrations/` | 按外部集成域划分的适配器：`hosts/`（各宿主平级目录 `pi/`、`dsh/`、`claude/`、`antigravity/` 及 `plugin-registry.ts`）、`acp/`（协议、`harnesses/` 与独立摘要执行器 `history-summary.ts`）、`installation/`（安装桥接），以及跨宿主辅助（`agent-resources.ts`） |
 | `src/services/` | 宿主无关业务规则（`agents/`、`workspace/`、`history/`、`installation/`） |
 | `src/model/` | 纯数据类型与窄能力契约（`plugin-host.ts`、`acp.ts`、`agent.ts`、`history.ts`、`workspace-config.ts`），不含实现或宿主 SDK 类型 |
 | `src/storage/` | 原子 JSON、ACP worker 控制记录与历史归档存储 |
 | `src/tools/` | `pbot_history` 契约与对称宿主注册（`history/pi-tool.ts`、`history/dsh-tool.ts`） |
-| `src/ui/` | 宿主专属 UI（`pi/confirmation.ts`、`dsh/` Web 工作区与历史面板）及共享展示/安装器交互（`presentation.ts`、`setup.ts`） |
+| `src/ui/` | 宿主专属 UI（`pi/confirmation.ts`、`dsh/` Web 工作区与历史面板）及安装器交互（`setup.ts`） |
 | `src/common/` | JSON、校验、Ajv Schema、文件、路径与版本辅助 |
 | `resources/` | 模型可见提示词、角色、技能、参考资料与模板 |
 

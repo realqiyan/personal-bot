@@ -90,3 +90,43 @@ test("runWorkspaceSummaries executes tasks concurrently, isolates per-task failu
     { name: "AbortError" },
   );
 });
+
+for (const [title, append] of [
+  ["parallel summaries of identical history reuse the published result", false],
+  ["a slow summary cannot replace a summary published from newer history", true],
+]) test(title, async t => {
+  const root = await realpath(await mkdtemp(join(tmpdir(), "pbot-summary-publish-")));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const files = new HistoryFiles(join(root, ".pbot/history"), "pi");
+  const save = exchanges => files.saveRaw(indexHistory({
+    sessionId: "growing", name: "growing", branches: [exchanges],
+  }, files.listRaw()[0], "pi"));
+  const started = Promise.withResolvers();
+  const release = Promise.withResolvers();
+  const excerpt = ({ prompt }) => prompt.split("\n").filter(line => line.includes("并发测试对话")).join("\n");
+  save([makeExchange(1)]);
+  const slow = runWorkspaceSummaries({
+    root, dimensions: ["session"],
+    summarizer: async request => {
+      started.resolve();
+      await release.promise;
+      return excerpt(request);
+    },
+  });
+  await started.promise;
+  try {
+    if (append) save([makeExchange(1), makeExchange(2)]);
+    const fast = await runWorkspaceSummaries({ root, dimensions: ["session"], summarizer: async request => excerpt(request) });
+    assert.equal(fast.dimensions[0].created, 1);
+    const [published] = files.listSummaries("session");
+    assert.equal(published.source.exchangeIds.length, append ? 2 : 1);
+    release.resolve();
+    const result = await slow;
+    assert.deepEqual(files.readSummary("session", published.id), published);
+    assert.equal(result.dimensions[0].failed.length, append ? 1 : 0);
+    assert.equal(result.dimensions[0].skipped, append ? 0 : 1);
+  } finally {
+    release.resolve();
+    await slow;
+  }
+});

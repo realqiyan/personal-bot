@@ -1,10 +1,8 @@
 import { randomUUID } from "node:crypto";
-import { join } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import type { HistoryExchange, HistoryHost, HistorySession, RawHistory } from "../../model/history.js";
 import type { HistoryCapture } from "../../model/plugin-host.js";
-import { HistoryFiles } from "../../storage/history-files.js";
-import { readWorkspaceHistoryLayoutSync } from "../workspace/workspace-config.js";
+import { workspaceHistoryFiles } from "./workspace-history.js";
 import { indexHistory, orderedRawExchanges } from "./history-index.js";
 
 function orderedExchanges(raw?: RawHistory): HistoryExchange[] {
@@ -80,8 +78,7 @@ function buildSession(host: HistoryHost, capture: HistoryCapture, previous?: Raw
 export function recordHistoryCapture(root: string, host: HistoryHost, capture: HistoryCapture): void {
   const sessionId = capture.kind === "session" ? capture.session.sessionId : capture.sessionId;
   if (!sessionId) return;
-  const layout = readWorkspaceHistoryLayoutSync(root);
-  const files = new HistoryFiles(join(root, ".pbot/history"), host, layout);
+  const files = workspaceHistoryFiles(root, host);
   files.control(() => {
     const previous = files.listRaw(host).find(raw => raw.sessionId === sessionId);
     if (!previous && files.rawWarnings.length) return;

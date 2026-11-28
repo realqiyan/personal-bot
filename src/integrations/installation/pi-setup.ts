@@ -4,7 +4,7 @@ import { dirname, join, resolve } from "node:path";
 import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { checkStableVersion, npmName } from "../../common/package-source.js";
-import type { InstalledPackage, PackageChoice, PiInstallation, SetupOperations, SystemCommand } from "../../services/installation/setup-service.js";
+import type { InstalledPackage, PackageChoice, PiInstallation, SetupOperations, SystemCommand } from "../../model/installation.js";
 import { findExecutable, npmGlobalBinary, SetupProcesses } from "./processes.js";
 
 export const piPackageName = "@earendil-works/pi-coding-agent";

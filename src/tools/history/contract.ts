@@ -1,10 +1,10 @@
 import { Type } from "typebox";
-import type { HistoryHost } from "../../model/history.js";
-import { requireThat } from "../../common/validation.js";
+import { historyPageLimits, type HistoryHost, type HistoryQuery } from "../../model/history.js";
+import { historyIdentifierPattern, requireThat } from "../../common/validation.js";
 import { schema } from "../../common/schema.js";
 import { inputObject, need, nullable, pick } from "../input.js";
 
-const identifier = Type.String({ pattern: "^[a-z0-9][a-z0-9-]{0,63}$" });
+const identifier = Type.String({ pattern: historyIdentifierPattern.source });
 const nullableOffset = Type.Union([Type.Integer(), Type.Null()]);
 const node = Type.Object({
   host: identifier,
@@ -58,20 +58,20 @@ export const historyParameters = Type.Object({
   action: Type.Union([Type.Literal("search"), Type.Literal("read")], {
     description: "search 搜索或列会话；read 读取指定节点正文与上下级。各动作仅读取自身字段，其余字段忽略。",
   }),
-  host: nullable(Type.String({ pattern: "^[a-z0-9][a-z0-9-]{0,63}$", description: "可选来源筛选（如 pi、dsh、claude、antigravity）。" })),
-  dimension: nullable(Type.String({ pattern: "^[a-z0-9][a-z0-9-]{0,63}$", description: "仅 search：可选范围筛选（raw 表示仅原文，或指定摘要维度如 monthly、session；省略查全部）。" })),
+  host: nullable(Type.String({ pattern: historyIdentifierPattern.source, description: "可选来源筛选（如 pi、dsh、claude、antigravity）。" })),
+  dimension: nullable(Type.String({ pattern: historyIdentifierPattern.source, description: "仅 search：可选范围筛选（raw 表示仅原文，或指定摘要维度如 monthly、session；省略查全部）。" })),
   query: nullable(Type.String({ description: "仅 search：不区分大小写的连续关键词；省略时列出各会话（或指定维度摘要）。" })),
   sessionId: nullable(Type.String({ description: "仅 search：限定在指定会话 ID 内搜索。" })),
   from: nullable(Type.String({ description: "仅 search：ISO 日期或时间下界。" })),
   to: nullable(Type.String({ description: "仅 search：ISO 日期或时间上界。" })),
   id: nullable(Type.String({ description: "仅 read，必填：search 或上下级返回的节点 id。" })),
   offset: nullable(Type.Integer({ minimum: 0, description: "search：匹配结果偏移；read：正文字符偏移。默认 0。" })),
-  limit: nullable(Type.Integer({ minimum: 1, maximum: 24000, description: "search：最多返回条数（默认 20，上限 50）；read：正文字符数（默认 12000）。" })),
+  limit: nullable(Type.Integer({ minimum: 1, maximum: historyPageLimits.read.max, description: `search：最多返回条数（默认 ${historyPageLimits.search.default}，上限 ${historyPageLimits.search.max}）；read：正文字符数（默认 ${historyPageLimits.read.default}）。` })),
   childrenOffset: nullable(Type.Integer({ minimum: 0, description: "仅 read：子节点列表偏移，默认 0；续读传上页 nextChildrenOffset。" })),
 }, { additionalProperties: false });
 
 export type HistoryInput =
-  | { action: "search"; host?: HistoryHost; dimension?: string; query?: string; sessionId?: string; from?: string; to?: string; offset?: number; limit?: number }
+  | ({ action: "search" } & HistoryQuery)
   | { action: "read"; id: string; host?: HistoryHost; offset?: number; limit?: number; childrenOffset?: number };
 
 const valid = schema(historyParameters);
@@ -79,8 +79,8 @@ const valid = schema(historyParameters);
 export function historyInput(value: unknown): HistoryInput {
   const args = inputObject(value, valid, "历史参数格式无效");
   if (args.action === "search") {
-    const limit = args.limit === undefined ? 20 : args.limit as number;
-    requireThat(limit <= 50, "search 的 limit 最多 50。");
+    const limit = args.limit === undefined ? historyPageLimits.search.default : args.limit as number;
+    requireThat(limit <= historyPageLimits.search.max, `search 的 limit 最多 ${historyPageLimits.search.max}。`);
     return {
       action: "search",
       ...(pick(args, ["host", "dimension", "query", "sessionId", "from", "to", "offset", "limit"]) as

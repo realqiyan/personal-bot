@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { executeSetup, packageChoices, parseCatalog, parseSetupArgs } from "../../services/installation/setup-service.js";
 import { npmName, ordinaryNpm } from "../../common/package-source.js";
-import type { InstalledPackage, SetupPlan } from "../../services/installation/setup-service.js";
+import type { InstalledPackage, SetupPlan } from "../../model/installation.js";
 import { PiBootstrapRequired, PiSetup, piPackageName } from "../../integrations/installation/pi-setup.js";
 import { findExecutable, inspectSystem, SetupProcesses } from "../../integrations/installation/processes.js";
 import { resolveWorkspace } from "../../integrations/installation/workspace.js";
