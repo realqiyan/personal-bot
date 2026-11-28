@@ -95,7 +95,7 @@ test("a read-only binding cache allows host hooks and other readable bindings", 
 });
 
 test("workspace CLI binds roots, queries archives, reports partial failures, and migrates only on request", async t => {
-  const { workspace, run } = await fixture(t);
+  const { workspace, env, run } = await fixture(t);
   const call = async (...args) => JSON.parse((await run([...args, "--workspace", workspace, "--json"])).stdout);
   const initialized = await call("init");
   assert.equal(initialized.workspaceRoot, workspace);
@@ -107,7 +107,7 @@ test("workspace CLI binds roots, queries archives, reports partial failures, and
   assert.deepEqual((await call("history", "list")).dimensions.map(item => item.id), ["session", "monthly"]);
   const nested = join(workspace, "projects");
   await assert.rejects(run(["history", "status"], { cwd: nested }), { code: 1 });
-  const empty = await run(["history", "summary", "--workspace", "../", "--json"], { cwd: nested });
+  const empty = await run(["history", "summary", "--workspace", "../", "--json"], { cwd: nested, env: { ...env, PATH: "" } });
   assert.equal(JSON.parse(empty.stdout).dimensions[0].created, 0);
   assert.notEqual(empty.stderr, "");
 

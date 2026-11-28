@@ -31,11 +31,12 @@ export function createAcpHistorySummarizer(options: AcpHistorySummarizerOptions)
 
   const commands = options.commands ?? {};
   const backend = canonicalAcpBackend(options.backend ?? "pi", commands);
-  const reference = acpLaunch(backend, commands, {});
+  let resolvedReference: ReturnType<typeof acpLaunch> | undefined;
   const timeoutMs = options.timeoutMs ?? defaultTimeoutMs;
 
   return async (request, signal) => {
     signal.throwIfAborted();
+    const reference = (resolvedReference ??= acpLaunch(backend, commands, {}));
     return await new Promise<string>((resolveAnswer, reject) => {
       const child = fork(workerPath, ["--prompt"], {
         cwd: options.cwd,
