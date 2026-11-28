@@ -2,7 +2,7 @@
 
 ## Structure
 
-Personal Bot is a harness-agnostic workspace and unified MCP cross-harness delegation layer. It integrates with Pi, dsh Host/Web, Claude Code, Antigravity, and extensible hook-based plugin hosts, while exposing a single stdio MCP server (`worker_create`, `worker_close`, `worker_request`, `worker_response`, `worker_output`, `worker_discover`) for cross-harness ACP v1 delegation without interfering with host-native subagent tools.
+Personal Bot is a harness-agnostic workspace and unified MCP cross-harness delegation layer. It integrates with Pi, dsh Host/Web, Claude Code, Antigravity, Codex, Qoder CLI, and extensible hook-based plugin hosts, while exposing a single stdio MCP server (`worker_create`, `worker_close`, `worker_request`, `worker_response`, `worker_output`, `worker_discover`) for cross-harness ACP v1 delegation without interfering with host-native subagent tools.
 
 - `src/pbot.ts`: Pi assembly (workspace lifecycle, `pbot_history`, native `pi.registerMcpServer("pbot", ...)`).
 - `src/dsh.ts`: dsh Host assembly (`pbot_history`, Web workspace/history UI, `@deepseek-ai/dsh-mcp-client` mount for `worker_*`); `src/ui/dsh/index.ts` is the native Web entry.
@@ -29,7 +29,7 @@ Personal Bot is a harness-agnostic workspace and unified MCP cross-harness deleg
 - `tests/`: real-process Node tests under domain subdirectories; real-model acceptance runs separately.
 - `docs/`: categorized documentation (`docs/README.md` index → `hosts/`, `guides/`, `architecture/`, `maintainers/`).
 - `scripts/`: build helpers (`build-cli.mjs`, `build-dsh.mjs`, `build-plugins.mjs`) and consumer checks.
-- `bin/pbot.mjs`: standalone CLI (`setup`, `install-antigravity`, `mcp`).
+- `bin/pbot.mjs`: standalone CLI (`setup`, `install-antigravity`, `plugin <host> hook|init|status`, `mcp`).
 - `lib/`: generated CLI, dsh, plugin runtime, standalone `lib/extension/{mcp,acp-worker}.js`, and self-contained `lib/antigravity-plugin/`. Do not edit generated files.
 - `dist/`: generated test imports. Do not edit generated files.
 
@@ -48,9 +48,10 @@ Full development and acceptance use Linux/macOS with Node.js 24.9+. Pi consumers
 - `npm run build`: clean `dist`, compile tests, then build `cli` → `dsh` → `plugins` into `lib`.
 - `npm run build:cli`: clean `lib` and compile the standalone CLI.
 - `npm run build:dsh`: compile dsh Host and Web client into `lib` (run after `build:cli`).
-- `npm run build:plugins` (`build:claude` alias): compile shared plugin runtime, bundle standalone `lib/extension/mcp.js` and `lib/extension/acp-worker.js`, and run registered plugin host build targets (Claude manifests + self-contained `lib/antigravity-plugin/`).
+- `npm run build:plugins` (`build:claude` alias): compile shared plugin runtime, bundle standalone `lib/extension/mcp.js` and `lib/extension/acp-worker.js`, and run registered plugin host build targets (Claude manifests, self-contained `lib/antigravity-plugin/`, `lib/codex-marketplace/` and `lib/qoder-plugin/`).
 - `npm test`: build and run all Node tests serially (`--test-concurrency=1`).
 - `agy plugin validate --strict ./lib/antigravity-plugin --json`: validate the built Antigravity plugin.
+- `qodercli plugin validate --strict ./lib/qoder-plugin --json`: validate the built Qoder CLI plugin.
 - `claude plugin validate --json ./.claude-plugin/plugin.json`: validate the Claude plugin.
 
 Host SDKs remain optional peer dependencies, never runtime dependencies. Do not add `@modelcontextprotocol/sdk` as a runtime dependency; the stdio MCP server uses Node built-ins and bundles `@agentclientprotocol/sdk` into `lib/extension/acp-worker.js` so plugin caches run without `node_modules`.

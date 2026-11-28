@@ -9,7 +9,7 @@ Personal Bot 复用各宿主的原生 CLI、MCP、认证与权限体系，不额
 | CLI 参数、校验、认证 | 原生命令与 profile |
 | 工作区共享 MCP（stdio / HTTP + 环境变量） | 工作区 `.pbot/mcp.json`（Pi/dsh 直接原生挂载；其余宿主经 `workspace_mcp_*` 桥接，二选一不重复暴露；ACP worker 自动透传） |
 | 宿主原生 MCP（全局工具、原生插件/通知、交互式 OAuth 或独占本地资源） | 当前宿主的原生 MCP（与 `.pbot/mcp.json` 单点归属、互不重复注册） |
-| 工作区共享技能 | 工作区 `.agents/skills/<name>/SKILL.md`（Pi/dsh/Antigravity/Codex 原生发现；Claude Code 与通用 ACP worker 自动注入元数据索引） |
+| 工作区共享技能 | 工作区 `.agents/skills/<name>/SKILL.md`（Pi/dsh/Antigravity/Codex/Qoder CLI 原生发现；Claude Code 与通用 ACP worker 自动注入元数据索引） |
 | 数据口径、项目约定与使用经验 | 工作区 `providers/<id>/GUIDE.md` |
 | 跨 Harness 专家委派 | 统一 stdio MCP 服务（`worker_*` 工具集） |
 | 任务范围与必要人工确认 | 用户与协调者模型 |

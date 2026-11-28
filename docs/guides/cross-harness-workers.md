@@ -16,7 +16,8 @@ Personal Bot 将跨 Harness 专家调度统一为单一的 stdio MCP 服务（`l
 | dsh | 插件启用时通过 `@deepseek-ai/dsh-mcp-client` 自动挂载 | `mcp__pbot__worker_*`（及 `/pbot worker`） |
 | Claude Code | 根 `.mcp.json` 自动挂载 `${CLAUDE_PLUGIN_ROOT}/lib/extension/mcp.js` | `worker_*` |
 | Antigravity | 插件 `mcp_config.json` 自动挂载 `./lib/extension/mcp.js` | `worker_*` |
-| Codex / Cursor / 其他 MCP 宿主 | 手动配置 stdio MCP 命令 `npx personal-bot@latest mcp`（或 `pbot mcp`） | `worker_*` |
+| Codex / Qoder CLI | 插件 `.mcp.json` 自动启动 `pbot mcp` | `worker_*` |
+| Cursor / 其他 MCP 宿主 | 手动配置 stdio MCP 命令 `npx personal-bot@latest mcp`（或 `pbot mcp`） | `worker_*` |
 
 ## 6 个 MCP 工具契约
 
@@ -70,6 +71,7 @@ worker_close({ "workerId": "<workerId>" })
 | `dsh` | DeepSeek dsh | `dsh --profile acp` | `npm install -g @deepseek-ai/dsh@latest`；按 dsh 原生方式配置 profile |
 | `claude` | Claude Code (`claude-code`) | `claude-agent-acp` | `npm install -g @agentclientprotocol/claude-agent-acp`；在 Claude Code 完成登录或 API 配置 |
 | `antigravity` | Google Antigravity (`agy`) | `agy acp` | 安装 Google Antigravity CLI（`agy`）并完成登录 |
+| `qoder` | Qoder CLI (`qodercli`, `qoder-cli`) | `qodercli --acp` | 安装 Qoder CLI 并运行 `qodercli login` |
 | `codex` | OpenAI Codex (`openai-codex`, `codex-cli`) | `codex-acp` | `npm install -g @agentclientprotocol/codex-acp`；在 Codex 完成登录或 API 配置 |
 | 自定义名 | `.pbot/config.json` `acp.<name>` | 自定义命令 | 任意符合 ACP v1 的 stdio 程序，无需修改 Personal Bot 代码 |
 

@@ -4,7 +4,7 @@ English | [简体中文](README.zh-CN.md)
 
 **A harness-agnostic personal assistant workspace and unified MCP cross-harness delegation layer.**
 
-Personal Bot brings shared workspace materials and skills to [Pi](https://pi.dev), dsh, Claude Code, Antigravity, and extensible plugin hosts, while unifying cross-harness ACP v1 delegation onto a clean 6-tool stdio MCP server (`worker_create`, `worker_close`, `worker_request`, `worker_response`, `worker_output`, `worker_discover`). Host-native subagent and team tools remain untouched and complementary; Pi and dsh also provide `pbot_history`.
+Personal Bot brings shared workspace materials and skills to [Pi](https://pi.dev), dsh, Claude Code, Antigravity, Codex, Qoder CLI, and extensible plugin hosts, while unifying cross-harness ACP v1 delegation onto a clean 6-tool stdio MCP server (`worker_create`, `worker_close`, `worker_request`, `worker_response`, `worker_output`, `worker_discover`). Host-native subagent and team tools remain untouched and complementary; Pi and dsh also provide `pbot_history`.
 
 Quick links (Chinese): [Documentation Index](docs/README.md) · [Pi](docs/hosts/pi.md) · [dsh](docs/hosts/dsh.md) · [Claude Code](docs/hosts/claude-code.md) · [Antigravity](docs/hosts/antigravity.md) · [Cross-Harness Workers](docs/guides/cross-harness-workers.md).
 
@@ -58,6 +58,10 @@ Requires Linux/macOS, Node.js 22.19+, and Claude Code `2.1.325+`:
 
 Run `/personal-bot:pbot init` in the workspace. Command hooks inject main-session context and gate bundled skills when disabled without intercepting native `Agent` subagents; `.mcp.json` mounts `worker_*`. See the [Claude Code guide](docs/hosts/claude-code.md).
 
+### Codex / Qoder CLI
+
+Install the Codex or Qoder CLI plugin and initialize the workspace with `pbot plugin codex init` or `pbot plugin qoder init`. See the [installation and workspace guide](docs/hosts/codex-qoder.md).
+
 ### Antigravity
 
 Requires Linux/macOS, Node.js 22.19+, and Antigravity CLI (`agy` `1.5+`):
@@ -78,7 +82,7 @@ npx personal-bot@latest mcp
 pbot mcp
 ```
 
-Supports built-in presets (`pi`, `dsh`, `claude`, `antigravity`, `codex`) and arbitrary custom ACP v1 binaries declared in `.pbot/config.json` under `acp` (`{ "command", "args", "env?" }`). See [cross-harness workers](docs/guides/cross-harness-workers.md).
+Supports built-in presets (`pi`, `dsh`, `claude`, `antigravity`, `codex`, `qoder`) and arbitrary custom ACP v1 binaries declared in `.pbot/config.json` under `acp` (`{ "command", "args", "env?" }`). See [cross-harness workers](docs/guides/cross-harness-workers.md).
 
 ## Workspace materials
 
@@ -108,3 +112,7 @@ git diff --check
 - [Documentation index](docs/README.md)
 - [Architecture principles](docs/architecture/principles.md) · [Technical design](docs/architecture/design.md) · [Extensibility design](docs/architecture/extensibility.md)
 - [Release guide](docs/maintainers/release.md) · [Maintenance scripts](scripts/README.md) · [Domain terms](CONTEXT.md)
+
+## License and disclaimer
+
+Personal Bot is licensed under MIT. [License](LICENSE) · [Disclaimer](DISCLAIMER.md#english)

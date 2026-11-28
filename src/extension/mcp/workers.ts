@@ -8,6 +8,7 @@ import { isAcpBackend, requireThat } from "../../common/validation.js";
 import { packageVersion } from "../../common/version.js";
 import { AcpWorkerHost } from "../../integrations/acp/agents.js";
 import { canonicalAcpBackend, inspectAcpBackends, knownAcpBackends } from "../../integrations/acp/launch.js";
+import { pluginMcpWorkspaceRoot } from "../../integrations/hosts/plugin-registry.js";
 import {
   mcpWorkerToolNames,
   type AcpCommands,
@@ -687,7 +688,7 @@ export class McpWorkerRuntime {
   }
 
   private async resolveWorkspace(supplied?: string): Promise<string> {
-    const target = supplied || process.env.CLAUDE_PROJECT_DIR || process.env.PBOT_WORKSPACE_ROOT || process.cwd();
+    const target = supplied || pluginMcpWorkspaceRoot() || process.cwd();
     requireThat(isAbsolute(target), "工作区需要绝对路径。");
     const root = await realpath(target);
     requireThat((await stat(root)).isDirectory(), "工作区路径不是目录。");
@@ -729,7 +730,7 @@ export class McpWorkerRuntime {
       }
     } catch { /* Fall back to registered built-in harnesses when cwd is outside an enabled workspace. */ }
     const defaultBackend = this.#defaultBackend ? canonicalAcpBackend(this.#defaultBackend, commands) : undefined;
-    const workspaceBound = Boolean(process.env.CLAUDE_PROJECT_DIR || process.env.PBOT_WORKSPACE_ROOT);
+    const workspaceBound = Boolean(pluginMcpWorkspaceRoot());
     return [
       ...buildPbotWorkerTools(commands, defaultBackend, workspaceBound),
       ...(includeWorkspaceMcp ? buildWorkspaceMcpTools(workspaceBound) : []),

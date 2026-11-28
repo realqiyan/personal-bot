@@ -1,6 +1,7 @@
 {
   "name": "personal-bot",
   "version": "0.3.2",
+  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/realqiyan/personal-bot.git"
@@ -63,6 +64,8 @@
     ".mcp.json",
     "hooks/hooks.json",
     "scripts/README.md",
+    "LICENSE",
+    "DISCLAIMER.md",
     "README.md",
     "README.zh-CN.md",
     "CONTEXT.md",

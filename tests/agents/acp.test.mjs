@@ -117,6 +117,9 @@ test("ACP harness registry is dynamically extensible without changing runtime co
   assert.deepEqual(customRef.env, { CUSTOM_FLAG: "1" });
   assert.equal(canonicalAcpBackend("Claude Code"), "claude");
   assert.equal(canonicalAcpBackend("OpenAI Codex"), "codex");
+  assert.equal(canonicalAcpBackend("Qoder CLI"), "qoder");
+  assert.equal(canonicalAcpBackend("qodercli"), "qoder");
+  assert.deepEqual(acpHarnesses.get("qoder").defaultCommand, { command: "qodercli", args: ["--acp"] });
   assert.equal(canonicalAcpBackend("AGY"), "antigravity");
   assert.equal(canonicalAcpBackend("claude-code", { "claude-code": { command: process.execPath, args: [] } }), "claude-code");
   const permRef = acpLaunch("claude", { claude: { command: process.execPath, permission: "allow" } }, {});

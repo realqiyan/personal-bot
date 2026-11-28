@@ -2,6 +2,8 @@ import { requireThat } from "../../common/validation.js";
 import type { PluginHostAdapter, PluginHostId } from "../../model/plugin-host.js";
 import { antigravityAdapter } from "./antigravity/adapter.js";
 import { claudeAdapter } from "./claude/adapter.js";
+import { codexAdapter } from "./codex/adapter.js";
+import { qoderAdapter } from "./qoder/adapter.js";
 
 /** Extensible registry of hook-based plugin host adapters; runtime never branches on host IDs. */
 export class PluginHostRegistry {
@@ -36,7 +38,13 @@ export class PluginHostRegistry {
   }
 }
 
-export const pluginHosts = new PluginHostRegistry([claudeAdapter, antigravityAdapter]);
+export const pluginHosts = new PluginHostRegistry([claudeAdapter, antigravityAdapter, codexAdapter, qoderAdapter]);
 export const registerPluginHost = (adapter: PluginHostAdapter) => pluginHosts.register(adapter);
 export const getPluginHost = (host: PluginHostId) => pluginHosts.get(host);
 export const listPluginHosts = () => pluginHosts.list();
+
+export function pluginMcpWorkspaceRoot(): string | undefined {
+  // Older standalone Claude mounts supply the project directory without PBOT_HOST.
+  const adapter = process.env.PBOT_HOST ? pluginHosts.get(process.env.PBOT_HOST) : claudeAdapter;
+  return adapter?.boundWorkspaceRoot?.() || process.env.PBOT_WORKSPACE_ROOT;
+}

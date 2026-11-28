@@ -11,6 +11,14 @@ export const standardAcpPresets: readonly AcpHarnessAdapter[] = [
     configureHint: "运行 agy 完成登录与默认模型配置。",
     nativeWorkspaceSkills: true,
   }),
+  createGenericAcpHarness("qoder", {
+    label: "Qoder CLI",
+    aliases: ["qodercli", "qoder-cli"],
+    nativeWorkspaceSkills: true,
+    defaultCommand: { command: "qodercli", args: ["--acp"] },
+    installHint: "安装 Qoder CLI（qodercli）",
+    configureHint: "运行 qodercli login 完成登录。",
+  }),
   createGenericAcpHarness("codex", {
     label: "OpenAI Codex",
     aliases: ["openai-codex", "codex-cli"],

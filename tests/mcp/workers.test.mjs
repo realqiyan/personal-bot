@@ -384,7 +384,7 @@ test("bundled MCP server exposes 6 split worker_* tools with strict schemas, ann
   assert.equal(backends.isError, false, backends.text);
   assert.equal(backends.data.target, "backends");
   const names = backends.data.backends.map(item => item.backend);
-  for (const required of ["pi", "dsh", "claude", "antigravity", "codex", "local-acp", "local-resume"]) assert.ok(names.includes(required));
+  for (const required of ["pi", "dsh", "claude", "antigravity", "codex", "qoder", "local-acp", "local-resume"]) assert.ok(names.includes(required));
 
   // worker_discover target="models" probes models and thinking without creating a persistent worker.
   const models = await mcp.call("worker_discover", { workspace, target: "models", backend: "local-acp" });

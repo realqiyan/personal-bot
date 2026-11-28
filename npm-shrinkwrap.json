@@ -7,6 +7,7 @@
     "": {
       "name": "personal-bot",
       "version": "0.3.2",
+      "license": "MIT",
       "dependencies": {
         "@agentclientprotocol/sdk": "2.6.0",
         "ajv": "8.20.0",

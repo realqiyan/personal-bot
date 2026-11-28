@@ -9,6 +9,7 @@
 | Pi | `/pbot init` | `/pbot status` |
 | dsh | `/pbot init` 或 Web 工作区页按钮 | `/pbot status` 或 Web 工作区页 |
 | Claude Code | `/personal-bot:pbot init`（或 `lib/claude.js init`） | `/personal-bot:pbot status` |
+| Codex / Qoder CLI | `pbot plugin <codex或qoder> init` | `pbot plugin <codex或qoder> status` |
 | Antigravity | `/pbot init`（或 `lib/plugin.js antigravity init`） | `/pbot status` |
 
 `init` 先补建资料目录（`areas/`、`projects/`、`knowledge/`、`providers/`、`scratch/`、`agents/`）和缺失的根 `AGENTS.md`，再将 `.pbot/config.json` 中的 `enabled` 设为 `true` 并显式写入 `features`（`prompts`、`skills`、`mcp`、`history`，未设置项默认 `true`）与 `summary`（`backend: "pi"`、`concurrency: 3`），保留已有资料、宿主自有文件（如 `CLAUDE.md`）、已设置的开关/摘要配置及其他未知配置字段；配置文件损坏时先报错而不覆写。

@@ -25,6 +25,12 @@ async function bundleNode(entryPoint, outfile) {
   });
 }
 
+async function copyLicenseAndDisclaimer(directory) {
+  for (const file of ["LICENSE", "DISCLAIMER.md"]) {
+    await cp(resolve(root, file), resolve(directory, file));
+  }
+}
+
 /** Sync root Claude Code plugin and marketplace manifests. */
 async function buildClaudePlugin({ version }) {
   for (const file of [".claude-plugin/plugin.json", ".claude-plugin/marketplace.json"]) {
@@ -49,6 +55,7 @@ async function buildAntigravityPlugin({ version, repoUrl }) {
   await mkdir(resolve(agyRoot, "skills"), { recursive: true });
   await mkdir(resolve(agyRoot, "resources/prompts"), { recursive: true });
   await mkdir(resolve(agyRoot, "lib/extension"), { recursive: true });
+  await copyLicenseAndDisclaimer(agyRoot);
 
   compile(["--project", "tsconfig.claude.json", "--outDir", resolve(agyRoot, "lib")]);
   await cp(resolve(root, "lib/extension/mcp.js"), resolve(agyRoot, "lib/extension/mcp.js"));
@@ -114,8 +121,54 @@ async function buildAntigravityPlugin({ version, repoUrl }) {
   }
 }
 
+async function writeJson(path, data) {
+  await writeFile(path, JSON.stringify(data, null, 2) + "\n");
+}
+
+// Native clients cache these manifests. The installed pbot executable owns the
+// runtime and resources, including optional host bridges for delegated workers.
+async function buildPromptPlugin(host, directory, version) {
+  await rm(directory, { recursive: true, force: true });
+  const manifestDir = resolve(directory, `.${host}-plugin`);
+  const skillDir = resolve(directory, "skills/pbot");
+  await mkdir(manifestDir, { recursive: true });
+  await mkdir(skillDir, { recursive: true });
+  await mkdir(resolve(directory, "hooks"), { recursive: true });
+  await copyLicenseAndDisclaimer(directory);
+  await writeJson(resolve(manifestDir, "plugin.json"), {
+    name: "personal-bot", version, description: "Personal Bot workspace context and cross-harness workers.",
+    skills: "./skills/", mcpServers: "./.mcp.json",
+  });
+  const command = { type: "command", command: `pbot plugin ${host} hook`, timeout: 30 };
+  await writeJson(resolve(directory, "hooks/hooks.json"), {
+    hooks: { SessionStart: [{ hooks: [command] }], UserPromptSubmit: [{ hooks: [command] }], Stop: [{ hooks: [command] }] },
+  });
+  await writeJson(resolve(directory, ".mcp.json"), {
+    mcpServers: { pbot: { command: "pbot", args: ["mcp"], env: { PBOT_HOST: host } } },
+  });
+  const skill = await readFile(resolve(root, "resources/plugin/skills/pbot/SKILL.md"), "utf8");
+  await writeFile(resolve(skillDir, "SKILL.md"), skill.replaceAll("<host>", host));
+}
+
+async function buildCodexPlugin({ version }) {
+  const marketplace = resolve(root, "lib/codex-marketplace");
+  const index = resolve(marketplace, ".agents/plugins");
+  await mkdir(index, { recursive: true });
+  const path = "./plugins/personal-bot";
+  await buildPromptPlugin("codex", resolve(marketplace, path), version);
+  const agents = resolve(marketplace, path, "skills/pbot/agents");
+  await mkdir(agents, { recursive: true });
+  await writeFile(resolve(agents, "openai.yaml"), "policy:\n  allow_implicit_invocation: false\n");
+  await writeJson(resolve(index, "marketplace.json"), {
+    name: "pbot-local", plugins: [{ name: "personal-bot", source: { source: "local", path },
+      policy: { installation: "AVAILABLE", authentication: "ON_INSTALL" }, category: "Productivity" }],
+  });
+}
+
 /** Extensible list of plugin host build targets. */
 const pluginTargets = [
+  { id: "codex", build: buildCodexPlugin },
+  { id: "qoder", build: ({ version }) => buildPromptPlugin("qoder", resolve(root, "lib/qoder-plugin"), version) },
   { id: "claude", build: buildClaudePlugin },
   { id: "antigravity", build: buildAntigravityPlugin },
 ];

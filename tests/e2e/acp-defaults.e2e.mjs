@@ -6,6 +6,7 @@ import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { setTimeout as delay } from "node:timers/promises";
 import { McpWorkerRuntime } from "../../dist/extension/mcp/workers.js";
+import { getAcpHarness } from "../../dist/integrations/acp/registry.js";
 import { AgentFiles, descriptor } from "../../dist/storage/agent-files.js";
 import { claudeRequests } from "../helpers/claude-session.mjs";
 
@@ -19,6 +20,7 @@ const cases = [
   { backend: "pi" },
   { backend: "dsh" },
   { backend: "codex" },
+  { backend: "qoder" },
   { backend: "claude" },
   { backend: "claude", thinking: "low" },
   { backend: "claude", model: "sonnet", thinking: "low" },
@@ -29,7 +31,7 @@ for (const { backend, model, thinking } of cases) test(`real ACP E2E: ${backend}
   const command = process.env["PBOT_ACP_E2E_" + backend.toUpperCase() + "_COMMAND"];
   const acp = {
     [backend]: {
-      ...(command ? { command, args: backend === "dsh" ? ["--profile", "acp"] : [] } : {}),
+      ...(command ? { command, args: getAcpHarness(backend).defaultCommand.args } : {}),
       permission: "allow",
     },
   };

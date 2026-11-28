@@ -4,7 +4,7 @@
 
 **连接知识、研究与行动的跨 Harness 个人助手层。**
 
-Personal Bot 为多宿主环境（[Pi](https://pi.dev)、dsh、Claude Code、Antigravity 及可扩展的其他插件宿主）提供共享工作区资料与专业方法，并通过统一的 stdio MCP 工具集（`worker_create`、`worker_close`、`worker_request`、`worker_response`、`worker_output`、`worker_discover`）实现跨 Harness ACP v1 专家调度。同宿主子任务与团队完全交由宿主原生能力，两者互补互不干扰；Pi 与 dsh 另提供 `pbot_history` 历史检索。
+Personal Bot 为多宿主环境（[Pi](https://pi.dev)、dsh、Claude Code、Antigravity、Codex、Qoder CLI 及可扩展的其他插件宿主）提供共享工作区资料与专业方法，并通过统一的 stdio MCP 工具集（`worker_create`、`worker_close`、`worker_request`、`worker_response`、`worker_output`、`worker_discover`）实现跨 Harness ACP v1 专家调度。同宿主子任务与团队完全交由宿主原生能力，两者互补互不干扰；Pi 与 dsh 另提供 `pbot_history` 历史检索。
 
 快速导航：[文档总索引](docs/README.md) · [Pi](docs/hosts/pi.md) · [dsh](docs/hosts/dsh.md) · [Claude Code](docs/hosts/claude-code.md) · [Antigravity](docs/hosts/antigravity.md) · [跨 Harness 调度](docs/guides/cross-harness-workers.md)。
 
@@ -58,6 +58,10 @@ dsh --profile pbot
 
 在工作区执行 `/personal-bot:pbot init`。插件通过标准 command hooks 注入主会话上下文并门控未启用技能，不拦截原生 `Agent`；跨 Harness 调度由内置 `.mcp.json` 挂载的 `worker_*` 提供。详见 [Claude Code 使用指南](docs/hosts/claude-code.md)。
 
+### Codex / Qoder CLI
+
+安装对应原生插件后，在工作区运行 `pbot plugin codex init` 或 `pbot plugin qoder init`。详见[安装与使用指南](docs/hosts/codex-qoder.md)。
+
 ### Antigravity
 
 需要 Linux/macOS、Node.js 22.19+ 与 Antigravity CLI（`agy` `1.5+`）：
@@ -78,7 +82,7 @@ npx personal-bot@latest mcp
 pbot mcp
 ```
 
-支持内置预设（`pi`、`dsh`、`claude`、`antigravity`、`codex`）及 `.pbot/config.json` 中声明的任意自定义 ACP v1 程序（支持 `{ "command", "args", "env?" }`），详见[跨 Harness 专家调度](docs/guides/cross-harness-workers.md)。
+支持内置预设（`pi`、`dsh`、`claude`、`antigravity`、`codex`、`qoder`）及 `.pbot/config.json` 中声明的任意自定义 ACP v1 程序（支持 `{ "command", "args", "env?" }`），详见[跨 Harness 专家调度](docs/guides/cross-harness-workers.md)。
 
 ## 工作区资料
 
@@ -108,3 +112,7 @@ git diff --check
 - [文档总索引](docs/README.md)
 - [架构原则](docs/architecture/principles.md) · [技术设计](docs/architecture/design.md) · [插件与 ACP 扩展设计](docs/architecture/extensibility.md)
 - [npm 发布与验收](docs/maintainers/release.md) · [维护脚本](scripts/README.md) · [领域术语](CONTEXT.md)
+
+## 许可证与免责声明
+
+Personal Bot 采用 MIT 许可证。[许可证全文](LICENSE) · [免责声明](DISCLAIMER.md#中文)

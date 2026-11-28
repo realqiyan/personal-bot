@@ -13,6 +13,8 @@ src/extension/hosts/plugin-runtime.ts (唯一核心逻辑：init/status/hook 引
    └── PluginHostRegistry (src/integrations/hosts/plugin-registry.ts)
          ├── claudeAdapter       (src/integrations/hosts/claude/adapter.ts)
          ├── antigravityAdapter  (src/integrations/hosts/antigravity/adapter.ts)
+         ├── codexAdapter        (src/integrations/hosts/codex/adapter.ts)
+         ├── qoderAdapter        (src/integrations/hosts/qoder/adapter.ts)
          └── <自定义宿主适配器>    (通过 registerPluginHost 动态注册)
 ```
 
@@ -21,9 +23,11 @@ src/extension/hosts/plugin-runtime.ts (唯一核心逻辑：init/status/hook 引
 - `host: string`：任意宿主标识符，运行时不做联合类型限制。
 - `nativeRootAgents: boolean`：宿主是否原生加载工作区根 `AGENTS.md`（为 `false` 时由上下文拼装附带）。
 - `nativeWorkspaceSkills?: boolean`：宿主是否原生扫描 `.agents/skills/`（为 `false` 或省略时，在 `features.skills` 开启下由上下文拼装附带技能元数据索引）。
+- `indexBundledSkills?: boolean`：宿主只注册管理技能时，通过 hook 按工作区的 `features.skills` 提供包内方法索引。Codex 与 Qoder CLI 使用此方式，其原生技能发现负责工作区自有技能。
 - `coordinatorPrompt?: string`：主会话协调者操作导航文件（默认使用宿主无关的 `plugin-coordinator.md`）。
 - `resolveRoot(cwd, rawPayload)`：从宿主环境变量或 hook 载荷解析绑定工作区根目录。
-- `parseEvent(payload)`：将宿主原生 hook 载荷映射为窄事件（`ignore` | `inject-context` | `check-skill`）。**不提供 subagent 拦截事件**，确保不干扰宿主原生 subagent。
+- 宿主通过环境变量绑定工作区时，`boundWorkspaceRoot?()` 向命令、hook 与 stdio MCP 提供同一根目录。Qoder CLI 优先使用 `QODER_PROJECT_DIR`。
+- `parseEvent(payload)` 将宿主原生 hook 映射为 `ignore`、`inject-context`、`record-history` 或 `check-skill`。宿主负责原生子代理的生命周期。
 - `formatPass` / `formatContext` / `formatDeny`：输出宿主协议要求的 JSON 响应。
 
 ### 内置适配器对比
@@ -35,6 +39,8 @@ src/extension/hosts/plugin-runtime.ts (唯一核心逻辑：init/status/hook 引
 | 协调者上下文 | `UserPromptSubmit`（含 `agent_id` 的原生子代理直接忽略） | `SessionStart` → `injectSteps[].systemMessage` |
 | 未启用技能门控 | `PreToolUse(Skill)` 与 `UserPromptExpansion` 拦截工作方法，放行 `pbot` | `PreToolUse(read_file)` 拦截插件工作方法技能，放行 `pbot`；其余返回 `{ decision: "allow" }` |
 | 原生 subagent | 完全不拦截、不提供覆盖性静态 agent | 完全不拦截、不提供覆盖性静态 agent |
+
+Codex 与 Qoder CLI 在 `SessionStart` 投递历史提示，在 `UserPromptSubmit` 注入协调者上下文，在 `Stop` 归档回复。Codex 提供原生回合 ID，用于关联同一回合的追加输入与最终回复。两个适配器共用这些事件的解析和输出。安装与工作区配置见[宿主指南](../hosts/codex-qoder.md)。
 
 ### 接入新插件宿主的步骤
 
@@ -52,7 +58,7 @@ MCP Server (src/extension/mcp/workers.ts) -> AgentService -> AcpWorkerHost -> sr
                                                                                   ↓
                                                            AcpHarnessRegistry (src/integrations/acp/registry.ts)
                                                              ├── genericAcpHarness (任意自定义 ACP v1 默认回退)
-                                                             ├── standardAcpPresets (antigravity, codex, ...)
+                                                             ├── standardAcpPresets (antigravity, codex, qoder)
                                                              ├── piAcpHarness       (src/integrations/acp/harnesses/pi.ts)
                                                              ├── dshAcpHarness      (src/integrations/acp/harnesses/dsh.ts)
                                                              └── claudeAcpHarness   (src/integrations/acp/harnesses/claude.ts)

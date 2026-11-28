@@ -24,12 +24,14 @@ export type HistoryCapture =
   | {
       kind: "input";
       sessionId: string;
+      turnId?: string;
       text: string;
       timestamp?: string;
     }
   | {
       kind: "answer";
       sessionId: string;
+      turnId?: string;
       userText?: string;
       assistantText: string;
       completed: boolean;
@@ -43,17 +45,19 @@ export type HistoryCapture =
 
 export type HostEvent =
   | { kind: "ignore" }
-  | { kind: "inject-context"; role: WorkspaceRole; localRoleOnly?: boolean; isSessionStart?: boolean; cwd: string; raw: unknown }
+  | { kind: "inject-context"; role: WorkspaceRole; localRoleOnly?: boolean; isSessionStart?: boolean; noticesOnly?: boolean; cwd: string; raw: unknown }
   | { kind: "check-skill"; skill: string; cwd: string; raw: unknown }
   | { kind: "record-history"; cwd: string; raw: unknown };
 
 export interface PluginHostAdapter {
   readonly host: PluginHostId;
   readonly nativeRootAgents: boolean;
+  readonly indexBundledSkills?: boolean;
   readonly nativeWorkspaceSkills?: boolean;
   readonly coordinatorPrompt?: string;
   readonly initCommandHint: string;
   readonly usage: string;
+  boundWorkspaceRoot?(): string | undefined;
   resolveRoot(cwd: string, rawPayload?: unknown): Promise<string>;
   parseEvent(payload: unknown): HostEvent;
   extractHistory?(event: Extract<HostEvent, { kind: "inject-context" | "record-history" }>): Promise<HistoryCapture | undefined>;

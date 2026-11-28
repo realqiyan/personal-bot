@@ -51,7 +51,10 @@ export function parseSkillFrontmatter(content: string): { name?: string; descrip
 
 /** Scan `<workspace>/.agents/skills/<dir>/SKILL.md` for workspace-authored skills. */
 export async function discoverWorkspaceSkills(root: string): Promise<WorkspaceSkillMeta[]> {
-  const skillsDir = join(root, ".agents", "skills");
+  return discoverSkills(join(root, ".agents", "skills"), ".agents/skills");
+}
+
+export async function discoverSkills(skillsDir: string, indexPath: string): Promise<WorkspaceSkillMeta[]> {
   let entries;
   try { entries = await readdir(skillsDir, { withFileTypes: true }); }
   catch (error) {
@@ -70,7 +73,7 @@ export async function discoverWorkspaceSkills(root: string): Promise<WorkspaceSk
     results.push({
       name: meta.name,
       description: meta.description,
-      path: `.agents/skills/${entry.name}/SKILL.md`,
+      path: join(indexPath, entry.name, "SKILL.md"),
     });
   }
   results.sort((a, b) => a.name.localeCompare(b.name));

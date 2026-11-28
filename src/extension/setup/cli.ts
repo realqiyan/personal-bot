@@ -169,6 +169,7 @@ export async function main(args: string[]): Promise<number> {
     console.log("Personal Bot " + manifest.version + "\n\n用法：pbot setup [--workspace <目录>]\n" +
       "      npx personal-bot@latest setup\n" +
       "      pbot install-antigravity\n" +
+      "      pbot plugin <host> hook|init|status\n" +
       "      pbot mcp\n" +
       "      pbot mcp list|add|remove ...\n\n" +
       "setup 安装或升级 Pi、pbot 和选中的插件，然后启动 Pi 执行 /pbot init。\n" +

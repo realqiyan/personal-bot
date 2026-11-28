@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import { resourceRoot } from "../../common/paths.js";
 import { packageVersion } from "../../common/version.js";
 import { requireThat } from "../../common/validation.js";
@@ -8,7 +9,7 @@ import { checkHistoryMigrationNotice } from "../../services/history/history-migr
 import { checkHistorySummaryReminder } from "../../services/history/summary-runner.js";
 import { readWorkspaceConfig, workspaceFeatures } from "../../services/workspace/workspace-config.js";
 import { initializeWorkspace } from "../../services/workspace/workspace-preparation.js";
-import { discoverWorkspaceSkills } from "../../services/workspace/workspace-skills.js";
+import { discoverSkills, discoverWorkspaceSkills } from "../../services/workspace/workspace-skills.js";
 
 function disabledMessage(adapter: PluginHostAdapter, configuration: Awaited<ReturnType<typeof readWorkspaceConfig>>) {
   return configuration.error ?? `Personal Bot 未在此工作区启用。运行 ${adapter.initCommandHint}；配置文件：${configuration.path}`;
@@ -55,9 +56,15 @@ export async function pluginHook(adapter: PluginHostAdapter, payload: unknown): 
     } catch { /* Never block a host turn if history persistence encounters a transient error or busy lock. */ }
   }
   if (event.kind === "record-history") return adapter.formatPass(payload);
-  const workspaceSkills = features.skills && !adapter.nativeWorkspaceSkills
+  const includePrompts = features.prompts && !event.noticesOnly;
+  const includeSkills = features.skills && !event.noticesOnly;
+  const workspaceSkills = includeSkills && !adapter.nativeWorkspaceSkills
     ? await discoverWorkspaceSkills(root)
     : [];
+  if (includeSkills && adapter.indexBundledSkills) {
+    const directory = join(resourceRoot, "skills");
+    workspaceSkills.push(...await discoverSkills(directory, directory));
+  }
   const notices: string[] = [];
   if (event.isSessionStart && features.history) {
     try {
@@ -67,14 +74,14 @@ export async function pluginHook(adapter: PluginHostAdapter, payload: unknown): 
       if (reminder) notices.push(reminder.message);
     } catch { /* Never block session start if history reminder probe fails. */ }
   }
-  if (!features.prompts && !workspaceSkills.length && !notices.length) return adapter.formatPass(payload);
+  if (!includePrompts && !workspaceSkills.length && !notices.length) return adapter.formatPass(payload);
   const context = await loadWorkspaceContext({
     host: adapter.host,
     root,
     role: event.role,
     ...(adapter.coordinatorPrompt ? { coordinatorPrompt: adapter.coordinatorPrompt } : {}),
-    includePrompts: features.prompts,
-    includeRootAgents: features.prompts && !adapter.nativeRootAgents,
+    includePrompts,
+    includeRootAgents: includePrompts && !adapter.nativeRootAgents,
     ...(event.localRoleOnly ? { localRoleOnly: true } : {}),
     workspaceSkills,
     notices,

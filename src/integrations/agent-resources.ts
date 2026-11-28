@@ -37,7 +37,7 @@ export async function agentText(
 export function formatWorkspaceSkills(skills: readonly WorkspaceSkillMeta[]): string {
   if (!skills.length) return "";
   const lines = skills.map(skill => `- **${skill.name}**（\`${skill.path}\`）：${skill.description}`);
-  return "## 工作区技能\n\n以下为工作区自有专业方法（位于 `.agents/skills/`），匹配任务时按需读取对应 `SKILL.md` 正文：\n" + lines.join("\n");
+  return "## 工作区技能\n\n匹配任务时按需读取对应 `SKILL.md` 正文：\n" + lines.join("\n");
 }
 
 export async function loadWorkspaceContext(options: {
