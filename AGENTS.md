@@ -13,11 +13,11 @@ Personal Bot is a harness-agnostic workspace and unified MCP cross-harness deleg
   - `mcp/`: stdio MCP server & workspace MCP bridge (`workers.ts`, `bridge.ts`)
   - `acp/`: ACP worker child runtime & managed member bootstrap (`worker.ts`, `member.ts`)
   - `history/`: shared history command execution for hosts and the standalone CLI.
-  - `setup/`: standalone installer, workspace CLI and Pi setup guard (`cli.ts`, `workspace-cli.ts`, `guard.ts`)
+  - `setup/`: standalone installer, unified workspace upgrade, workspace CLI and Pi setup guard (`cli.ts`, `upgrade.ts`, `workspace-cli.ts`, `guard.ts`)
 - `src/integrations/`: external adapters organized by integration domain:
   - `hosts/`: flat per-host adapter folders (`pi/*`, `dsh/*`, `claude/adapter.ts`, `antigravity/adapter.ts`) plus shared `plugin-registry.ts`
   - `acp/`: ACP protocol & extensible harness adapters (`registry.ts`, `harnesses/*`, `claude-settings.ts`)
-  - `installation/`: installer & host environment bridges
+  - `installation/`: installer, host environment bridges, and extensible per-host upgraders (`upgraders/registry.ts`, `upgraders/*.ts`)
   - shared cross-host helpers (`agent-resources.ts`, `history-summary.ts`)
 - `src/services/`: host-neutral business rules (`agents/`, `workspace/`, `history/`, `installation/`).
 - `src/model/`: plain data types and narrow capability contracts (`plugin-host.ts`, `acp.ts`, `agent.ts`, `history.ts`, `workspace-config.ts`); no business logic or host SDK types.
@@ -30,7 +30,7 @@ Personal Bot is a harness-agnostic workspace and unified MCP cross-harness deleg
 - `tests/`: real-process Node tests under domain subdirectories; real-model acceptance runs separately.
 - `docs/`: categorized documentation (`docs/README.md` index → `hosts/`, `guides/`, `architecture/`, `maintainers/`).
 - `scripts/`: build helpers (`build-cli.mjs`, `build-dsh.mjs`, `build-plugins.mjs`) and consumer checks.
-- `bin/pbot.mjs`: standalone CLI (`init`, `status`, `history status|list|summary|migrate|search|read`, `setup`, `install-antigravity`, `plugin <host> hook|init|status`, `mcp`).
+- `bin/pbot.mjs`: standalone CLI (`init`, `status`, `upgrade`/`update`, `history status|list|summary|migrate|search|read`, `setup`, `install-antigravity`, `plugin <host> hook|init|status`, `mcp`).
 - `lib/`: generated CLI, dsh, plugin runtime, standalone `lib/extension/{workspace-cli,mcp,acp-worker}.js`, and self-contained `lib/antigravity-plugin/`. Do not edit generated files.
 - `dist/`: generated test imports. Do not edit generated files.
 

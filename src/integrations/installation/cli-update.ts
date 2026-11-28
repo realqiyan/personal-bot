@@ -95,6 +95,34 @@ async function upgradeGlobal(directory: string, required: string, env: NodeJS.Pr
   }
 }
 
+export async function upgradeManagedGlobalCli(required: string, env: NodeJS.ProcessEnv = process.env): Promise<{
+  state: "updated" | "up-to-date" | "skipped" | "failed";
+  globalDirectory?: string;
+  exitCode?: number;
+  detail: string;
+}> {
+  requireThat(valid(required) && /^[0-9]/.test(required) && required === required.trim(), "无效的插件发布版本：" + required);
+  if (!lt(packageVersion, required)) {
+    return { state: "up-to-date", detail: `CLI 已是 ${packageVersion}。` };
+  }
+  const global = await globalPackage();
+  if (!global) {
+    return { state: "skipped", detail: `当前运行的是本地或非全局安装（${packageVersion}），跳过全局 CLI 覆盖。` };
+  }
+  const status = await upgradeGlobal(global, required, env);
+  if (status === undefined) {
+    return { state: "skipped", globalDirectory: global, detail: "全局 npm 目录不可写或正被其他进程更新，已跳过全局 CLI 覆盖。" };
+  }
+  if (status !== 0) {
+    return { state: "failed", globalDirectory: global, exitCode: status, detail: `npm 更新全局 personal-bot@${required} 失败（退出码 ${status}）。` };
+  }
+  return { state: "updated", globalDirectory: global, detail: `已将全局 CLI 从 ${packageVersion} 更新到 ${required}。` };
+}
+
+export function execCliEntry(entry: string, args: readonly string[], env: NodeJS.ProcessEnv = process.env): Promise<number> {
+  return runProgram(process.execPath, [entry, ...args], env, false);
+}
+
 /** Upgrade managed global installs in place. Project, npx and linked installs use npm's shared version cache. */
 export async function runUpdatedCli(required: string | undefined, args: readonly string[], input?: string): Promise<number | undefined> {
   if (!required) return undefined;

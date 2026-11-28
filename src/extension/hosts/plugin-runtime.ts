@@ -6,7 +6,7 @@ import { loadWorkspaceContext } from "../../integrations/agent-resources.js";
 import type { PluginHostAdapter } from "../../model/plugin-host.js";
 import { recordHistoryCapture } from "../../services/history/history-capture.js";
 import { historyStartupNotices } from "../../services/history/summary-runner.js";
-import { bindWorkspacePlugin } from "../../services/workspace/plugin-releases.js";
+import { bindWorkspacePlugin, workspacePluginDrift, workspacePluginReleases } from "../../services/workspace/plugin-releases.js";
 import { readWorkspaceConfig, workspaceFeatures } from "../../services/workspace/workspace-config.js";
 import { initializeWorkspace } from "../../services/workspace/workspace-preparation.js";
 import { discoverSkills, discoverWorkspaceSkills } from "../../services/workspace/workspace-skills.js";
@@ -79,7 +79,14 @@ export async function pluginHook(adapter: PluginHostAdapter, payload: unknown, r
     const directory = join(resourceRoot, "skills");
     workspaceSkills.push(...await discoverSkills(directory, directory));
   }
-  const notices = event.isSessionStart && features.history ? historyStartupNotices(root) : [];
+  const notices = event.isSessionStart && features.history ? [...historyStartupNotices(root)] : [];
+  if (event.isSessionStart) {
+    const drift = workspacePluginDrift(workspacePluginReleases(root));
+    if (drift.outOfSync) {
+      const summary = Object.entries(drift.versions).map(([host, version]) => `${host}=${version}`).join(", ");
+      notices.push(`检测到当前工作区各宿主 Personal Bot 插件版本不一致（${summary}），可在终端运行 pbot upgrade 统一升级。`);
+    }
+  }
   if (!includePrompts && !workspaceSkills.length && !notices.length) return adapter.formatPass(payload);
   const context = await loadWorkspaceContext({
     host: adapter.host,

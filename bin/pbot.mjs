@@ -6,7 +6,7 @@ try {
     process.exitCode = await main(args);
   } else {
     const { updateForCommand, updateForWorkspace } = await import("../lib/extension/workspace-cli.js");
-    const updated = args.length && !["-h", "--help"].includes(args[0]) ? await updateForCommand(args) : undefined;
+    const updated = args.length && !["-h", "--help", "upgrade", "update"].includes(args[0]) ? await updateForCommand(args) : undefined;
     if (updated !== undefined) {
       process.exitCode = updated;
     } else if (args[0] === "plugin") {

@@ -20,7 +20,7 @@ Personal Bot 为多宿主环境（[Pi](https://pi.dev)、dsh、Claude Code、Ant
 
 ## 安装
 
-在工作区根目录运行 CLI，或用 `--workspace <目录>` 指定。全局安装用 `npm install -g personal-bot`，临时运行用 `npx personal-bot@<插件版本>`。所有宿主共用 `pbot init`、`pbot status` 和 `pbot history status|list|summary|migrate|search|read`。显式初始化或在已启用的工作区执行命令时，CLI 自动选择满足插件要求的版本。详见[历史与 CLI 指南](docs/guides/history.md)。
+在工作区根目录运行 CLI，或用 `--workspace <目录>` 指定。全局安装用 `npm install -g personal-bot`，临时运行用 `npx personal-bot@<插件版本>`。所有宿主共用 `pbot init`、`pbot status`、`pbot upgrade|update` 和 `pbot history status|list|summary|migrate|search|read`。运行 `pbot upgrade` 可将全局 CLI 与当前工作区已绑定的各宿主插件统一升级到 npm 最新稳定版；显式初始化或在已启用的工作区执行命令时，CLI 也会自动选择满足插件要求的版本。详见[工作区配置](docs/guides/workspace-configuration.md)与[历史与 CLI 指南](docs/guides/history.md)。
 
 ### Pi
 
@@ -100,7 +100,7 @@ pbot mcp
 
 ## 开发与验证
 
-当前版本 **0.3.3**。完整开发使用 Linux/macOS、Node.js 24.9+：
+当前版本 **0.3.4**。完整开发使用 Linux/macOS、Node.js 24.9+：
 
 ```bash
 npm ci --ignore-scripts

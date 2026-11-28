@@ -10,7 +10,7 @@ import { getPluginHost, pluginMcpWorkspaceRoot } from "../../integrations/hosts/
 import { minimumCliRelease, runUpdatedCli } from "../../integrations/installation/cli-update.js";
 import { resolveWorkspace } from "../../integrations/installation/workspace.js";
 import { parseHistoryCommand, type ParsedHistoryCommand } from "../../services/history/summary-command.js";
-import { workspacePluginReleases } from "../../services/workspace/plugin-releases.js";
+import { workspacePluginDrift, workspacePluginReleases } from "../../services/workspace/plugin-releases.js";
 import { readWorkspaceConfig, workspaceDisabledMessage, workspaceFeatures } from "../../services/workspace/workspace-config.js";
 import { initializeWorkspace } from "../../services/workspace/workspace-preparation.js";
 
@@ -121,7 +121,15 @@ export async function main(args: string[]): Promise<number> {
   }
   requireThat((await stat(root)).isDirectory(), "工作区必须是目录。");
   if (verb !== "history") {
-    print({ workspaceRoot: root, version: packageVersion, plugins, minimumCliVersion: required ?? null, configuration });
+    const drift = workspacePluginDrift(plugins);
+    print({
+      workspaceRoot: root,
+      version: packageVersion,
+      plugins,
+      outOfSync: drift.outOfSync,
+      minimumCliVersion: required ?? null,
+      configuration,
+    });
     return configuration.error ? 1 : 0;
   }
   const command = historyAction(tail);

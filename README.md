@@ -20,7 +20,7 @@ Missing, disabled, or invalid configuration keeps Personal Bot inactive without 
 
 ## Install
 
-The workspace CLI runs from the workspace root or accepts `--workspace <dir>`. Install it with `npm install -g personal-bot`, or use `npx personal-bot@<installed-plugin-version>`. Use `pbot init`, `pbot status` and `pbot history status|list|summary|migrate|search|read`. During initialization and in enabled workspaces, the CLI selects a version that meets the registered plugins’ requirements. [CLI and history guide](docs/guides/history.md)
+The workspace CLI runs from the workspace root or accepts `--workspace <dir>`. Install it with `npm install -g personal-bot`, or use `npx personal-bot@<installed-plugin-version>`. Use `pbot init`, `pbot status`, `pbot upgrade|update`, and `pbot history status|list|summary|migrate|search|read`. Run `pbot upgrade` to update the global CLI and all host plugins bound to the current workspace to the latest stable npm release. During initialization and in enabled workspaces, the CLI also selects a version that meets the registered plugins’ requirements. [Workspace configuration](docs/guides/workspace-configuration.md) · [CLI and history guide](docs/guides/history.md)
 
 ### Pi
 
@@ -100,7 +100,7 @@ Supports built-in presets (`pi`, `dsh`, `claude`, `antigravity`, `codex`, `qoder
 
 ## Development
 
-The package version is **0.3.3**. Full development uses Linux/macOS and Node.js 24.9+:
+The package version is **0.3.4**. Full development uses Linux/macOS and Node.js 24.9+:
 
 ```bash
 npm ci --ignore-scripts

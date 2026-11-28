@@ -84,3 +84,24 @@ MCP Server (src/extension/mcp/workers.ts) -> AgentService -> AcpWorkerHost -> sr
 - 每次调用动态读取工作区 `.pbot/config.json` 并刷新 `acp` 映射，新增自定义 Harness 即改即生效。
 - 支持 `PBOT_MCP_SESSION_ID` 与 `PBOT_MCP_AGENT_DIR`，使 Pi/dsh 的 `/pbot worker` 命令与自动挂载的 MCP 进程共享同一会话归属。
 - `lib/extension/mcp.js` 与 `lib/extension/acp-worker.js` 通过 `esbuild` 独立打包，确保插件缓存目录在无 `node_modules` 环境下稳定运行。
+
+## 4. 可扩展宿主升级适配器（`HostUpgraderRegistry`）
+
+```text
+pbot upgrade|update (src/extension/setup/upgrade.ts)
+        ↓
+src/services/installation/upgrade-service.ts (宿主无关编排与单宿主容错)
+        ↓
+HostUpgraderRegistry (src/integrations/installation/upgraders/registry.ts)
+   ├── piUpgrader          (src/integrations/installation/upgraders/pi.ts)
+   ├── claudeUpgrader      (src/integrations/installation/upgraders/claude.ts)
+   ├── antigravityUpgrader (src/integrations/installation/upgraders/antigravity.ts)
+   ├── codexUpgrader       (src/integrations/installation/upgraders/codex.ts)
+   ├── qoderUpgrader       (src/integrations/installation/upgraders/qoder.ts)
+   ├── dshUpgrader         (src/integrations/installation/upgraders/dsh.ts)
+   └── <自定义宿主升级器>    (通过 registerHostUpgrader 动态注册)
+```
+
+- `HostUpgrader` 契约定义在 `src/model/installation.ts`（`host: string` + `upgrade(context): Promise<HostUpgradeResult>`）。
+- 升级编排主链路只按当前工作区绑定的宿主列表（`~/.pbot/workspaces/<hash>/*.json` 与本地 `.pi/`）动态查表调用，不感知具体宿主实现；单宿主失败或跳过不阻塞其余宿主。
+- 接入新宿主升级能力只需新增 `src/integrations/installation/upgraders/<host>.ts` 并在 `registry.ts` 注册，无需修改 `upgrade-service.ts` 或 `upgrade.ts`。

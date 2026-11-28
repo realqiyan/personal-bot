@@ -17,6 +17,7 @@ import {
   upsertWorkspaceMcpServer,
 } from "../../services/workspace/workspace-mcp.js";
 import { SetupUI } from "../../ui/setup.js";
+import { runUpgradeCommand } from "./upgrade.js";
 
 const root = new URL("../../../", import.meta.url);
 const quote = (value: string) => "'" + value.replaceAll("'", "'\\''") + "'";
@@ -168,6 +169,7 @@ export async function main(args: string[]): Promise<number> {
   if (options.action === "help") {
     console.log("Personal Bot " + manifest.version + "\n\n用法：pbot setup [--workspace <目录>]\n" +
       "      npx personal-bot@latest setup\n" +
+      "      pbot upgrade|update [--workspace <目录>] [--version <版本>] [--hosts <列表>] [--dsh-profile <名称>] [--json]\n" +
       "      pbot init | status [--workspace <目录>] [--json]\n" +
       "      pbot history status|list|summary|migrate|search|read [参数] [--workspace <目录>] [--json]\n" +
       "      pbot install-antigravity\n" +
@@ -175,10 +177,15 @@ export async function main(args: string[]): Promise<number> {
       "      pbot mcp\n" +
       "      pbot mcp list|add|remove ...\n\n" +
       "setup 安装或升级 Pi、pbot 和选中的插件，然后启动 Pi 执行 /pbot init。\n" +
+      "upgrade|update 将全局 CLI 与当前工作区已绑定的各宿主插件统一升级到 npm 最新稳定版。\n" +
       "install-antigravity 通过原生 agy plugin install 安装或更新 Antigravity 插件。\n" +
       "mcp 无参数时启动统一 stdio MCP 服务（暴露 worker_* 与 workspace_mcp_*）；带 list/add/remove 时管理工作区 .pbot/mcp.json。\n" +
       "支持 Linux/macOS，需要 Node.js 22.19+ 和 npm。\n--help 显示帮助；--version 显示安装器版本。");
     return 0;
+  }
+  if (options.action === "upgrade") {
+    try { return await runUpgradeCommand(options.upgradeArgs ?? [], options.upgradeVerb ?? "upgrade"); }
+    catch (error) { console.error(error instanceof Error ? error.message : String(error)); return 2; }
   }
   if (options.action === "mcp-manage") {
     try { return await runMcpManage(options.mcpArgs ?? []); }

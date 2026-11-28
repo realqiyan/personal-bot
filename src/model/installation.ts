@@ -39,3 +39,48 @@ export interface SetupOperations {
   installPackage(pi: PiInstallation, workspace: string, choice: PackageChoice): Promise<string>;
   verifyKeptPackage(pi: PiInstallation, workspace: string, choice: PackageChoice): Promise<string>;
 }
+
+export type HostUpgradeState = "updated" | "up-to-date" | "skipped" | "failed";
+
+export interface HostUpgradeContext {
+  workspace: string;
+  targetVersion: string;
+  currentVersion?: string;
+  packageRoot: string;
+  bindingPath?: string;
+  env: NodeJS.ProcessEnv;
+  signal: AbortSignal;
+  options: Readonly<Record<string, string | undefined>>;
+  run(command: string, args: string[], cwd: string, options?: { interactive?: boolean; timeoutMs?: number }): Promise<string>;
+  findExecutable(name: string): Promise<string | undefined>;
+}
+
+export interface HostUpgradeResult {
+  host: string;
+  state: HostUpgradeState;
+  previousVersion?: string;
+  version?: string;
+  scope?: string;
+  detail: string;
+  nextStep?: string;
+}
+
+export interface HostUpgrader {
+  readonly host: string;
+  upgrade(context: HostUpgradeContext): Promise<HostUpgradeResult>;
+}
+
+export interface CliUpgradeSummary {
+  state: HostUpgradeState;
+  previousVersion: string;
+  version: string;
+  detail: string;
+}
+
+export interface WorkspaceUpgradeSummary {
+  workspaceRoot: string;
+  targetVersion: string;
+  cli: CliUpgradeSummary;
+  results: HostUpgradeResult[];
+  ok: boolean;
+}

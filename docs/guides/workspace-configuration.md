@@ -15,6 +15,19 @@
 
 `init` 先补建资料目录（`areas/`、`projects/`、`knowledge/`、`providers/`、`scratch/`、`agents/`）和缺失的根 `AGENTS.md`，再将 `.pbot/config.json` 中的 `enabled` 设为 `true` 并显式写入 `features`（`prompts`、`skills`、`mcp`、`history`，未设置项默认 `true`）与 `summary`（`backend: "pi"`、`concurrency: 3`），保留已有资料、宿主自有文件（如 `CLAUDE.md`）、已设置的开关/摘要配置及其他未知配置字段；配置文件损坏时先报错而不覆写。
 
+## 统一升级工作区多宿主插件
+
+当同一工作区交替使用多个宿主（如 Claude Code、Codex、Pi、Antigravity、Qoder CLI、dsh）时，各宿主激活后会在 `~/.pbot/workspaces/<工作区hash>/` 记录绑定版本；若检测到版本不一致，`pbot status` 会标记 `outOfSync: true`，会话启动时也会提示同步。在终端执行：
+
+```bash
+pbot upgrade [--workspace <目录>] [--version <版本>] [--hosts <h1,h2>] [--dsh-profile <名称>] [--json]
+# 等价别名
+pbot update [--workspace <目录>]
+```
+
+- 默认将全局 `pbot` CLI 与当前工作区已绑定的宿主插件统一升级到 npm 最新稳定版（本地开发或 `npm link` 安装跳过全局 CLI 覆盖）。
+- 遵循最小影响原则：仅处理当前工作区已绑定的宿主并保留既有安装作用域（Pi 仅更新工作区 `--local` 的 `personal-bot`、非 npm 自定义来源跳过；Claude 保留原有的 `local`/`project`/`user` 作用域；dsh 自动从绑定路径识别 profile 或通过 `--dsh-profile` 指定，不强杀运行中的服务）。
+
 ## 启用、模块开关（`features`）与停用规则
 
 ```json
