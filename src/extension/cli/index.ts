@@ -7,9 +7,9 @@ import { workspacePluginReleases } from "../../services/workspace/plugin-release
 import { readWorkspaceConfig } from "../../services/workspace/workspace-config.js";
 import { CliError, extractCommonFlags, resolveCliWorkspace } from "./args.js";
 import { historyCommand } from "./commands/history.js";
+import { installCommand } from "./commands/install.js";
 import { mcpCommand } from "./commands/mcp.js";
 import { pluginCommand } from "./commands/plugin.js";
-import { installAntigravityCommand, setupCommand } from "./commands/setup.js";
 import { upgradeCommand } from "./commands/upgrade.js";
 import { initCommand, statusCommand } from "./commands/workspace.js";
 import type { CliCommand, CliContext } from "./types.js";
@@ -17,12 +17,11 @@ import type { CliCommand, CliContext } from "./types.js";
 const commands: readonly CliCommand[] = [
   initCommand,
   statusCommand,
-  historyCommand,
+  installCommand,
   upgradeCommand,
+  historyCommand,
   mcpCommand,
   pluginCommand,
-  setupCommand,
-  installAntigravityCommand,
 ];
 
 const commandIndex = new Map<string, CliCommand>();

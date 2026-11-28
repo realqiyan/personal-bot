@@ -1,6 +1,6 @@
 # npm 发布与验收
 
-发布配置以 `package.json` 为准：包名 `personal-bot`，registry 为 npmjs，稳定版本使用 `latest`。发布包包含 Pi 扩展源码、共享资源、独立 CLI（`setup` / `install-antigravity` / `mcp`）、dsh Host/Web、Claude 插件、自包含 `lib/antigravity-plugin/` 以及独立打包的 `lib/extension/{mcp,acp-worker}.js`。
+发布配置以 `package.json` 为准：包名 `personal-bot`，registry 为 npmjs，稳定版本使用 `latest`。发布包包含 Pi 扩展源码、共享资源、独立 CLI（`install` / `upgrade` / `mcp` / `history`）、dsh Host/Web、Claude 插件、自包含 `lib/antigravity-plugin/` 以及独立打包的 `lib/extension/{mcp,acp-worker}.js`。
 
 ## 首次配置
 
@@ -55,5 +55,5 @@ npm publish "./personal-bot-$VERSION.tgz" --ignore-scripts --access public --tag
 2. Pi 消费检查：`node scripts/check-consumer.mjs npm:personal-bot@<version>`。
 3. dsh：在独立 profile 安装 `personal-bot@latest`，核对 `/pbot status`、Web 工作区/历史页与 `mcp__pbot__worker_*`。
 4. Claude Code：通过 `/plugin install personal-bot --marketplace realqiyan/personal-bot` 安装，核对版本、`/personal-bot:pbot status` 与 `worker_*` MCP。
-5. Antigravity：通过 `npx personal-bot@latest install-antigravity` 安装，核对 `/pbot status` 与 `worker_*` MCP。
+5. Antigravity：通过 `npx personal-bot@latest install antigravity` 安装，核对 `/pbot status` 与 `worker_*` MCP。
 6. 真实模型环境下各宿主首轮上下文、技能选择与跨 Harness 实测调用（含 `npm run test:e2e:acp`）在独立批准环境单独验收。

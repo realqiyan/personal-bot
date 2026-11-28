@@ -25,7 +25,7 @@ module.exports = {
     { name: "ui-does-not-decide-business", severity: "error", from: { path: "^src/ui/" },
       to: { path: "^src/(?:services|tools|storage|integrations|extension)/|^src/pbot\\.ts$" } },
     { name: "pi-sdk-has-explicit-owners", severity: "error",
-      from: { path: "^src/", pathNot: "^src/(?:pbot\\.ts$|(?:extension|integrations)/hosts/pi/|ui/pi/|tools/[^/]+/pi-tool\\.ts$|extension/setup/guard\\.ts$|integrations/installation/pi-bridge\\.ts$)" },
+      from: { path: "^src/", pathNot: "^src/(?:pbot\\.ts$|(?:extension|integrations)/hosts/pi/|ui/pi/|tools/[^/]+/pi-tool\\.ts$)" },
       to: { path: "node_modules/@earendil-works/" } },
     { name: "dsh-sdk-has-explicit-owners", severity: "error",
       from: { path: "^src/", pathNot: "^src/(?:dsh\\.ts$|(?:extension|integrations)/hosts/dsh/|ui/dsh/|tools/[^/]+/dsh-tool\\.ts$)" },

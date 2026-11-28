@@ -1,8 +1,7 @@
 import { spawn } from "node:child_process";
 import { access, realpath, stat } from "node:fs/promises";
 import { constants } from "node:fs";
-import { delimiter, isAbsolute, join, resolve } from "node:path";
-import type { SystemCommand } from "../../model/installation.js";
+import { delimiter, isAbsolute, resolve } from "node:path";
 
 export async function findExecutable(name: string, env: NodeJS.ProcessEnv = process.env): Promise<string | undefined> {
   const directories = (env.PATH ?? "").split(delimiter).filter(Boolean);
@@ -47,7 +46,7 @@ export class SetupProcesses {
         kill("SIGTERM");
         escalation = setTimeout(() => kill("SIGKILL"), 2000);
       };
-      const cancel = () => stop(new Error("安装已取消。"));
+      const cancel = () => stop(new Error("操作已取消。"));
       const timer = timeoutMs > 0 ? setTimeout(() => stop(new Error(`命令超时：${command}`)), timeoutMs) : undefined;
       this.signal.addEventListener("abort", cancel, { once: true });
       const collect = (chunks: Buffer[]) => (chunk: Buffer) => {
@@ -71,41 +70,3 @@ export class SetupProcesses {
     });
   }
 }
-
-export function tmuxInstallCommand(platform: string, commands: ReadonlyMap<string, string>, root: boolean): SystemCommand {
-  let command: string | undefined, args: string[];
-  if (platform === "darwin") {
-    command = commands.get("brew"); args = ["install", "tmux"];
-  } else {
-    const manager = ["apt-get", "dnf", "pacman", "zypper", "apk"].find(name => commands.has(name));
-    command = manager ? commands.get(manager) : undefined;
-    args = manager === "apt-get" ? ["install", "-y", "tmux"] : manager === "dnf" ? ["install", "-y", "tmux"]
-      : manager === "pacman" ? ["-S", "--needed", "--noconfirm", "tmux"]
-      : manager === "zypper" ? ["--non-interactive", "install", "tmux"] : ["add", "tmux"];
-    if (command && !root) {
-      const sudo = commands.get("sudo");
-      if (!sudo) throw new Error("安装 tmux 需要管理员权限；请手动安装 tmux 后重新运行 setup。");
-      return { command: sudo, args: [command, ...args] };
-    }
-  }
-  if (!command) throw new Error(platform === "darwin"
-    ? "未找到 Homebrew。请先通过现有环境安装 tmux，再运行 setup。"
-    : "未找到支持的系统包管理器。请手动安装 tmux，再运行 setup。");
-  return { command, args };
-}
-
-export async function inspectSystem(processes: SetupProcesses, cwd: string): Promise<{ npm: string; tmux?: SystemCommand }> {
-  if (!["linux", "darwin"].includes(process.platform)) throw new Error("setup 支持 Linux 和 macOS；Windows 请使用 WSL。");
-  const [major = 0, minor = 0] = process.versions.node.split(".").map(Number);
-  if (major < 22 || major === 22 && minor < 19) throw new Error("需要 Node.js 22.19 或更高版本。");
-  const npm = await findExecutable("npm", processes.env);
-  if (!npm) throw new Error("未找到 npm。请先安装 Node.js/npm。");
-  const tmux = await findExecutable("tmux", processes.env);
-  if (tmux) { await processes.run(tmux, ["-V"], cwd); return { npm }; }
-  const names = process.platform === "darwin" ? ["brew"] : ["apt-get", "dnf", "pacman", "zypper", "apk", "sudo"];
-  const entries = await Promise.all(names.map(async name => [name, await findExecutable(name, processes.env)] as const));
-  const commands = new Map(entries.filter((entry): entry is readonly [string, string] => entry[1] !== undefined));
-  return { npm, tmux: tmuxInstallCommand(process.platform, commands, process.getuid?.() === 0) };
-}
-
-export function npmGlobalBinary(prefix: string): string { return join(prefix, "bin", "pi"); }

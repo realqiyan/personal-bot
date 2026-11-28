@@ -7,14 +7,16 @@ Personal Bot 以自包含原生插件（`lib/antigravity-plugin/`）接入 Googl
 支持 Linux 和 macOS，需要 Node.js 22.19+ 与 Antigravity CLI（`agy` 1.5+）：
 
 ```sh
-npx personal-bot@latest install-antigravity
+npx personal-bot@latest install antigravity
+# 或全局安装后使用
+pbot install antigravity
 ```
 
 从源码本地构建安装：
 
 ```sh
 npm run build
-node bin/pbot.mjs install-antigravity
+node bin/pbot.mjs install antigravity
 # 或直接调用原生命令
 agy plugin install ./lib/antigravity-plugin
 ```

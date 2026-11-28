@@ -41,7 +41,7 @@
 2. **跨宿主协议与运行域**：
    - **ACP Harness**：实现 `AcpHarnessAdapter` 放入 `src/integrations/acp/harnesses/<name>.ts` 并在 `src/integrations/acp/registry.ts` 注册；运行时在 `src/extension/acp/`；辅助模块避免与适配器重名（如 `acp/claude-settings.ts`）。
    - **MCP 服务与桥接**：统一放在 `src/extension/mcp/`。
-   - **统一 CLI 与安装器**：CLI 路由与命令处理器在 `src/extension/cli/`，Pi 初始化保护在 `src/extension/setup/guard.ts`，外部环境桥接与宿主升级器在 `src/integrations/installation/`。
+   - **统一 CLI 与安装器**：CLI 路由与命令处理器在 `src/extension/cli/`，宿主安装器与升级器在 `src/integrations/installation/`。
 3. **宿主无关业务与共享模块**：业务规则放 `src/services/<domain>/`，纯数据契约放 `src/model/`，存储放 `src/storage/`，跨宿主 UI/展示辅助放 `src/ui/` 顶层。
 
 所有单向依赖与宿主 SDK 隔离规则由 `.dependency-cruiser.cjs` 静态强制。`common/validation` 保持零第三方依赖，`common/schema`（Ajv）仅由 Pi/dsh 历史工具与管理查询显式引入。
@@ -76,13 +76,12 @@
 - `pbot upgrade|update [--workspace <dir>] [--version <ver>] [--hosts <h1,h2>] [--dsh-profile <name>] [--json]`：统一升级全局 CLI 与当前工作区已绑定的各宿主插件。
 - `pbot mcp [list|add|remove ...]`：无参数时运行独立打包的 `lib/extension/mcp.js` 供任意 MCP 客户端连接；带子命令时管理工作区 `.pbot/mcp.json`。
 - `pbot plugin <host> hook|init|status`：经 `PluginHostRegistry` 运行轻插件宿主的无状态 hook 或工作区命令。
-- `pbot setup [--workspace <dir>]`：交互式检查环境、安装/更新 Pi 与工作区扩展，保留自定义本地/Git/固定来源，完成后通过临时 `setup-guard` 启动 Pi 执行 `/pbot init`。
-- `pbot install-antigravity`：调用原生 `agy plugin install ./lib/antigravity-plugin` 安装或更新 Antigravity 插件。
+- `pbot install <host|all> [--workspace <dir>] [--dsh-profile <name>] [--json]`：经 `HostInstallerRegistry` 为指定宿主或本机已安装的各宿主统一安装插件。
 
 ## 构建与分发
 
 构建顺序固定为 **`dist → build:cli → build:dsh → build:plugins`**（`build:cli` 清空 `lib/`）：
-1. `build:cli`：编译独立 CLI、Pi 检查桥接与 `setup-guard`。
+1. `build:cli`：打包独立 CLI（`lib/extension/cli.js` 与 `lib/extension/workspace-cli.js` 兼容入口）。
 2. `build:dsh`：编译 dsh Host，打包内置 TypeBox 及许可证，构建 Web 客户端模块 `lib/client.js`。
 3. `build:plugins`：编译共享插件运行时（`lib/plugin.js`、`lib/claude.js`），用 `esbuild` 打包零外部依赖的 `lib/extension/mcp.js` 与 `lib/extension/acp-worker.js`（内联 `@agentclientprotocol/sdk`），执行已注册的各插件宿主目标（同步 Claude 清单、组装自包含 `lib/antigravity-plugin/`）。
 

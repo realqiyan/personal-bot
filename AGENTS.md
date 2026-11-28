@@ -13,25 +13,24 @@ Personal Bot is a harness-agnostic workspace and unified MCP cross-harness deleg
   - `mcp/`: stdio MCP server & workspace MCP bridge (`workers.ts`, `bridge.ts`)
   - `acp/`: ACP worker child runtime & managed member bootstrap (`worker.ts`, `member.ts`)
   - `history/`: shared history command execution for hosts and the standalone CLI.
-  - `cli/`: unified CLI router, shared option parsing, auto-update middleware, and modular command handlers (`index.ts`, `args.ts`, `types.ts`, `commands/{workspace,history,mcp,plugin,upgrade,setup}.ts`).
-  - `setup/`: Pi setup guard extension (`guard.ts`).
+  - `cli/`: unified CLI router, shared option parsing, auto-update middleware, and modular command handlers (`index.ts`, `args.ts`, `types.ts`, `commands/{workspace,history,mcp,plugin,install,upgrade}.ts`).
 - `src/integrations/`: external adapters organized by integration domain:
   - `hosts/`: flat per-host adapter folders (`pi/*`, `dsh/*`, `claude/adapter.ts`, `antigravity/adapter.ts`) plus shared `plugin-registry.ts`
   - `acp/`: ACP protocol & extensible harness adapters (`registry.ts`, `harnesses/*`, `claude-settings.ts`)
-  - `installation/`: installer, host environment bridges, and extensible per-host upgraders (`upgraders/registry.ts`, `upgraders/*.ts`)
+  - `installation/`: CLI auto-update, process helpers, and extensible per-host installers & upgraders (`installers/registry.ts`, `installers/*.ts`, `upgraders/registry.ts`, `upgraders/*.ts`)
   - shared cross-host helpers (`agent-resources.ts`, `history-summary.ts`)
 - `src/services/`: host-neutral business rules (`agents/`, `workspace/`, `history/`, `installation/`).
 - `src/model/`: plain data types and narrow capability contracts (`plugin-host.ts`, `acp.ts`, `agent.ts`, `history.ts`, `workspace-config.ts`); no business logic or host SDK types.
 - `src/storage/`: atomic JSON, ACP worker control files, and history storage.
 - `src/tools/`: `pbot_history` contracts (`history/contract.ts`, `history/actions.ts`) and symmetric host registrations (`history/pi-tool.ts`, `history/dsh-tool.ts`).
-- `src/ui/`: host-specific UI under `pi/` (`confirmation.ts`) and `dsh/` (Web workspace/history UI), plus the setup CLI interface (`setup.ts`).
+- `src/ui/`: host-specific UI under `pi/` (`confirmation.ts`) and `dsh/` (Web workspace/history UI).
 - `src/common/`: shared JSON, validation, schema, file, path, and version helpers.
 - `.claude-plugin/`, `hooks/hooks.json`, `.mcp.json`: Claude plugin discovery, command hooks (workspace context & skill gating only — never intercepts native subagents), and MCP server declaration.
 - `resources/`: model-facing prompts, roles, skills, references, and templates (strictly separate from developer docs).
 - `tests/`: real-process Node tests under domain subdirectories; real-model acceptance runs separately.
 - `docs/`: categorized documentation (`docs/README.md` index → `hosts/`, `guides/`, `architecture/`, `maintainers/`).
 - `scripts/`: build helpers (`build-cli.mjs`, `build-dsh.mjs`, `build-plugins.mjs`) and consumer checks.
-- `bin/pbot.mjs`: standalone CLI (`init`, `status`, `upgrade`/`update`, `history status|list|summary|migrate|search|read`, `setup`, `install-antigravity`, `plugin <host> hook|init|status`, `mcp`).
+- `bin/pbot.mjs`: standalone CLI (`init`, `status`, `install <host|all>`, `upgrade`/`update`, `history status|list|summary|migrate|search|read`, `plugin <host> hook|init|status`, `mcp`).
 - `lib/`: generated CLI, dsh, plugin runtime, standalone `lib/extension/{cli,mcp,acp-worker}.js` (plus `workspace-cli.js` compatibility shim), and self-contained `lib/antigravity-plugin/`. Do not edit generated files.
 - `dist/`: generated test imports. Do not edit generated files.
 

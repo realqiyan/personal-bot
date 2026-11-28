@@ -64,7 +64,6 @@ test("smoke: packed sources load tools and the standalone CLI without dist or in
   await assert.rejects(cli("--at-least", newer), { code: 1, stderr: "" });
   await assert.rejects(cli("--at-least", "invalid"), error => error.code === 1 && error.stderr.includes("--at-least"));
   assert.equal(manifest.bin.pbot, "./bin/pbot.mjs");
-  assert.ok((await readdir(join(packed, "resources/installer"))).includes("plugins.json"));
   await assert.rejects(readdir(join(packed, "dist")), { code: "ENOENT" });
   // Supply the locked Pi SDK only for the remaining host checks.
   await symlink(join(packageRoot, "node_modules"), join(packed, "node_modules"), "dir");

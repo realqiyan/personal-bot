@@ -4,23 +4,12 @@ Personal Bot 以 Pi 扩展形式接入 [Pi](https://pi.dev)，提供共享工作
 
 ## 安装与启用
 
-支持 Linux 和 macOS，需要 Node.js 22.19+ 与 npm。
-
-### 向导安装
+支持 Linux 和 macOS，需要 Node.js 22.19+ 与 npm。在目标工作区根目录执行：
 
 ```bash
-npx personal-bot@latest setup
-# 或直接指定工作区
-npx personal-bot@latest setup --workspace ~/pbot-workspace
-```
-
-向导负责安装或更新 Pi 与工作区扩展，并在确认后启动 Pi 执行 `/pbot init`。已有全局或本地来源按原生规则保留，可按需切换到 npm 最新稳定版。
-
-### 已有 Pi 安装
-
-在目标工作区根目录执行：
-
-```bash
+# 通过 pbot CLI 安装
+pbot install pi
+# 或使用 Pi 原生命令
 pi install --local npm:personal-bot
 pi
 ```

@@ -1,43 +1,35 @@
-export interface PluginSpec {
-  id: string;
-  label: string;
-  description: string;
-  source: string;
-  defaultSelected: boolean;
-}
-export interface InstalledPackage {
-  source: string;
-  scope: "user" | "project";
-  name?: string;
-  version?: string;
-  installedPath?: string;
-  filtered: boolean;
-  entry: unknown;
-}
-export interface PackageChoice {
-  plugin: PluginSpec;
-  required: boolean;
-  existing: InstalledPackage[];
-  selected: boolean;
-  keep: boolean;
-  target?: string;
-  error?: string;
-}
-export interface PiInstallation { command: string; root: string; version: string }
-export interface SystemCommand { command: string; args: string[] }
-export interface SetupPlan {
+export type HostInstallState = "installed" | "skipped" | "failed";
+
+export interface HostInstallContext {
   workspace: string;
-  pi?: PiInstallation;
-  piVersion: string;
-  tmux?: SystemCommand;
-  packages: PackageChoice[];
+  packageRoot: string;
+  explicit: boolean;
+  env: NodeJS.ProcessEnv;
+  signal: AbortSignal;
+  options: Readonly<Record<string, string | undefined>>;
+  run(command: string, args: string[], cwd: string, options?: { interactive?: boolean; timeoutMs?: number }): Promise<string>;
+  findExecutable(name: string): Promise<string | undefined>;
 }
-export interface SetupResult { name: string; state: "done" | "kept" | "skipped" | "failed"; detail: string }
-export interface SetupOperations {
-  installTmux(command: SystemCommand): Promise<void>;
-  ensurePi(existing: PiInstallation | undefined, version: string): Promise<PiInstallation>;
-  installPackage(pi: PiInstallation, workspace: string, choice: PackageChoice): Promise<string>;
-  verifyKeptPackage(pi: PiInstallation, workspace: string, choice: PackageChoice): Promise<string>;
+
+export interface HostInstallResult {
+  host: string;
+  state: HostInstallState;
+  version?: string;
+  scope?: string;
+  detail: string;
+  nextStep?: string;
+}
+
+export interface HostInstaller {
+  readonly host: string;
+  install(context: HostInstallContext): Promise<HostInstallResult>;
+}
+
+export interface WorkspaceInstallSummary {
+  workspaceRoot: string;
+  target: string;
+  results: HostInstallResult[];
+  ok: boolean;
 }
 
 export type HostUpgradeState = "updated" | "up-to-date" | "skipped" | "failed";

@@ -6,7 +6,7 @@ Personal Bot 文档按使用场景与职责分为四类，根目录 [README.zh-C
 
 | 文档 | 适用对象与内容 |
 | --- | --- |
-| [Pi 使用指南](hosts/pi.md) | `pbot setup` 安装、`/pbot init\|status\|worker`、自动挂载 MCP `worker_*` 与 `pbot_history` |
+| [Pi 使用指南](hosts/pi.md) | `pbot install pi` / 原生安装、`/pbot init\|status\|worker`、自动挂载 MCP `worker_*` 与 `pbot_history` |
 | [dsh 使用指南](hosts/dsh.md) | profile 与插件管理、工作区/历史 Web 工作台、`/pbot` 聊天命令、自动挂载 MCP `worker_*` |
 | [Claude Code 使用指南](hosts/claude-code.md) | 原生插件安装、command hooks、技能门控、MCP `worker_*` 与原生 Agent/团队互补 |
 | [Codex 与 Qoder CLI](hosts/codex-qoder.md) | 原生插件安装、工作区启用、hook、历史与 MCP 工具 |

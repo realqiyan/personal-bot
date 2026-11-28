@@ -1,6 +1,6 @@
 import { resolve } from "node:path";
 import { rm, writeFile } from "node:fs/promises";
-import { bundleNode, compileProject, root } from "./compile-project.mjs";
+import { bundleNode, root } from "./compile-project.mjs";
 
 export const workspaceCliShim = `import { realpathSync } from "node:fs";
 import { pathToFileURL } from "node:url";
@@ -17,7 +17,6 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
 
 if (process.argv[1] && resolve(process.argv[1]) === resolve(root, "scripts/build-cli.mjs")) {
   await rm(new URL("../lib/", import.meta.url), { recursive: true, force: true });
-  compileProject("tsconfig.cli.json");
   await bundleNode("src/extension/cli/index.ts", resolve(root, "lib/extension/cli.js"));
   await writeFile(resolve(root, "lib/extension/workspace-cli.js"), workspaceCliShim);
 }
