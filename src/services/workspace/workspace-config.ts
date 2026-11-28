@@ -179,5 +179,5 @@ export async function initializeWorkspaceConfig(root: string): Promise<void> {
 }
 
 export function workspaceDisabledMessage(configuration: WorkspaceConfiguration): string {
-  return configuration.error ?? `Personal Bot 未在此工作区启用。请执行 /pbot init 初始化并启用；配置文件：${configuration.path}`;
+  return configuration.error ?? `Personal Bot 未在此工作区启用。请在工作区根目录运行 pbot init，也可在 Pi 或 dsh 中执行 /pbot init。配置文件位于 ${configuration.path}`;
 }

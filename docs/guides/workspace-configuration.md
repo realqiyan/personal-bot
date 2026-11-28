@@ -6,6 +6,7 @@
 
 | 宿主 | 初始化 | 状态 |
 | --- | --- | --- |
+| 所有宿主 / 终端 | `pbot init [--workspace <目录>]` | `pbot status [--workspace <目录>]` |
 | Pi | `/pbot init` | `/pbot status` |
 | dsh | `/pbot init` 或 Web 工作区页按钮 | `/pbot status` 或 Web 工作区页 |
 | Claude Code | `/personal-bot:pbot init`（或 `lib/claude.js init`） | `/personal-bot:pbot status` |
@@ -99,7 +100,7 @@
 
 ## 历史目录布局与摘要配置（`history` / `summary`）
 
-可选配置历史存储布局及 `/pbot history summary` 所使用的独立 ACP worker 后端、模型与并发度（未配置时默认 `history.layout: "monthly"`、`summary.backend: "pi"` 并使用目标 harness 当前默认模型）：
+历史配置决定存储布局，以及 `pbot history summary` 使用的 ACP 后端、模型与并发度。Pi 和 dsh 的 `/pbot history summary` 读取同一配置。默认布局为 `monthly`，默认后端为 `pi`，模型沿用后端默认值。
 
 ```json
 {
@@ -118,7 +119,7 @@
 
 - `history.layout` 可选 `"monthly"`（默认，按 UTC `YYYY/MM/` 分层并启用 `monthly` 月度汇总）或 `"flat"`（平铺布局，不生成月度汇总）。已有平铺工作区可手工执行 `/pbot history migrate` 整理历史文件，不会自动修改此文件或静默迁移数据。
 - 每个待摘要项独立启动一个临时 ACP worker（附带 `PBOT_SUBAGENT_RUN_ID`，绝不写回 `raw/`），完成后立即销毁。
-- 修改后下次执行 `/pbot history summary` 直接生效，也可用命令行参数（`--backend`、`--model`、`--thinking`）临时覆盖。
+- 修改后下次执行 `pbot history summary` 即生效，也可用 `--backend`、`--model`、`--thinking` 临时覆盖。
 
 ## 手工修改生效方式
 

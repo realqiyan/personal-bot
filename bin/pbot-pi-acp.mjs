@@ -22,7 +22,7 @@ if (process.env.PBOT_SUMMARY_WORKER === "1") {
   const directory = process.env.PBOT_SUBAGENT_DIR;
   if (!directory) throw new Error("Missing Personal Bot Pi ACP launch context");
   const { options } = JSON.parse(readFileSync(join(directory, "descriptor.json"), "utf8"));
-  args = [...process.argv.slice(2), "--extension", fileURLToPath(new URL("../src/extension/hosts/pi/acp-member.ts", import.meta.url))];
+  args = [...process.argv.slice(2), "--extension", fileURLToPath(new URL("../lib/extension/hosts/pi/acp-member.js", import.meta.url))];
   if (options.noExtensions !== false) args.push("--no-extensions", "--extension", "builtin:mcp", "--extension", "builtin:codemode", "--extension", "builtin:tool-search");
   if (options.noSkills) args.push("--no-skills");
   if (options.noPromptTemplates) args.push("--no-prompt-templates");

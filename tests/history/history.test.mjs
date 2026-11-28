@@ -1,5 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { chmod, mkdir, mkdtemp, readdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -346,11 +348,16 @@ rl.on("line", line => {
   // Summary runs must not create any extra raw history files.
   assert.equal((await readdir(join(root, ".pbot/history/raw/2026/11"))).length, 2);
 
-  // Model override with --force applies set_config_option.
-  const summarizerOverride = createAcpHistorySummarizer({ cwd: root, backend: "summary-test", commands, model: "fast/model" });
-  const forcedRun = await runWorkspaceSummaries({ root, dimensions: ["session"], summarizer: summarizerOverride, force: true, concurrency: 2 });
+  // Generate both dimensions from the self-contained plugin, then read the shared archive with the standalone CLI.
+  await writeFile(join(root, ".pbot/config.json"), JSON.stringify({ enabled: true, summary: { backend: "summary-test" }, acp: commands }));
+  const bundled = fileURLToPath(new URL("../../lib/antigravity-plugin/lib/extension/workspace-cli.js", import.meta.url));
+  const standalone = fileURLToPath(new URL("../../bin/pbot.mjs", import.meta.url));
+  const run = (entry, args) => JSON.parse(execFileSync(process.execPath, [entry, "history", ...args, "--workspace", root, "--json"],
+    { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }));
+  const forcedRun = run(bundled, ["summary", "--force", "--model", "fast/model"]);
   assert.equal(forcedRun.dimensions[0].rebuilt, 2);
-  const hit = searchWorkspaceHistory(root, { query: "摘要一：fast/model", dimension: "session" });
+  assert.equal(forcedRun.dimensions[1].created, 1);
+  const hit = run(standalone, ["search", "摘要一：fast/model", "--dimension", "session"]);
   assert.equal(hit.total, 1);
   assert.equal(hit.matches[0].snippet.includes("pi v1.6.1"), false);
 });

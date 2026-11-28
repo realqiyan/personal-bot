@@ -1,1 +1,2 @@
 未指定其他程序时，默认由当前宿主直接处理或使用当前宿主原生子代理。需要委派其他程序（或按工作区 `AGENTS.md`、`agents/coordinator.md` 分工约定）时，使用 `pbot` MCP 的 `worker_*` 工具（先 `worker_create` 再 `worker_request`）。工作区 `.pbot/mcp.json` 注册的 MCP 由当前宿主原生挂载，直接调用对应原生工具即可。回溯旧讨论用 `pbot_history`。
+用户要求更新工作区历史摘要时，运行 `pbot history summary --workspace "<workspaceRoot>"`。需要按当前版本调用时，读取 `resourceRoot/../package.json` 的 `version`，用 `npx --yes personal-bot@<version>` 替换命令中的 `pbot`。

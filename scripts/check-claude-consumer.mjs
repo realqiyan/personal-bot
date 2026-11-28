@@ -48,6 +48,7 @@ try {
   execFileSync("tar", ["-xzf", tarball, "-C", extracted], { cwd: workspace, env, timeout: 30_000 });
   const raw = join(extracted, "package");
   await assert.rejects(stat(join(raw, "node_modules")), { code: "ENOENT" });
+  execFileSync(process.execPath, [join(raw, "bin/pbot.mjs"), "--at-least", manifest.version], { cwd: workspace, env });
   await assert.rejects(stat(join(raw, "npm-shrinkwrap.json")), { code: "ENOENT" });
   const rawStatus = JSON.parse(execFileSync(process.execPath, [join(raw, "lib/claude.js"), "status"],
     { cwd: workspace, env, encoding: "utf8", timeout: 30_000 }));

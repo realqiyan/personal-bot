@@ -95,8 +95,8 @@ function evaluateSummaryReminder(
   const rawAgeDays = Math.floor((nowMs - oldestRawMs) / dayMs);
   const daysSinceLastSummary = latestSummaryMs === undefined ? undefined : Math.floor((nowMs - latestSummaryMs) / dayMs);
   const message = daysSinceLastSummary === undefined
-    ? `历史原文已累计 ${rawAgeDays} 天（待摘要 ${pendingCount} 项），尚未触发过摘要整理；可运行 /pbot history summary 生成摘要。`
-    : `历史原文已累计 ${rawAgeDays} 天，且已 ${daysSinceLastSummary} 天未触发摘要整理（待摘要 ${pendingCount} 项）；可运行 /pbot history summary 更新摘要。`;
+    ? `历史原文已累计 ${rawAgeDays} 天（待摘要 ${pendingCount} 项），尚未触发过摘要整理；可在终端运行 pbot history summary 生成摘要（Pi/dsh 可用 /pbot history summary）。`
+    : `历史原文已累计 ${rawAgeDays} 天，且已 ${daysSinceLastSummary} 天未触发摘要整理（待摘要 ${pendingCount} 项）；可在终端运行 pbot history summary 更新摘要（Pi/dsh 可用 /pbot history summary）。`;
 
   return {
     rawCount: raws.length,

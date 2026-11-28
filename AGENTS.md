@@ -12,7 +12,8 @@ Personal Bot is a harness-agnostic workspace and unified MCP cross-harness deleg
   - `hosts/`: host runtimes (`pi/*`, `dsh/*`, and shared `plugin-runtime.ts`)
   - `mcp/`: stdio MCP server & workspace MCP bridge (`workers.ts`, `bridge.ts`)
   - `acp/`: ACP worker child runtime & managed member bootstrap (`worker.ts`, `member.ts`)
-  - `setup/`: standalone CLI & Pi setup guard (`cli.ts`, `guard.ts`)
+  - `history/`: shared history command execution for hosts and the standalone CLI.
+  - `setup/`: standalone installer, workspace CLI and Pi setup guard (`cli.ts`, `workspace-cli.ts`, `guard.ts`)
 - `src/integrations/`: external adapters organized by integration domain:
   - `hosts/`: flat per-host adapter folders (`pi/*`, `dsh/*`, `claude/adapter.ts`, `antigravity/adapter.ts`) plus shared `plugin-registry.ts`
   - `acp/`: ACP protocol & extensible harness adapters (`registry.ts`, `harnesses/*`, `claude-settings.ts`)
@@ -29,8 +30,8 @@ Personal Bot is a harness-agnostic workspace and unified MCP cross-harness deleg
 - `tests/`: real-process Node tests under domain subdirectories; real-model acceptance runs separately.
 - `docs/`: categorized documentation (`docs/README.md` index → `hosts/`, `guides/`, `architecture/`, `maintainers/`).
 - `scripts/`: build helpers (`build-cli.mjs`, `build-dsh.mjs`, `build-plugins.mjs`) and consumer checks.
-- `bin/pbot.mjs`: standalone CLI (`setup`, `install-antigravity`, `plugin <host> hook|init|status`, `mcp`).
-- `lib/`: generated CLI, dsh, plugin runtime, standalone `lib/extension/{mcp,acp-worker}.js`, and self-contained `lib/antigravity-plugin/`. Do not edit generated files.
+- `bin/pbot.mjs`: standalone CLI (`init`, `status`, `history status|list|summary|migrate|search|read`, `setup`, `install-antigravity`, `plugin <host> hook|init|status`, `mcp`).
+- `lib/`: generated CLI, dsh, plugin runtime, standalone `lib/extension/{workspace-cli,mcp,acp-worker}.js`, and self-contained `lib/antigravity-plugin/`. Do not edit generated files.
 - `dist/`: generated test imports. Do not edit generated files.
 
 Keep top-level layers unidirectional and enforce boundaries with `dependency-cruiser`. Read [docs/architecture/principles.md](docs/architecture/principles.md), [docs/architecture/design.md](docs/architecture/design.md), and [docs/architecture/extensibility.md](docs/architecture/extensibility.md) before changing module boundaries, host registries, or the MCP/ACP bridge.

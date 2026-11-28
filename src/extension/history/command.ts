@@ -2,10 +2,10 @@ import { requireThat } from "../../common/validation.js";
 import { createAcpHistorySummarizer } from "../../integrations/acp/history-summary.js";
 import type { SummaryRunProgress } from "../../model/history.js";
 import { migrateWorkspaceHistory } from "../../services/history/history-migrate.js";
-import { parseHistoryCommand } from "../../services/history/summary-command.js";
+import { parseHistoryCommand, type ParsedHistoryCommand } from "../../services/history/summary-command.js";
 import { listSummaryDimensions } from "../../services/history/summary-registry.js";
 import { inspectWorkspaceSummaries, runWorkspaceSummaries } from "../../services/history/summary-runner.js";
-import { readWorkspaceConfig, readWorkspaceHistoryLayoutSync, workspaceDisabledMessage, workspaceSummaryConfig } from "../../services/workspace/workspace-config.js";
+import { readWorkspaceConfig, readWorkspaceHistoryLayoutSync, workspaceDisabledMessage, workspaceFeatures, workspaceSummaryConfig } from "../../services/workspace/workspace-config.js";
 import { executeHistory } from "../../tools/history/actions.js";
 import { historyInput } from "../../tools/history/contract.js";
 
@@ -16,14 +16,14 @@ interface CommandContext {
 
 export async function runHistoryCommand(
   workspace: CommandContext,
-  argument: string,
+  argument: string | ParsedHistoryCommand,
   signal: AbortSignal,
-  progress?: { start(backend: string): void; update(event: SummaryRunProgress): void; finish(): void },
+  progress?: { start(backend: string): void; update(event: SummaryRunProgress): void; finish?(): void },
 ) {
   const { root } = workspace;
   signal.throwIfAborted();
   requireThat(workspace.features.history, "当前工作区已停用历史功能（features.history: false）。");
-  const command = parseHistoryCommand(argument);
+  const command = typeof argument === "string" ? parseHistoryCommand(argument) : argument;
   switch (command.kind) {
     case "status":
       return inspectWorkspaceSummaries(root);
@@ -39,6 +39,7 @@ export async function runHistoryCommand(
     case "summary": {
       const config = await readWorkspaceConfig(root);
       requireThat(config.enabled && !config.error, workspaceDisabledMessage(config));
+      requireThat(workspaceFeatures(config).history, "当前工作区已停用历史功能（features.history: false）。");
       const defaults = workspaceSummaryConfig(config);
       const backend = command.backend ?? defaults.backend;
       const model = command.model ?? defaults.model;
@@ -60,7 +61,7 @@ export async function runHistoryCommand(
         });
         return { backend, ...(model ? { model } : {}), ...report };
       } finally {
-        progress?.finish();
+        progress?.finish?.();
       }
     }
   }

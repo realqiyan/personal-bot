@@ -1,5 +1,10 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": { "outDir": "lib", "sourceMap": false },
-  "include": ["src/claude.ts", "src/plugin.ts"]
+  "include": [
+    "src/claude.ts",
+    "src/plugin.ts",
+    "src/extension/hosts/pi/acp-member.ts",
+    "src/extension/hosts/dsh/acp-entry.ts"
+  ]
 }

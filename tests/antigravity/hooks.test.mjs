@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { access, cp, mkdir, mkdtemp, readFile, readdir, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -9,6 +10,9 @@ import { pluginHook, pluginCommand } from "../../dist/extension/hosts/plugin-run
 import { pluginHosts, registerPluginHost } from "../../dist/integrations/hosts/plugin-registry.js";
 import { recordHistoryCapture } from "../../dist/services/history/history-capture.js";
 import { runWorkspaceSummaries } from "../../dist/services/history/summary-runner.js";
+import { AgentFiles } from "../../dist/storage/agent-files.js";
+import { dshAcpHarness } from "../../dist/integrations/acp/harnesses/dsh.js";
+import { piAcpHarness } from "../../dist/integrations/acp/harnesses/pi.js";
 
 const exec = promisify(execFile);
 const builtBundle = resolve("lib/antigravity-plugin");
@@ -39,6 +43,39 @@ async function fixture(t) {
     run(["hook"], { cwd: pluginDir, input: { hookEventName, workspacePaths: [workspace], cwd: nested, ...values }, extraEnv });
   return { root, pluginDir, workspace, nested, env, run, hook };
 }
+
+test("installed Antigravity bundle loads its Pi and dsh members through each native host", async t => {
+  const { root, pluginDir, workspace, env, run } = await fixture(t);
+  const { version } = await run(["init"]);
+  await assert.rejects(access(join(pluginDir, "node_modules")), { code: "ENOENT" });
+  const id = randomUUID(), generation = randomUUID();
+  const files = new AgentFiles(join(root, "control"));
+  const pi = resolve("node_modules/.bin/pi");
+  files.create({ agentId: id, release: version, workspace, cwd: workspace, parentSessionId: "parent", parentLeaf: null,
+    createdAt: 1, options: {} }, { generation, name: "installed-member", sequence: 0, stop: false, startedAt: 1 },
+  { host: "acp", backend: "pi", command: pi, args: [], sessionId: null });
+  const directory = files.directory(id);
+  const context = { directory, packageRoot: pluginDir, env, reference: { command: pi, args: [] } };
+  const launch = piAcpHarness.prepareLaunch(context);
+  const rpc = exec(process.execPath, [launch.env.PI_ACP_PI_COMMAND, "--mode", "rpc", "--no-session"], {
+    cwd: workspace, env: { ...env, PBOT_ACP_PI_COMMAND: pi, PBOT_SUBAGENT_RUN_ID: id, PBOT_SUBAGENT_DIR: directory,
+      PBOT_SUBAGENT_GENERATION: generation, PI_OFFLINE: "1", PI_CODING_AGENT_DIR: join(root, "pi") }, timeout: 20_000,
+  });
+  rpc.child.stdin.end('{"type":"get_state","id":"state"}\n{"type":"get_commands","id":"commands"}\n');
+  const { stdout, stderr } = await rpc;
+  const records = stdout.trim().split("\n").map(line => JSON.parse(line));
+  assert.equal(records.find(record => record.id === "state")?.data?.sessionName, "installed-member", stderr);
+  assert.ok(records.find(record => record.id === "commands")?.data?.commands.some(command =>
+    command.name === "skill:provider-connections"), stderr);
+
+  const dsh = await dshAcpHarness.prepareLaunch({ ...context, reference: { command: resolve("node_modules/.bin/dsh"), args: ["--profile", "acp"] } });
+  const schema = await exec(dsh.command.command, [...dsh.command.args, "--dump-config-schema"], {
+    cwd: workspace, env: dsh.env, timeout: 20_000, maxBuffer: 4 * 1024 * 1024,
+  });
+  const config = JSON.parse(schema.stdout)["x-cordis"];
+  assert.equal(config.complete, true);
+  assert.equal(config.entries.find(entry => entry.id === "pbot-acp-member")?.status, "absent"); // Loaded without a Config export.
+});
 
 test("disabled Antigravity hooks gate bundled skills and leave workspace untouched", async t => {
   const { root, pluginDir, workspace, run, hook } = await fixture(t);
@@ -116,6 +153,12 @@ test("invalid config stays read-only and managed subagents pass through cleanly"
 test("plugin host registry supports registering new hosts without modifying runtime code", async t => {
   const workspace = await realpath(await mkdtemp(join(tmpdir(), "pbot-custom-host-")));
   t.after(() => rm(workspace, { recursive: true, force: true }));
+  const previousHome = process.env.HOME;
+  process.env.HOME = join(workspace, "test-home");
+  t.after(() => {
+    if (previousHome === undefined) delete process.env.HOME;
+    else process.env.HOME = previousHome;
+  });
   const customAdapter = {
     host: "custom-ide",
     nativeRootAgents: true,

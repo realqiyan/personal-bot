@@ -2,7 +2,7 @@ import type { Context } from "@deepseek-ai/cordis";
 import type {} from "@deepseek-ai/dsh-commands";
 import { dshWorkspaceStatus } from "./management.js";
 import type { DshWorkspaces } from "./workspace.js";
-import { runHistoryCommand } from "../history-command.js";
+import { runHistoryCommand } from "../../history/command.js";
 import { parseWorkerCommand } from "../../mcp/workers.js";
 
 const usage = '用法：/pbot status | init | history [summary [维度] [--force] [--backend <acp>] [--model <model>] | migrate [--dry-run] | status | list | {"action":…}] | worker [overview|status|backends|models|create|request|response|output|close] [JSON]';

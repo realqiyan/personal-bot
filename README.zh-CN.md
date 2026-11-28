@@ -20,6 +20,8 @@ Personal Bot 为多宿主环境（[Pi](https://pi.dev)、dsh、Claude Code、Ant
 
 ## 安装
 
+在工作区根目录运行 CLI，或用 `--workspace <目录>` 指定。全局安装用 `npm install -g personal-bot`，临时运行用 `npx personal-bot@<插件版本>`。所有宿主共用 `pbot init`、`pbot status` 和 `pbot history status|list|summary|migrate|search|read`。显式初始化或在已启用的工作区执行命令时，CLI 自动选择满足插件要求的版本。详见[历史与 CLI 指南](docs/guides/history.md)。
+
 ### Pi
 
 需要 Linux/macOS、Node.js 22.19+ 与 npm：
@@ -33,7 +35,7 @@ pi install --local npm:personal-bot
 pi
 ```
 
-在会话中执行 `/pbot init`。已启用后自动挂载 `pbot` MCP 服务（`worker_*`）与 `pbot_history`，提供 `/pbot init | status | worker`。详见 [Pi 使用指南](docs/hosts/pi.md)。
+在会话中执行 `/pbot init`。已启用后自动挂载 `pbot` MCP 服务（`worker_*`）与 `pbot_history`，提供 `/pbot init | status | history | worker`。详见 [Pi 使用指南](docs/hosts/pi.md)。
 
 ### dsh
 
@@ -94,11 +96,11 @@ pbot mcp
 | `providers/` | 外部 CLI/MCP 使用手册与数据口径 |
 | `scratch/` | 临时脚本、计算数据与实验环境 |
 | `agents/` | 角色职责补充（`coordinator.md`、`general-purpose.md`） |
-| `.pbot/history/` | Pi/dsh 原始问答（`raw/`）与分层摘要（`summary/`）；既有 Claude 归档只读保留 |
+| `.pbot/history/` | 各接入宿主的原始问答（`raw/`）与分层摘要（`summaries/`） |
 
 ## 开发与验证
 
-当前版本 **0.3.2**。完整开发使用 Linux/macOS、Node.js 24.9+：
+当前版本 **0.3.3**。完整开发使用 Linux/macOS、Node.js 24.9+：
 
 ```bash
 npm ci --ignore-scripts

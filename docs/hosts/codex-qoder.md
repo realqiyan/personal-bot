@@ -1,6 +1,6 @@
 # Codex 与 Qoder CLI
 
-两个原生插件共用 npm 包提供的 `pbot` 命令。宿主启动环境的 PATH 需要能找到该命令和 Node.js 22.19+。下面的安装流程适用于 Linux 和 macOS，已用 Codex CLI 0.172.0 和 Qoder CLI 1.1.100 校验。
+两个原生插件共用 npm 包提供的 `pbot` 命令。宿主启动环境需要 Node.js 22.19+ 和 npm。PATH 中有 0.3.3 或更新的 CLI 时，插件交由 CLI 检查目标工作区是否启用，再决定是否升级。缺少此启动器时，插件通过 npx 安装或复用自身指定的版本。下面的安装流程适用于 Linux 和 macOS，已用 Codex CLI 0.172.0 和 Qoder CLI 1.1.100 校验。
 
 ## 安装
 
@@ -28,7 +28,7 @@ qodercli plugin install "$pbot_lib/qoder-plugin"
 
 ## 工作区与工具
 
-在目标工作区根目录执行下列命令，或在宿主中调用插件的 `pbot` 管理技能，传入 `init` 或 `status`。
+在目标工作区根目录执行下列命令，或在宿主中调用插件的 `pbot` 管理技能，传入 `init`、`status` 或 `history` 子命令。
 
 ```sh
 pbot plugin codex init
@@ -40,7 +40,7 @@ pbot plugin qoder status
 
 两个宿主共用一份 `.pbot/config.json`，同一目录初始化一次即可。Codex hook 使用事件的 `cwd`。Qoder 的 hook、管理命令和 MCP 共用 `QODER_PROJECT_DIR`，缺失时依次使用 `PBOT_WORKSPACE_ROOT` 与工作目录。
 
-启用历史后，新会话的 `SessionStart` 会提示旧布局或待更新的摘要。需要处理提醒时，在同一工作区的 Pi 或 dsh 中执行 `/pbot history migrate` 或 `/pbot history summary`。提交提示时按配置注入协调者上下文和包内方法技能索引，`Stop` 配合提交事件记录主会话问答。Codex 按会话和回合 ID 关联追加输入及回复。原始记录的来源分别为 `codex` 和 `qoder`。
+启用历史后，新会话的 `SessionStart` 会提示旧布局或待更新的摘要。需要处理提醒时，在当前工作区执行 `pbot history migrate --dry-run` 预览迁移，或用 `pbot history summary` 生成摘要。提交提示时按配置注入协调者上下文和包内方法技能索引，`Stop` 配合提交事件记录主会话问答。Codex 按会话和回合 ID 关联追加输入及回复。原始记录的来源分别为 `codex` 和 `qoder`。
 
 宿主原生发现根 `AGENTS.md` 与 `.agents/skills/`。包内方法按 `features.skills` 提供，管理技能可由用户显式调用。
 

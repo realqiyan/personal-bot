@@ -6,6 +6,7 @@ import { loadWorkspaceContext } from "../../integrations/agent-resources.js";
 import type { PluginHostAdapter } from "../../model/plugin-host.js";
 import { recordHistoryCapture } from "../../services/history/history-capture.js";
 import { historyStartupNotices } from "../../services/history/summary-runner.js";
+import { bindWorkspacePlugin } from "../../services/workspace/plugin-releases.js";
 import { readWorkspaceConfig, workspaceFeatures } from "../../services/workspace/workspace-config.js";
 import { initializeWorkspace } from "../../services/workspace/workspace-preparation.js";
 import { discoverSkills, discoverWorkspaceSkills } from "../../services/workspace/workspace-skills.js";
@@ -18,29 +19,42 @@ export async function pluginCommand(adapter: PluginHostAdapter, args: readonly s
   const root = await adapter.resolveRoot(cwd);
   const action = args.join(" ");
   requireThat(["init", "status"].includes(action), adapter.usage);
-  if (action === "init") await initializeWorkspace(root);
+  if (action === "init") {
+    await initializeWorkspace(root);
+    bindWorkspacePlugin(root, adapter.host, process.env.PBOT_PLUGIN_MANIFEST || process.env.PBOT_PLUGIN_VERSION);
+  }
   const configuration = await readWorkspaceConfig(root);
   return { version: packageVersion, workspaceRoot: root, resourceRoot, configuration };
 }
 
-export async function runPluginHost(adapter: PluginHostAdapter, args: readonly string[]): Promise<void> {
+export type ReplayPluginHook = (root: string, input: string) => Promise<number | undefined>;
+
+export async function runPluginHost(adapter: PluginHostAdapter, args: readonly string[], replay?: ReplayPluginHook): Promise<void> {
   if (args[0] === "hook") {
     let input = "";
     process.stdin.setEncoding("utf8");
     for await (const chunk of process.stdin) input += String(chunk);
-    process.stdout.write(JSON.stringify(await pluginHook(adapter, JSON.parse(input))) + "\n");
+    const result = await pluginHook(adapter, JSON.parse(input), replay && (root => replay(root, input)));
+    if (typeof result === "number") process.exitCode = result;
+    else process.stdout.write(JSON.stringify(result) + "\n");
   } else {
     process.stdout.write(JSON.stringify(await pluginCommand(adapter, args, process.cwd()), null, 2) + "\n");
   }
 }
 
 /** Shared hook execution engine; host-specific protocols stay in PluginHostAdapter implementations. */
-export async function pluginHook(adapter: PluginHostAdapter, payload: unknown): Promise<Record<string, unknown>> {
+export function pluginHook(adapter: PluginHostAdapter, payload: unknown): Promise<Record<string, unknown>>;
+export function pluginHook(adapter: PluginHostAdapter, payload: unknown, replay: ((root: string) => Promise<number | undefined>) | undefined): Promise<Record<string, unknown> | number>;
+export async function pluginHook(adapter: PluginHostAdapter, payload: unknown, replay?: (root: string) => Promise<number | undefined>) {
   if (process.env.PBOT_SUBAGENT_RUN_ID) return adapter.formatPass(payload);
   const event = adapter.parseEvent(payload);
   if (event.kind === "ignore") return adapter.formatPass(payload);
   const root = await adapter.resolveRoot(event.cwd, event.raw);
   const configuration = await readWorkspaceConfig(root);
+  if (configuration.enabled && replay) {
+    const code = await replay(root);
+    if (code !== undefined) return code;
+  }
   const features = workspaceFeatures(configuration);
   if (event.kind === "check-skill") {
     if (!configuration.enabled) return adapter.formatDeny(event, disabledMessage(adapter, configuration));
@@ -48,6 +62,7 @@ export async function pluginHook(adapter: PluginHostAdapter, payload: unknown): 
     return adapter.formatPass(payload);
   }
   if (!configuration.enabled) return adapter.formatPass(payload);
+  if (event.kind === "inject-context") bindWorkspacePlugin(root, adapter.host, process.env.PBOT_PLUGIN_MANIFEST || process.env.PBOT_PLUGIN_VERSION);
   if (features.history && adapter.extractHistory) {
     try {
       const capture = await adapter.extractHistory(event);

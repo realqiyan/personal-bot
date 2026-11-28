@@ -1,5 +1,6 @@
 import { realpath } from "node:fs/promises";
 import { requireThat } from "../../../common/validation.js";
+import { bindWorkspacePlugin } from "../../../services/workspace/plugin-releases.js";
 import { authorizeMutation } from "../../../services/workspace/workspace-files.js";
 import { readWorkspaceConfig, workspaceDisabledMessage, workspaceFeatures } from "../../../services/workspace/workspace-config.js";
 import type { ResolvedWorkspaceFeatures, WorkspaceConfiguration } from "../../../model/workspace-config.js";
@@ -72,6 +73,7 @@ export class Lifecycle {
     this.root = await realpath(root);
     this.configuration = await readWorkspaceConfig(this.root);
     if (!this.configuration.enabled) return;
+    bindWorkspacePlugin(this.root, "pi");
     const instance = this.create(this.root, sessionId, this.configuration);
     this.#active = instance;
     try { await this.register(instance); }

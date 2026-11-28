@@ -10,6 +10,7 @@ import { registerDshHistoryTool } from "../../../tools/history/dsh-tool.js";
 import { requireThat } from "../../../common/validation.js";
 import { toDshMcpConfig } from "../../../integrations/hosts/dsh/mcp.js";
 import { registerDshSkills } from "../../../integrations/hosts/dsh/skills.js";
+import { bindWorkspacePlugin } from "../../../services/workspace/plugin-releases.js";
 import { readWorkspaceConfig, workspaceDisabledMessage, workspaceFeatures } from "../../../services/workspace/workspace-config.js";
 import { loadNativeWorkspaceServers } from "../workspace-mcp.js";
 import type { ResolvedWorkspaceFeatures, WorkspaceConfiguration } from "../../../model/workspace-config.js";
@@ -121,6 +122,7 @@ export class DshWorkspaces {
       }
       let workspace: DshWorkspace | undefined;
       try {
+        bindWorkspacePlugin(root, "dsh");
         workspace = new DshWorkspace(this.ctx, root, agent, this.#lifetime.signal, workspaceFeatures(configuration));
         const owned = workspace;
         const dispose = agent.ctx.effect(() => async () => {

@@ -51,16 +51,23 @@ test("smoke: packed sources load tools and the standalone CLI without dist or in
   await exec("tar", ["-xzf", join(temp, filename), "-C", temp], { timeout: 10_000 });
   const packed = join(temp, "package");
   assert.deepEqual(await readdir(workspace.root), [".pbot"]);
-  // Supply the already installed locked dependencies; do not download or install packages.
-  await symlink(join(packageRoot, "node_modules"), join(packed, "node_modules"), "dir");
+  await assert.rejects(readdir(join(packed, "node_modules")), { code: "ENOENT" });
   const manifest = JSON.parse(await readFile(join(packed, "package.json"), "utf8"));
-  const cli = await exec(process.execPath, [join(packed, "bin/pbot.mjs"), "--version"], {
-    cwd: workspace.root, env: { HOME: temp, PATH: "/usr/bin:/bin" },
+  const cli = (...args) => exec(process.execPath, [join(packed, "bin/pbot.mjs"), ...args], {
+    cwd: workspace.root, env: { HOME: temp, PATH: "/usr/bin:/bin", npm_config_offline: "true" },
   });
-  assert.equal(cli.stdout.trim(), manifest.version);
+  assert.equal((await cli("--version")).stdout.trim(), manifest.version);
+  for (const minimum of ["0.0.0", manifest.version, manifest.version + "-rc.1", manifest.version + "+build"]) {
+    assert.equal((await cli("--at-least", minimum)).stdout, "");
+  }
+  const newer = `${Number(manifest.version.split(".")[0]) + 1}.0.0`;
+  await assert.rejects(cli("--at-least", newer), { code: 1, stderr: "" });
+  await assert.rejects(cli("--at-least", "invalid"), error => error.code === 1 && error.stderr.includes("--at-least"));
   assert.equal(manifest.bin.pbot, "./bin/pbot.mjs");
   assert.ok((await readdir(join(packed, "resources/installer"))).includes("plugins.json"));
   await assert.rejects(readdir(join(packed, "dist")), { code: "ENOENT" });
+  // Supply the locked Pi SDK only for the remaining host checks.
+  await symlink(join(packageRoot, "node_modules"), join(packed, "node_modules"), "dir");
   const pi = await workspace.start(packed);
   const resources = await pi.inspect();
   assert.deepEqual(resources.tools.filter(name => name.startsWith("pbot_")).sort(), ["pbot_history"]);

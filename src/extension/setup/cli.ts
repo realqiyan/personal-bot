@@ -168,6 +168,8 @@ export async function main(args: string[]): Promise<number> {
   if (options.action === "help") {
     console.log("Personal Bot " + manifest.version + "\n\n用法：pbot setup [--workspace <目录>]\n" +
       "      npx personal-bot@latest setup\n" +
+      "      pbot init | status [--workspace <目录>] [--json]\n" +
+      "      pbot history status|list|summary|migrate|search|read [参数] [--workspace <目录>] [--json]\n" +
       "      pbot install-antigravity\n" +
       "      pbot plugin <host> hook|init|status\n" +
       "      pbot mcp\n" +

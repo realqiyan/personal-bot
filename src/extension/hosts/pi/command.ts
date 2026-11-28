@@ -5,7 +5,7 @@ import { packageVersion } from "../../../common/version.js";
 import { initializeWorkspace } from "../../../services/workspace/workspace-preparation.js";
 import type { Confirmations } from "../../../ui/pi/confirmation.js";
 import type { Lifecycle } from "./lifecycle.js";
-import { runHistoryCommand } from "../history-command.js";
+import { runHistoryCommand } from "../../history/command.js";
 import { parseWorkerCommand } from "../../mcp/workers.js";
 
 function formatHistoryStatusLine(root: string): string[] {

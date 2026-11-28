@@ -306,7 +306,7 @@ export class HistoryFiles {
       total,
       message:
         `检测到 ${total} 个未迁移的平铺历史文件（raw ${rawCount}，summaries ${summaryCount}）；当前为年月目录布局（history.layout: monthly），未迁移文件不会被读取。` +
-        `请运行 /pbot history migrate 整理到 YYYY/MM/ 目录，或在 .pbot/config.json 中设置 "history": { "layout": "flat" } 切回平铺布局。`,
+        `请在终端运行 pbot history migrate 整理到 YYYY/MM/ 目录（Pi/dsh 可用 /pbot history migrate），或在 .pbot/config.json 中设置 "history": { "layout": "flat" } 切回平铺布局。`,
     };
   }
 

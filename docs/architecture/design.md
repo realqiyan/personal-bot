@@ -21,7 +21,7 @@
 | `src/pbot.ts` / `src/dsh.ts` | Pi 与 dsh Host 装配（工作区生命周期、历史工具、原生 MCP 挂载） |
 | `src/plugin.ts` / `src/claude.ts` | 通用插件宿主 CLI/hook 入口（查 `PluginHostRegistry`）与 Claude 兼容入口 |
 | `src/mcp.ts` | 独立 stdio MCP 服务入口，暴露 6 个 `worker_*` 工具，按工作区功能与宿主原生挂载情况提供共享 MCP 和历史查询 |
-| `src/extension/` | 按运行域划分的运行时编排：`hosts/`（`pi/`、`dsh/` 与共享 `plugin-runtime.ts`）、`mcp/`（`workers.ts`、`bridge.ts`）、`acp/`（`worker.ts`、`member.ts`）、`setup/`（`cli.ts`、`guard.ts`） |
+| `src/extension/` | 运行时编排。 `hosts/` 装配宿主，`mcp/` 提供 MCP 服务与桥接，`acp/` 启动 worker，`history/` 执行共享历史命令，`setup/` 提供安装器、工作区 CLI 和 Pi 初始化保护 |
 | `src/integrations/` | 按外部集成域划分的适配器：`hosts/`（各宿主平级目录 `pi/`、`dsh/`、`claude/`、`antigravity/` 及 `plugin-registry.ts`）、`acp/`（协议、`harnesses/` 与独立摘要执行器 `history-summary.ts`）、`installation/`（安装桥接），以及跨宿主辅助（`agent-resources.ts`） |
 | `src/services/` | 宿主无关业务规则（`agents/`、`workspace/`、`history/`、`installation/`） |
 | `src/model/` | 纯数据类型与窄能力契约（`plugin-host.ts`、`acp.ts`、`agent.ts`、`history.ts`、`workspace-config.ts`），不含实现或宿主 SDK 类型 |
@@ -71,7 +71,8 @@
 
 ## 安装器（`pbot setup`）与 CLI
 
-`bin/pbot.mjs` 路由到预构建 `lib/extension/setup-cli.js`，提供三个子命令：
+`bin/pbot.mjs` 选择随包构建的工作区 CLI、安装器或插件运行时，提供工作区、安装与 MCP 命令：
+- `pbot init|status` 与 `pbot history status|list|summary|migrate|search|read`：工作区 CLI 与 Pi/dsh 共用 `src/extension/history/command.ts`。根目录、精确版本和输出契约见[历史与 CLI 指南](../guides/history.md)。
 - `pbot setup [--workspace <dir>]`：交互式检查环境、安装/更新 Pi 与工作区扩展，保留自定义本地/Git/固定来源，完成后通过临时 `setup-guard` 启动 Pi 执行 `/pbot init`。
 - `pbot install-antigravity`：调用原生 `agy plugin install ./lib/antigravity-plugin` 安装或更新 Antigravity 插件。
 - `pbot mcp`：直接运行独立打包的 `lib/extension/mcp.js` 供任意 MCP 客户端连接。

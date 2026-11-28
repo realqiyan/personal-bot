@@ -11,17 +11,18 @@ export type ParsedHistoryCommand =
 export const historyCommandUsage =
   '用法：/pbot history summary [维度...] [--force] [--backend <acp>] [--model <model>] [--thinking <level>] | migrate [--dry-run] | status | list | {"action":"search"|"read",...}';
 
-export function parseHistoryCommand(raw: string): ParsedHistoryCommand {
-  const trimmed = raw.trim();
-  if (!trimmed || trimmed === "status") return { kind: "status" };
-  if (trimmed === "list") return { kind: "list" };
-  if (trimmed.startsWith("{")) {
-    const parsed: unknown = JSON.parse(trimmed);
+export function parseHistoryCommand(raw: string | readonly string[]): ParsedHistoryCommand {
+  const tokens = typeof raw === "string"
+    ? raw.trim().startsWith("{") ? [raw.trim()] : raw.trim().split(/\s+/).filter(Boolean)
+    : raw;
+  const [sub] = tokens;
+  if (!sub || sub === "status" && tokens.length === 1) return { kind: "status" };
+  if (sub === "list" && tokens.length === 1) return { kind: "list" };
+  if (tokens.length === 1 && sub.startsWith("{")) {
+    const parsed: unknown = JSON.parse(sub);
     requireThat(object(parsed), "历史查询参数必须是 JSON 对象。");
     return { kind: "query", input: parsed };
   }
-  const tokens = trimmed.split(/\s+/);
-  const sub = tokens[0];
   if (sub === "migrate") {
     let dryRun = false;
     for (const token of tokens.slice(1)) {

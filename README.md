@@ -20,6 +20,8 @@ Missing, disabled, or invalid configuration keeps Personal Bot inactive without 
 
 ## Install
 
+The workspace CLI runs from the workspace root or accepts `--workspace <dir>`. Install it with `npm install -g personal-bot`, or use `npx personal-bot@<installed-plugin-version>`. Use `pbot init`, `pbot status` and `pbot history status|list|summary|migrate|search|read`. During initialization and in enabled workspaces, the CLI selects a version that meets the registered plugins’ requirements. [CLI and history guide](docs/guides/history.md)
+
 ### Pi
 
 Requires Linux/macOS, Node.js 22.19+, and npm:
@@ -33,7 +35,7 @@ pi install --local npm:personal-bot
 pi
 ```
 
-Run `/pbot init`. Once enabled, Pi automatically registers the `pbot` stdio MCP server (`worker_*`), exposes `pbot_history`, and provides `/pbot init | status | worker`. See the [Pi guide](docs/hosts/pi.md).
+Run `/pbot init`. Once enabled, Pi automatically registers the `pbot` stdio MCP server (`worker_*`), exposes `pbot_history`, and provides `/pbot init | status | history | worker`. See the [Pi guide](docs/hosts/pi.md).
 
 ### dsh
 
@@ -94,11 +96,11 @@ Supports built-in presets (`pi`, `dsh`, `claude`, `antigravity`, `codex`, `qoder
 | `providers/` | External CLI/MCP guides and data definitions |
 | `scratch/` | Temporary scripts, data, and working environments |
 | `agents/` | Role additions (`coordinator.md`, `general-purpose.md`) |
-| `.pbot/history/` | Pi/dsh raw exchanges (`raw/`) and derived summaries (`summary/`); preserved Claude archives remain read-only |
+| `.pbot/history/` | Raw exchanges from connected hosts in `raw/` and derived summaries in `summaries/` |
 
 ## Development
 
-Current release: **0.3.2**. Full development uses Linux/macOS and Node.js 24.9+:
+The package version is **0.3.3**. Full development uses Linux/macOS and Node.js 24.9+:
 
 ```bash
 npm ci --ignore-scripts

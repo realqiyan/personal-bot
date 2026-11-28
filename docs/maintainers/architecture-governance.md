@@ -21,7 +21,7 @@
 
 | 状态 | 证据与行动 |
 | --- | --- |
-| 已治理 | Pi 与 dsh 均从 hosts/history-command 执行历史命令。dsh 聊天命令直接使用已验证的工作区，Web 继续通过 Typert。宿主持有取消信号和进度展示。 |
+| 已治理 | Pi、dsh 和独立 CLI 共用 `src/extension/history/command.ts` 执行历史命令。dsh 聊天命令直接使用已验证的工作区，Web 继续通过 Typert。宿主持有取消信号和进度展示。 |
 | 已治理 | MCP 调用字段从 tool-contract 的公开 schema 提取，十份手写字段表已删除。工具名联合类型使执行分派具备编译期穷尽检查。 |
 | 已治理 | bridge 以同一记录持有握手与就绪连接。新配置立即建立连接；旧配置的调用完成后释放旧会话。双 HTTP 端点测试在握手期间切换配置并验证各自的身份与清理。 |
 | 已治理 | runtime.nativeServer 从已创建实例取得 worker 控制目录与会话 ID，生成 Pi/dsh 的挂载参数；两个宿主各自管理 SDK 注册、超时单位与环境继承。 |
